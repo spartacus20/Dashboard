@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { Play, Pause, Download, Clock, ChevronDown, ChevronUp, Search, X, Info, Phone, ChevronLeft, ChevronRight, ListFilter, Timer, PhoneOff, RefreshCw } from 'lucide-react';
-import type { DetailedRetellCall } from '../types';
+import type { DetailedRetellCall, FilterCriteria } from '../types';
 import { useCallsContext } from '../context/CallsContext';
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -110,6 +110,61 @@ function formatDuration(ms: number): string {
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 }
 
+// Nueva función para obtener la duración de una llamada de forma robusta
+function getDuration(call: DetailedRetellCall): string {
+  // Opción 1: Usar el campo duration directamente del webhook (en milisegundos)
+  if (call.duration && call.duration > 0) {
+    const durationSeconds = Math.floor(call.duration / 1000);
+    const minutes = Math.floor(durationSeconds / 60);
+    const seconds = durationSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  }
+  
+  // Opción 2: Calcular usando timestamps como respaldo
+  if (call.end_timestamp && call.start_timestamp) {
+    const durationMs = call.end_timestamp - call.start_timestamp;
+    const durationSeconds = Math.floor(durationMs / 1000);
+    const minutes = Math.floor(durationSeconds / 60);
+    const seconds = durationSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  }
+  
+  // Opción 3: Buscar en metadata como último recurso (asumiendo segundos en metadata)
+  if (call.metadata?.duration) {
+    const duration = parseInt(call.metadata.duration);
+    if (duration > 0) {
+      const minutes = Math.floor(duration / 60);
+      const seconds = duration % 60;
+      return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    }
+  }
+  
+  return 'En curso';
+}
+
+// Función auxiliar para obtener la duración en segundos (para filtros)
+function getDurationInSeconds(call: DetailedRetellCall): number {
+  // Opción 1: Usar el campo duration directamente del webhook (en milisegundos)
+  if (call.duration && call.duration > 0) {
+    return Math.floor(call.duration / 1000);
+  }
+  
+  // Opción 2: Calcular usando timestamps como respaldo
+  if (call.end_timestamp && call.start_timestamp) {
+    return (call.end_timestamp - call.start_timestamp) / 1000;
+  }
+  
+  // Opción 3: Buscar en metadata como último recurso (asumiendo segundos en metadata)
+  if (call.metadata?.duration) {
+    const duration = parseInt(call.metadata.duration);
+    if (duration > 0) {
+      return duration;
+    }
+  }
+  
+  return 0;
+}
+
 function formatCost(cost: number): string {
   return `$${(cost / 100).toFixed(2)}`;
 }
@@ -182,52 +237,7 @@ function CallModal({ call, onClose, isPlaying, onPlayPause }: CallModalProps) {
 
   if (!call) return null;
 
-  const callDuration = call.end_timestamp && call.start_timestamp
-    ? formatDuration(call.end_timestamp - call.start_timestamp)
-    : 'En curso';
-
-  // Función para renderizar bonitos el JSON
-  const renderJson = (data: any) => {
-    return (
-      <pre className="bg-gray-950 p-4 rounded-lg text-gray-300 text-xs overflow-auto max-h-96">
-        {JSON.stringify(data, null, 2)}
-      </pre>
-    );
-  };
-
-  // Formatear la transcripción para mejor legibilidad
-  const formatTranscript = (transcript: string) => {
-    if (!transcript) return null;
-    
-    // Dividir por líneas y añadir formato
-    const lines = transcript.split('\n');
-    return (
-      <div className="space-y-3">
-        {lines.map((line, index) => {
-          // Intentar detectar si es usuario o asistente
-          const isAssistant = line.toLowerCase().startsWith('asistente:') || 
-                             line.toLowerCase().startsWith('agente:') || 
-                             line.toLowerCase().startsWith('ai:');
-          const isUser = line.toLowerCase().startsWith('usuario:') || 
-                        line.toLowerCase().startsWith('cliente:') ||
-                        line.toLowerCase().startsWith('user:');
-          
-          let speakerClass = '';
-          if (isAssistant) speakerClass = 'bg-gray-800';
-          else if (isUser) speakerClass = 'bg-gray-900 border border-gray-800';
-          
-          return (
-            <div 
-              key={index} 
-              className={`p-3 rounded-lg ${speakerClass || 'bg-gray-900'}`}
-            >
-              <p className="text-gray-200">{line}</p>
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
+  const callDuration = getDuration(call);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
@@ -346,6 +356,9 @@ function CallModal({ call, onClose, isPlaying, onPlayPause }: CallModalProps) {
                             value={currentTime}
                             onChange={handleProgressChange}
                             className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                            style={{
+                              background: `linear-gradient(to right, #9333ea 0%, #9333ea ${(currentTime / (duration || 1)) * 100}%, #374151 ${(currentTime / (duration || 1)) * 100}%, #374151 100%)`
+                            }}
                           />
                         </div>
                         
@@ -480,28 +493,7 @@ const RecordingsSkeleton = () => {
 };
 
 export function Recordings({ onNavigate }: RecordingsProps) {
-  const [selectedCallModal, setSelectedCallModal] = React.useState<DetailedRetellCall | null>(null);
-  const [selectedCall, setSelectedCall] = React.useState<string | null>(null);
-  const [playingId, setPlayingId] = React.useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = React.useState('');
-  const audioRef = React.useRef<HTMLAudioElement | null>(null);
-  const [audioCurrentTime, setAudioCurrentTime] = React.useState(0);
-  const [audioDuration, setAudioDuration] = React.useState(0);
-  
-  // Usar el contexto compartido en lugar de tener estados duplicados
-  const { 
-    allCalls,
-    loadingAllCalls,
-    loadingProgress,
-    error: contextError,
-    totalCalls,
-    loadAllCalls: contextLoadAllCalls,
-    disconnectionReasons: contextDisconnectionReasons,
-    allCallsLoaded,
-    apiKey
-  } = useCallsContext();
-  
-  // Función para renderizar JSON
+  // Funciones utilidad para renderizar JSON y formatear transcripciones
   const renderJson = (data: any) => {
     return (
       <pre className="bg-gray-950 p-4 rounded-lg text-gray-300 text-xs overflow-auto max-h-96">
@@ -522,7 +514,8 @@ export function Recordings({ onNavigate }: RecordingsProps) {
           // Intentar detectar si es usuario o asistente
           const isAssistant = line.toLowerCase().startsWith('asistente:') || 
                              line.toLowerCase().startsWith('agente:') || 
-                             line.toLowerCase().startsWith('ai:');
+                             line.toLowerCase().startsWith('ai:') ||
+                             line.toLowerCase().startsWith('agent:');
           const isUser = line.toLowerCase().startsWith('usuario:') || 
                         line.toLowerCase().startsWith('cliente:') ||
                         line.toLowerCase().startsWith('user:');
@@ -543,13 +536,40 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       </div>
     );
   };
+
+  const [selectedCallModal, setSelectedCallModal] = React.useState<DetailedRetellCall | null>(null);
+  const [selectedCall, setSelectedCall] = React.useState<string | null>(null);
+  const [playingId, setPlayingId] = React.useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = React.useState('');
+  const audioRef = React.useRef<HTMLAudioElement | null>(null);
+  const [audioCurrentTime, setAudioCurrentTime] = React.useState(0);
+  const [audioDuration, setAudioDuration] = React.useState(0);
+  
+  // Usar el contexto compartido en lugar de tener estados duplicados
+  const { 
+    allCalls,
+    loadingAllCalls,
+    loadingProgress,
+    error: contextError,
+    totalCalls,
+    loadAllCalls: contextLoadAllCalls,
+    loadCallsPage,
+    disconnectionReasons: contextDisconnectionReasons,
+    allCallsLoaded,
+    apiKey,
+    currentPage: contextCurrentPage,
+    totalPages: contextTotalPages,
+    hasMorePages,
+    setFilterCriteria: contextSetFilterCriteria,
+    filterCriteria: contextFilterCriteria
+  } = useCallsContext();
   
   // Estados locales para paginación y filtrado
   const [calls, setCalls] = React.useState<DetailedRetellCall[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   
-  // Estados para la paginación
+  // Estados para la paginación - usar estado local para la página actual
   const [currentPage, setCurrentPage] = React.useState(1);
   const [itemsPerPage, setItemsPerPage] = React.useState(25);
   const [itemsPerPageOptions] = React.useState([25, 50, 100]);
@@ -590,6 +610,28 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   const [startDate, setStartDate] = React.useState('');
   const [endDate, setEndDate] = React.useState('');
 
+  // Cargar página cuando cambia currentPage
+  React.useEffect(() => {
+    const loadPageData = async () => {
+      if (apiKey && currentPage > contextCurrentPage) {
+        // Crear el filterCriteria con las fechas si están establecidas
+        const criteria: FilterCriteria = {};
+        if (startDate || endDate) {
+          criteria.date_range = {};
+          if (startDate) criteria.date_range.start = startDate;
+          if (endDate) criteria.date_range.end = endDate;
+        }
+        
+        // Necesitamos cargar más páginas con los filtros
+        for (let page = contextCurrentPage + 1; page <= currentPage; page++) {
+          await loadCallsPage(page, criteria);
+        }
+      }
+    };
+    
+    loadPageData();
+  }, [currentPage, contextCurrentPage, apiKey, loadCallsPage, startDate, endDate]);
+
   // Usar la función loadAllCalls del contexto compartido
   const loadAllCalls = React.useCallback((forceRefresh = false) => {
     // Solo llamamos al método del contexto
@@ -610,8 +652,8 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       
       // Filtrar por duración
       let matchesDuration = true;
-      if (durationFilter && (call as any).end_timestamp && (call as any).start_timestamp) {
-        const durationSeconds = ((call as any).end_timestamp - (call as any).start_timestamp) / 1000;
+      if (durationFilter) {
+        const durationSeconds = getDurationInSeconds(call);
         
         switch(durationFilter) {
           case 'lt-60': // Menos de 1 minuto
@@ -671,8 +713,22 @@ export function Recordings({ onNavigate }: RecordingsProps) {
 
   // Calcular número total de páginas basado en las llamadas filtradas
   const totalPages = React.useMemo(() => {
-    return Math.ceil(filteredCalls.length / itemsPerPage);
-  }, [filteredCalls.length, itemsPerPage]);
+    // Si tenemos filtros aplicados, calcular basado en las llamadas filtradas
+    if (searchTerm || disconnectionReasonFilter || durationFilter || startDate || endDate) {
+      return Math.ceil(filteredCalls.length / itemsPerPage);
+    }
+    
+    // Si no hay filtros, usar el total de páginas del contexto si está disponible
+    if (contextTotalPages > 0) {
+      // Ajustar según itemsPerPage si es diferente de 100 (el tamaño de página del API)
+      const apiPageSize = 100;
+      const totalItems = contextTotalPages * apiPageSize;
+      return Math.ceil(totalItems / itemsPerPage);
+    }
+    
+    // Fallback: calcular basado en las llamadas cargadas
+    return Math.ceil(allCalls.length / itemsPerPage);
+  }, [filteredCalls.length, itemsPerPage, searchTerm, disconnectionReasonFilter, durationFilter, startDate, endDate, contextTotalPages, allCalls.length]);
 
   // Iniciar la carga de datos la primera vez que se monta el componente
   React.useEffect(() => {
@@ -911,11 +967,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       
       columns.forEach(column => {
         if (column === 'duration') {
-          if (call.end_timestamp && call.start_timestamp) {
-            row[column] = formatDuration(call.end_timestamp - call.start_timestamp);
-          } else {
-            row[column] = 'En curso';
-          }
+          row[column] = getDuration(call);
         } else if (column === 'start_timestamp') {
           row[column] = call[column] ? new Date(call[column]).toLocaleString() : '';
         } else {
@@ -1206,18 +1258,18 @@ export function Recordings({ onNavigate }: RecordingsProps) {
             </div>
           </div>
           
-          {/* Barra de progreso durante la carga */}
+          {/* Mostrar progreso de carga si está cargando */}
           {loadingAllCalls && (
             <div className="mt-4">
               <div className="flex justify-between items-center text-xs text-white mb-1">
-                <span className="font-medium">Obteniendo TODAS las llamadas disponibles</span>
-                <span>{loadingProgress.toLocaleString()} llamadas cargadas</span>
+                <span className="font-medium">Cargando grabaciones...</span>
+                <span>Página {contextCurrentPage} de {contextTotalPages || '?'}</span>
               </div>
               <div className="w-full bg-gray-800 rounded-full h-3 mb-1 overflow-hidden border border-gray-700">
                 <div 
                   className="bg-gradient-to-r from-purple-600 to-indigo-600 h-3 rounded-full transition-all duration-500 ease-in-out"
                   style={{ 
-                    width: `${Math.min((loadingProgress / Math.max(totalCalls, 1000)) * 100, 100)}%`,
+                    width: '100%',
                     animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite"
                   }}
                 ></div>
@@ -1228,10 +1280,10 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  Página {Math.ceil(loadingProgress / 1000)}
+                  Obteniendo datos...
                 </p>
                 <p className="text-purple-400 font-medium">
-                  {Math.min((loadingProgress / Math.max(totalCalls, 1000)) * 100, 100).toFixed(0)}% completado
+                  {allCalls.length} llamadas cargadas
                 </p>
               </div>
             </div>
@@ -1256,7 +1308,19 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                 placeholder="Fecha final"
               />
               <Button 
-                onClick={() => loadAllCalls(true)}
+                onClick={() => {
+                  // Actualizar los filtros en el contexto
+                  const criteria: FilterCriteria = {};
+                  if (startDate || endDate) {
+                    criteria.date_range = {};
+                    if (startDate) criteria.date_range.start = startDate;
+                    if (endDate) criteria.date_range.end = endDate;
+                  }
+                  contextSetFilterCriteria(criteria);
+                  
+                  // Recargar los datos con los nuevos filtros
+                  loadAllCalls(true);
+                }}
                 variant="default"
                 size="sm"
               >
@@ -1401,9 +1465,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                             {visibleColumns.duration && (
                               <div className="flex items-center text-sm text-gray-400">
                                 <Clock className="w-4 h-4 mr-1" />
-                                {call.end_timestamp && call.start_timestamp 
-                                  ? formatDuration(call.end_timestamp - call.start_timestamp)
-                                  : 'En curso'}
+                                {getDuration(call)}
                               </div>
                             )}
                             
@@ -1460,8 +1522,19 @@ export function Recordings({ onNavigate }: RecordingsProps) {
               {totalPages > 1 && (
                 <div className="flex justify-between items-center py-4 border-t border-gray-800">
                   <div className="flex items-center text-sm text-gray-400">
-                    Mostrando {(currentPage - 1) * itemsPerPage + 1}-
-                    {Math.min(currentPage * itemsPerPage, filteredCalls.length)} de {filteredCalls.length} grabaciones
+                    {/* Mostrar información correcta según si hay filtros o no */}
+                    {searchTerm || disconnectionReasonFilter || durationFilter || startDate || endDate ? (
+                      <>
+                        Mostrando {(currentPage - 1) * itemsPerPage + 1}-
+                        {Math.min(currentPage * itemsPerPage, filteredCalls.length)} de {filteredCalls.length} grabaciones filtradas
+                      </>
+                    ) : (
+                      <>
+                        Mostrando {(currentPage - 1) * itemsPerPage + 1}-
+                        {Math.min(currentPage * itemsPerPage, allCalls.length)} 
+                        {contextTotalPages > 0 && hasMorePages && ' de muchas más'} grabaciones
+                      </>
+                    )}
                   </div>
                   
                   <div className="flex items-center">
@@ -1581,9 +1654,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                         <p className="text-sm text-gray-400">Duración</p>
                         <p className="text-white flex items-center gap-2">
                           <Clock className="w-4 h-4" />
-                          {selectedCallModal.end_timestamp && selectedCallModal.start_timestamp
-                            ? formatDuration(selectedCallModal.end_timestamp - selectedCallModal.start_timestamp)
-                            : 'En curso'}
+                          {getDuration(selectedCallModal)}
                         </p>
                       </div>
                       {/* Metadatos adicionales si están disponibles */}

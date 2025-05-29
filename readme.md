@@ -5,6 +5,7 @@ uMindsAI Dashboard es una aplicación web para gestionar y visualizar llamadas r
 
 ## Características principales
 
+- **Autenticación segura**: Sistema de login con Supabase (email/password y OAuth)
 - **Dashboard analítico**: Visualiza métricas clave y estadísticas de tus llamadas
 - **Grabaciones**: Accede a todas las grabaciones con opciones avanzadas de filtrado
 - **Números de teléfono**: Gestiona los números telefónicos asociados a tus agentes
@@ -16,6 +17,7 @@ uMindsAI Dashboard es una aplicación web para gestionar y visualizar llamadas r
 
 - Node.js (v14 o superior)
 - API key de Retell AI
+- Cuenta en Supabase (para autenticación)
 
 ## Instalación
 
@@ -30,17 +32,33 @@ cd uMindsAI-Dashboard
 npm install
 ```
 
-3. Inicia el servidor de desarrollo:
+3. Configura las variables de entorno:
+   - Copia el archivo `env.example` a `.env`
+   - Añade tu URL y clave anónima de Supabase
+
+4. Configura Supabase:
+   - Crea un proyecto en [Supabase](https://supabase.com)
+   - Habilita la autenticación por email/password
+   - (Opcional) Configura proveedores OAuth (Google, GitHub)
+   - Copia la URL del proyecto y la clave anónima al archivo `.env`
+
+5. Inicia el servidor de desarrollo:
 ```bash
 npm run dev
 ```
 
 ## Configuración
 
-La aplicación requiere una API key de Retell AI para funcionar. Esta clave se proporciona como parámetro en la URL:
+### Autenticación con Supabase
+La aplicación ahora requiere autenticación para acceder. Los usuarios deben:
+1. Registrarse con email y contraseña
+2. O iniciar sesión con Google/GitHub (si está configurado)
+
+### API Key de Retell
+La API key de Retell AI se proporciona como parámetro en la URL después de iniciar sesión:
 
 ```
-http://localhost:5173/?apikey=TU_API_KEY_DE_RETELL
+http://localhost:5173/dashboard?apikey=TU_API_KEY_DE_RETELL
 ```
 
 ## Uso
@@ -83,6 +101,8 @@ Para realizar una llamada desde la interfaz:
 - Tailwind CSS
 - Lucide Icons
 - Retell AI API
+- Supabase (Autenticación)
+- React Router DOM
 
 ## Características avanzadas
 

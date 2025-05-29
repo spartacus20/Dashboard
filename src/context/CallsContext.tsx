@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { RetellCall, FilterCriteria, RetellPhoneNumber, RetellBatchCall } from '../types';
-import { fetchPhoneNumbers, fetchBatchCalls } from '../api';
+import { fetchPhoneNumbers, fetchBatchCalls, fetchCalls, getClientApiKey, getDashboardData } from '../api';
+import { useAuth } from './AuthContext';
 
 interface CallsContextType {
   allCalls: RetellCall[];
@@ -9,10 +10,12 @@ interface CallsContextType {
   error: string | null;
   totalCalls: number;
   loadAllCalls: (forceRefresh?: boolean) => Promise<void>;
+  loadCallsPage: (page: number, filterCriteria?: FilterCriteria) => Promise<RetellCall[]>;
   disconnectionReasons: string[];
   allCallsLoaded: boolean;
   lastUpdated: number | null;
   apiKey: string | null;
+  clientId: string | null;
   setApiKey: (key: string) => void;
   phoneNumbers: RetellPhoneNumber[];
   loadingPhoneNumbers: boolean;
@@ -25,6 +28,14 @@ interface CallsContextType {
   noBatchCallsAvailable: boolean;
   loadBatchCalls: (forceRefresh?: boolean) => Promise<void>;
   refreshBatchCalls: () => Promise<void>;
+  currentPage: number;
+  totalPages: number;
+  hasMorePages: boolean;
+  setFilterCriteria: (criteria: FilterCriteria) => void;
+  filterCriteria: FilterCriteria;
+  dashboardData: any;
+  loadingDashboardData: boolean;
+  loadDashboardData: () => Promise<void>;
 }
 
 const CallsContext = createContext<CallsContextType | undefined>(undefined);
@@ -51,6 +62,24 @@ export function CallsProvider({ children }: CallsProviderProps) {
   const [allCallsLoaded, setAllCallsLoaded] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [apiKey, setApiKey] = useState<string | null>(null);
+  const [clientId, setClientId] = useState<string | null>(null);
+  
+  // Estados de paginación
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [hasMorePages, setHasMorePages] = useState(true);
+  const loadedPages = useRef<Set<number>>(new Set());
+  const loadingPages = useRef<Set<number>>(new Set()); // Nueva protección contra cargas concurrentes
+  
+  // Estado para los filtros
+  const [filterCriteria, setFilterCriteria] = useState<FilterCriteria>({});
+  
+  // Estado para los datos del dashboard
+  const [dashboardData, setDashboardData] = useState<any>(null);
+  const [loadingDashboardData, setLoadingDashboardData] = useState(false);
+  
+  // Obtener el usuario del contexto de autenticación
+  const { user } = useAuth();
   
   // Estado para los números de teléfono
   const [phoneNumbers, setPhoneNumbers] = useState<RetellPhoneNumber[]>([]);
@@ -70,25 +99,153 @@ export function CallsProvider({ children }: CallsProviderProps) {
   // Tiempo de caducidad de la caché en milisegundos (15 minutos)
   const CACHE_EXPIRY_TIME = 15 * 60 * 1000;
   
-  // Extraer la API key de la URL al cargar el componente
+  // Obtener la API key cuando el usuario se autentique
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const keyFromUrl = params.get('apikey');
-    
-    if (keyFromUrl) {
-      console.log('API key obtenida de la URL');
-      setApiKey(keyFromUrl);
-    } else {
-      console.warn('No se encontró API key en la URL');
-      setError('API key no encontrada en la URL. Añade ?apikey=TU_API_KEY a la URL.');
+    const fetchApiKey = async () => {
+      if (user?.email) {
+        console.log('Obteniendo API key para el usuario:', user.email);
+        const result = await getClientApiKey(user.email);
+        if (result.apiKey) {
+          console.log('API key obtenida exitosamente');
+          setApiKey(result.apiKey);
+          setClientId(result.clientId);
+        } else {
+          console.error('No se pudo obtener la API key del usuario');
+          setError('No se pudo obtener la configuración del usuario');
+        }
+      }
+    };
+
+    fetchApiKey();
+  }, [user]);
+
+  // Función para cargar una página específica de llamadas
+  const loadCallsPage = useCallback(async (page: number, filterCriteria?: FilterCriteria): Promise<RetellCall[]> => {
+    if (!apiKey) {
+      console.log('Esperando API key para cargar llamadas...');
+      return [];
     }
-  }, []);
+    
+    // Si ya cargamos esta página, no volver a cargarla
+    if (loadedPages.current.has(page)) {
+      console.log(`Página ${page} ya está cargada`);
+      return [];
+    }
+    
+    // Si ya estamos cargando esta página, no cargar de nuevo
+    if (loadingPages.current.has(page)) {
+      console.log(`Página ${page} ya se está cargando`);
+      return [];
+    }
+    
+    try {
+      // Marcar que estamos cargando esta página
+      loadingPages.current.add(page);
+      setLoadingAllCalls(true);
+      console.log(`Cargando página ${page} de llamadas`);
+      
+      const response = await fetchCalls(apiKey, undefined, filterCriteria, page, clientId || undefined);
+      const newCalls = response.calls;
+      
+      // Si es la primera página, obtener información de paginación
+      if (page === 1 && response.totalPages) {
+        setTotalPages(response.totalPages);
+        setHasMorePages(response.totalPages > 1);
+        console.log(`Total de páginas disponibles: ${response.totalPages}`);
+      }
+      
+      console.log(`Página ${page}: ${newCalls.length} llamadas cargadas`);
+      
+      // Marcar la página como cargada
+      loadedPages.current.add(page);
+      
+      // Verificar si las llamadas ya existen para evitar duplicados
+      setAllCalls(prevCalls => {
+        // Filtrar llamadas que ya existen
+        const existingCallIds = new Set(prevCalls.map(call => call.call_id));
+        const uniqueNewCalls = newCalls.filter(call => !existingCallIds.has(call.call_id));
+        
+        if (uniqueNewCalls.length < newCalls.length) {
+          console.log(`Filtradas ${newCalls.length - uniqueNewCalls.length} llamadas duplicadas`);
+        }
+        
+        const updatedCalls = [...prevCalls, ...uniqueNewCalls];
+        
+        // Actualizar estadísticas
+        setTotalCalls(updatedCalls.length);
+        
+        // Extraer razones de desconexión únicas
+        const reasons = [...new Set(
+          updatedCalls
+            .map(call => call.disconnection_reason)
+            .filter((reason): reason is string => !!reason)
+        )].sort();
+        setDisconnectionReasons(reasons);
+        
+        return updatedCalls;
+      });
+      
+      setCurrentPage(page);
+      setLastUpdated(Date.now());
+      
+      return newCalls;
+    } catch (err) {
+      console.error(`Error cargando página ${page}:`, err);
+      setError(`Error al cargar página ${page}: ${err instanceof Error ? err.message : String(err)}`);
+      return [];
+    } finally {
+      // Remover de las páginas en proceso de carga
+      loadingPages.current.delete(page);
+      setLoadingAllCalls(false);
+    }
+  }, [apiKey, clientId, filterCriteria]);
+
+  // Función para cargar la primera página de llamadas
+  const loadAllCalls = useCallback(async (forceRefresh = false) => {
+    // Si ya tenemos datos y no ha caducado la caché, no hacemos nada (a menos que sea forzado)
+    const now = Date.now();
+    if (
+      !forceRefresh && 
+      allCalls.length > 0 && 
+      lastUpdated && 
+      now - lastUpdated < CACHE_EXPIRY_TIME
+    ) {
+      console.log('Usando datos en caché');
+      return;
+    }
+    
+    // Esperar a que tengamos la API key
+    if (!apiKey) {
+      console.log('Esperando API key para cargar llamadas...');
+      return;
+    }
+    
+    // Limpiar estados previos si es una carga forzada
+    if (forceRefresh) {
+      setAllCalls([]);
+      setError(null);
+      loadedPages.current.clear();
+      loadingPages.current.clear(); // Limpiar también las páginas en proceso
+      setCurrentPage(1);
+      setTotalPages(0);
+      setHasMorePages(true);
+    }
+    
+    // Cargar solo la primera página con los filtros actuales
+    await loadCallsPage(1, filterCriteria);
+  }, [apiKey, allCalls.length, lastUpdated, loadCallsPage, filterCriteria]);
 
   // Función para cargar las batch calls
   const loadBatchCalls = useCallback(async (forceRefresh = false) => {
     // Si ya sabemos que no hay batch calls disponibles, no seguir intentando
     if (noBatchCallsAvailable && !forceRefresh) {
-      console.log('No hay batch calls disponibles para esta API key (ya verificado)');
+      console.log('No hay batch calls disponibles (ya verificado)');
+      return;
+    }
+    
+    // Esperar a que tengamos la API key
+    if (!apiKey) {
+      console.log('Esperando API key para cargar batch calls...');
       return;
     }
     
@@ -107,11 +264,6 @@ export function CallsProvider({ children }: CallsProviderProps) {
       now - batchCallsUpdated < CACHE_EXPIRY_TIME
     ) {
       console.log('Usando batch calls en caché');
-      return;
-    }
-    
-    if (!apiKey) {
-      console.warn('No se puede cargar batch calls: API key no configurada');
       return;
     }
     
@@ -164,7 +316,13 @@ export function CallsProvider({ children }: CallsProviderProps) {
   const loadPhoneNumbers = useCallback(async (forceRefresh = false) => {
     // Si ya sabemos que no hay números disponibles, no seguir intentando
     if (noPhoneNumbersAvailable && !forceRefresh) {
-      console.log('No hay números de teléfono disponibles para esta API key (ya verificado)');
+      console.log('No hay números de teléfono disponibles (ya verificado)');
+      return;
+    }
+    
+    // Esperar a que tengamos la API key
+    if (!apiKey) {
+      console.log('Esperando API key para cargar números de teléfono...');
       return;
     }
     
@@ -180,11 +338,6 @@ export function CallsProvider({ children }: CallsProviderProps) {
       return;
     }
     
-    if (!apiKey) {
-      console.warn('No se puede cargar números de teléfono: API key no configurada');
-      return;
-    }
-    
     // Evitar múltiples peticiones simultáneas
     if (loadingPhoneNumbers) {
       console.log('Ya se está cargando los números de teléfono');
@@ -194,7 +347,7 @@ export function CallsProvider({ children }: CallsProviderProps) {
     setLoadingPhoneNumbers(true);
     
     try {
-      console.log('Cargando números de teléfono desde la API (UNA SOLA VEZ)');
+      console.log('Cargando números de teléfono desde la API');
       const numbers = await fetchPhoneNumbers(apiKey);
       
       setPhoneNumbers(numbers);
@@ -218,153 +371,41 @@ export function CallsProvider({ children }: CallsProviderProps) {
     }
   }, [apiKey, phoneNumbersLoaded, phoneNumbersUpdated, loadingPhoneNumbers, noPhoneNumbersAvailable]);
 
-  // Función para cargar todas las llamadas disponibles
-  const loadAllCalls = useCallback(async (forceRefresh = false) => {
-    // Si ya tenemos datos y no ha caducado la caché, no hacemos nada (a menos que sea forzado)
-    const now = Date.now();
-    if (
-      !forceRefresh && 
-      allCalls.length > 0 && 
-      lastUpdated && 
-      now - lastUpdated < CACHE_EXPIRY_TIME
-    ) {
-      console.log('Usando datos en caché');
+  // Función para cargar los datos del dashboard
+  const loadDashboardData = useCallback(async () => {
+    if (!clientId) {
+      console.log('Esperando client_id para cargar datos del dashboard...');
       return;
     }
     
-    if (!apiKey) {
-      setError('API key no configurada. Añade ?apikey=TU_API_KEY a la URL.');
-      return;
-    }
-    
-    // Limpiar estados previos
-    setLoadingProgress(0);
-    
-    // Solo limpiamos los datos si es una carga forzada o si la caché ha caducado
-    if (forceRefresh || !lastUpdated || now - lastUpdated >= CACHE_EXPIRY_TIME) {
-      setAllCalls([]);
-      setError(null);
-    }
+    setLoadingDashboardData(true);
     
     try {
-      setLoadingAllCalls(true);
-      
-      // Array para almacenar todas las llamadas
-      let allCallsData: RetellCall[] = [];
-      let paginationKey: string | undefined = undefined;
-      let hasMoreCalls = true;
-      let pagina = 1;
-      let maxAttempts = 100; // Limite de seguridad para evitar bucles infinitos
-      let attemptCount = 0;
-      
-      // Hacemos múltiples solicitudes para obtener todas las llamadas disponibles
-      while (hasMoreCalls && attemptCount < maxAttempts) {
-        attemptCount++;
-        try {
-          console.log(`Solicitando página ${pagina} de llamadas con paginationKey: ${paginationKey || 'undefined'}`);
-          
-          const response = await fetch('https://api.retellai.com/v2/list-calls', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${apiKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              limit: 1000, // Usamos el máximo permitido por la API
-              sort_order: 'descending',
-              pagination_key: paginationKey,
-              filter_criteria: {}
-            }),
-          });
-
-          if (!response.ok) {
-            throw new Error(`Error en la solicitud: ${response.status} ${response.statusText}`);
-          }
-
-          const data = await response.json();
-          
-          // Extraer las llamadas del resultado
-          const newCalls = Array.isArray(data) ? data : data.calls || [];
-          
-          console.log(`Cargada página ${pagina}: ${newCalls.length} llamadas. Total acumulado: ${allCallsData.length + newCalls.length}`);
-          
-          // Añadir las nuevas llamadas al array total
-          allCallsData = [...allCallsData, ...newCalls];
-          
-          // Actualizar la clave de paginación como el ID de la última llamada recibida
-          // Según la documentación: "Pagination key is represented by a call id here, and it's exclusive"
-          paginationKey = newCalls.length > 0 ? newCalls[newCalls.length - 1].call_id : undefined;
-          
-          console.log(`Nueva pagination_key: ${paginationKey || 'undefined'}`);
-          
-          pagina++;
-          
-          // Actualizar el progreso de carga
-          setLoadingProgress(allCallsData.length);
-          
-          // No actualizamos el estado con cada carga, solo el progreso
-          // Esto evita que se intente renderizar con datos incompletos
-          
-          // Si no hay paginationKey o se devolvieron menos de 1000, hemos llegado al final
-          if (!paginationKey || newCalls.length < 1000) {
-            console.log(`Fin de la paginación. Total de llamadas cargadas: ${allCallsData.length}`);
-            hasMoreCalls = false;
-          }
-          
-        } catch (err) {
-          console.error(`Error cargando página ${pagina}:`, err);
-          
-          // Mostrar mensaje de error pero seguir intentando
-          setError(`Error al cargar página ${pagina}: ${err instanceof Error ? err.message : String(err)}`);
-          
-          // Si fallamos 3 veces seguidas, nos rendimos
-          if (attemptCount > 3) {
-            console.error('Demasiados intentos fallidos. Deteniendo la carga.');
-            hasMoreCalls = false;
-          } else {
-            // Esperar un segundo antes de reintentar
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        }
-      }
-      
-      if (attemptCount >= maxAttempts) {
-        console.warn(`Se alcanzó el límite máximo de intentos (${maxAttempts}). Es posible que no se hayan cargado todas las llamadas.`);
-        setError(`Se alcanzó el límite máximo de intentos (${maxAttempts}). Es posible que no se hayan cargado todas las llamadas.`);
-      }
-      
-      // Actualizar el estado con todas las llamadas cargadas
-      setAllCalls(allCallsData);
-      setTotalCalls(allCallsData.length);
-      
-      // Extraer todas las razones de desconexión únicas
-      const allReasons = [...new Set(
-        allCallsData
-          .map(call => call.disconnection_reason)
-          .filter((reason): reason is string => !!reason)
-      )].sort();
-      
-      setDisconnectionReasons(allReasons);
-      setAllCallsLoaded(true);
-      setLastUpdated(Date.now());
-      
-      // Mensaje informativo en consola del total final
-      console.log(`Carga completada. Total final de llamadas: ${allCallsData.length}`);
-      
+      console.log('Cargando datos del dashboard');
+      const data = await getDashboardData(clientId);
+      setDashboardData(data);
+      console.log('Datos del dashboard cargados:', data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al cargar todas las llamadas');
-      console.error('Error general cargando llamadas:', err);
+      console.error('Error al cargar datos del dashboard:', err);
+      setError('Error al cargar datos del dashboard');
     } finally {
-      setLoadingAllCalls(false);
+      setLoadingDashboardData(false);
     }
-  }, [apiKey, allCalls.length, lastUpdated]);
-  
+  }, [clientId]);
+
   // Cargar datos cuando se monta el componente y tenemos la API key
   useEffect(() => {
     if (apiKey && allCalls.length === 0 && !loadingAllCalls) {
       loadAllCalls();
     }
   }, [loadAllCalls, allCalls.length, loadingAllCalls, apiKey]);
+
+  // Cargar datos del dashboard cuando tenemos clientId
+  useEffect(() => {
+    if (clientId && !dashboardData && !loadingDashboardData) {
+      loadDashboardData();
+    }
+  }, [clientId, dashboardData, loadingDashboardData, loadDashboardData]);
 
   const value = {
     allCalls,
@@ -373,10 +414,12 @@ export function CallsProvider({ children }: CallsProviderProps) {
     error,
     totalCalls,
     loadAllCalls,
+    loadCallsPage,
     disconnectionReasons,
     allCallsLoaded,
     lastUpdated,
     apiKey,
+    clientId,
     setApiKey,
     phoneNumbers,
     loadingPhoneNumbers,
@@ -388,7 +431,15 @@ export function CallsProvider({ children }: CallsProviderProps) {
     batchCallsLoaded,
     noBatchCallsAvailable,
     loadBatchCalls,
-    refreshBatchCalls
+    refreshBatchCalls,
+    currentPage,
+    totalPages,
+    hasMorePages,
+    setFilterCriteria,
+    filterCriteria,
+    dashboardData,
+    loadingDashboardData,
+    loadDashboardData
   };
 
   return (

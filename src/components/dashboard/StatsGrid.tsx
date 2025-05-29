@@ -12,6 +12,7 @@ export function StatsGrid({ stats, shortCalls, longCalls }: StatsGridProps) {
   // Valores predeterminados si stats es null
   const totalCalls = stats?.total || 0;
   const averageDuration = stats?.averageDuration || '0:00';
+  const averageDurationSeconds = stats?.averageDurationSeconds || 0;
   const completedCalls = stats?.completed || 0;
   const failedCalls = stats?.failed || 0;
 
@@ -37,6 +38,7 @@ export function StatsGrid({ stats, shortCalls, longCalls }: StatsGridProps) {
           <div>
             <p className="text-sm text-gray-400">Tiempo Promedio</p>
             <p className="text-xl md:text-2xl font-bold text-white">{averageDuration}</p>
+            <p className="text-xs text-gray-500">({averageDurationSeconds} segundos)</p>
           </div>
         </div>
       </div>

@@ -1,19 +1,41 @@
-import { RetellCall, FilterCriteria, CallStats, RetellPhoneNumber, RetellAgent, RetellBatchCall } from './types';
+import { RetellCall, FilterCriteria, CallStats, RetellPhoneNumber, RetellAgent, RetellBatchCall, ClientData } from './types';
 
+const WEBHOOK_URL = 'https://n8n.aiagencyusa.com/webhook/ed980be2-4957-44cf-8f61-8b8c4d4957e8';
+const GET_CLIENT_WEBHOOK_URL = 'https://n8n.aiagencyusa.com/webhook/get-client';
+const GET_DASHBOARD_WEBHOOK_URL = 'https://n8n.aiagencyusa.com/webhook/get-dashboard';
 const API_URL = 'https://api.retellai.com/v2/list-calls';
 
 async function fetchAllCalls(
   apiKey: string,
-  filterCriteria?: FilterCriteria
+  filterCriteria?: FilterCriteria,
+  clientId?: string
 ): Promise<RetellCall[]> {
   let allCalls: RetellCall[] = [];
-  let paginationKey: string | undefined;
+  let page = 1;
+  let hasMore = true;
+  let totalPages = 0;
   
-  do {
-    const response = await fetchCalls(apiKey, paginationKey, filterCriteria);
+  while (hasMore) {
+    const response = await fetchCalls(apiKey, undefined, filterCriteria, page, clientId);
     allCalls = [...allCalls, ...response.calls];
-    paginationKey = response.pagination_key;
-  } while (paginationKey);
+    
+    // Si es la primera página, obtener el total de páginas
+    if (page === 1 && response.totalPages) {
+      totalPages = response.totalPages;
+    }
+    
+    // Determinar si hay más páginas
+    if (totalPages > 0) {
+      hasMore = page < totalPages;
+    } else {
+      // Si no conocemos el total, usar la heurística
+      hasMore = response.calls.length === 100;
+    }
+    
+    if (hasMore) {
+      page++;
+    }
+  }
   
   return allCalls;
 }
@@ -21,42 +43,138 @@ async function fetchAllCalls(
 export async function fetchCalls(
   apiKey: string,
   paginationKey?: string,
-  filterCriteria?: FilterCriteria
-): Promise<{ calls: RetellCall[]; pagination_key?: string }> {
-  // Preparar el cuerpo de la petición con todos los parámetros
-  const requestBody = {
-    limit: 1000,
-    pagination_key: paginationKey,
-    sort_order: 'descending',
-    filter_criteria: filterCriteria,
-  };
-  
-  const response = await fetch(API_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(requestBody),
-  });
+  filterCriteria?: FilterCriteria,
+  page: number = 1,
+  clientId?: string
+): Promise<{ calls: RetellCall[]; pagination_key?: string; totalPages?: number }> {
+  try {
+    // Usar el webhook de n8n para obtener las llamadas
+    const requestBody: any = {
+      per_page: 100,
+      page: page
+    };
+    
+    // Incluir client_id si está disponible
+    if (clientId) {
+      requestBody.client_id = clientId;
+    }
+    
+    // Incluir filtros de fecha si están disponibles
+    if (filterCriteria?.date_range) {
+      if (filterCriteria.date_range.start) {
+        // Convertir a formato ISO si no lo está
+        const startDate = new Date(filterCriteria.date_range.start);
+        requestBody.fecha_inicio = startDate.toISOString();
+      }
+      
+      if (filterCriteria.date_range.end) {
+        // Convertir a formato ISO si no lo está
+        const endDate = new Date(filterCriteria.date_range.end);
+        // Asegurar que incluya todo el día final
+        endDate.setHours(23, 59, 59, 999);
+        requestBody.fecha_fin = endDate.toISOString();
+      }
+    }
+    
+    console.log('Enviando petición al webhook con:', requestBody);
+    
+    const response = await fetch(WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
 
-  if (!response.ok) {
-    throw new Error(`Error al obtener llamadas: ${response.status} ${response.statusText}`);
+    if (!response.ok) {
+      throw new Error(`Error al obtener llamadas: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    console.log('Respuesta del webhook de llamadas:', data);
+    
+    // El webhook devuelve un array con un objeto que contiene las llamadas
+    if (Array.isArray(data) && data.length > 0) {
+      const responseData = data[0];
+      
+      // Transformar las llamadas del formato del webhook al formato RetellCall
+      const calls: RetellCall[] = (responseData.llamadas || []).map((webhookCall: any) => ({
+        call_id: webhookCall.call_id || webhookCall.id || '',
+        duration: parseInt(webhookCall.duration) || 0,
+        start_time: webhookCall.created_at,
+        start_timestamp: new Date(webhookCall.created_at).getTime(),
+        end_timestamp: webhookCall.end_timestamp || (webhookCall.created_at && webhookCall.duration ? 
+          new Date(webhookCall.created_at).getTime() + (parseInt(webhookCall.duration) * 1000) : 
+          undefined),
+        disconnection_reason: webhookCall.end_reason,
+        status: webhookCall.status === 'fallida' ? 'failed' : (webhookCall.status || 'completed'),
+        call_status: webhookCall.status === 'fallida' ? 'failed' : (webhookCall.status || 'completed'),
+        transcript: webhookCall.transcript,
+        recording_url: webhookCall.recordings,
+        to_number: webhookCall.phone_number,
+        metadata: {
+          id: webhookCall.id,
+          client_id: webhookCall.client_id,
+          summary: webhookCall.summary,
+          interest: webhookCall.interest,
+          tipo_vivienda: webhookCall.tipo_vivienda,
+          created_at: webhookCall.created_at,
+          end_reason: webhookCall.end_reason
+        }
+      }));
+      
+      console.log(`Página ${page}: ${calls.length} llamadas transformadas`);
+      
+      // Obtener información de paginación
+      const totalPages = parseInt(responseData.total_paginas) || 0;
+      
+      return { 
+        calls, 
+        pagination_key: undefined, // El webhook usa paginación por página
+        totalPages: totalPages
+      };
+    }
+    
+    // Si no es el formato esperado, devolver array vacío
+    console.warn('Formato de respuesta inesperado del webhook');
+    return { calls: [], pagination_key: undefined };
+    
+  } catch (error) {
+    console.error('Error al obtener llamadas del webhook:', error);
+    
+    // Fallback a la API original de Retell si el webhook falla
+    console.log('Intentando con la API de Retell directamente...');
+    
+    const requestBody = {
+      limit: 100,
+      pagination_key: paginationKey,
+      sort_order: 'descending',
+      filter_criteria: filterCriteria,
+    };
+    
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Error al obtener llamadas: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const calls = Array.isArray(data) ? data : data.calls || [];
+    
+    return { 
+      calls, 
+      pagination_key: Array.isArray(data) ? 
+        (calls.length > 0 ? calls[calls.length - 1].call_id : undefined) : 
+        data.pagination_key 
+    };
   }
-
-  const data = await response.json();
-  
-  // Manejar el formato de respuesta
-  // Si es un array, es la lista de llamadas directamente
-  // Si es un objeto, buscamos la propiedad 'calls'
-  const calls = Array.isArray(data) ? data : data.calls || [];
-  
-  return { 
-    calls, 
-    pagination_key: Array.isArray(data) ? 
-      (calls.length > 0 ? calls[calls.length - 1].call_id : undefined) : 
-      data.pagination_key 
-  };
 }
 
 export function calculateStats(calls: RetellCall[]): CallStats {
@@ -79,9 +197,9 @@ export function calculateStats(calls: RetellCall[]): CallStats {
   let callsWithDuration = 0;
   
   calls.forEach(call => {
-    // Usar la duración directa si está disponible
+    // Usar la duración directa si está disponible (viene en milisegundos del webhook)
     if (call.duration) {
-      totalDuration += call.duration;
+      totalDuration += call.duration / 1000; // Convertir de milisegundos a segundos
       callsWithDuration++;
     } 
     // Si no, calcular la duración con los timestamps si están disponibles
@@ -99,13 +217,14 @@ export function calculateStats(calls: RetellCall[]): CallStats {
   const seconds = Math.floor(avgDuration % 60);
   const averageDuration = `${minutes}:${seconds.toString().padStart(2, '0')}`;
   
-  console.log('Estadísticas calculadas:', { total, completed, failed, averageDuration, callsWithDuration });
+  console.log('Estadísticas calculadas:', { total, completed, failed, averageDuration, averageDurationSeconds: Math.round(avgDuration), callsWithDuration });
   
   return {
     total,
     completed,
     failed,
-    averageDuration
+    averageDuration,
+    averageDurationSeconds: Math.round(avgDuration)
   };
 }
 
@@ -299,6 +418,107 @@ export async function deleteBatchCall(
   } catch (err) {
     // Si no hay contenido para parsear pero la respuesta fue exitosa, devolver éxito
     return { success: true };
+  }
+}
+
+// Función para obtener la API key del cliente
+export async function getClientApiKey(email: string): Promise<{ apiKey: string | null; clientId: string | null }> {
+  try {
+    console.log('Solicitando API key para el email:', email);
+    
+    const response = await fetch(GET_CLIENT_WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: email
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Error al obtener API key: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    console.log('Respuesta del webhook:', data);
+    
+    // El webhook devuelve un array con los datos del cliente
+    if (Array.isArray(data) && data.length > 0) {
+      const clientData: ClientData = data[0];
+      console.log('Cliente encontrado:', {
+        client_id: clientData.client_id,
+        email: clientData.email,
+        full_name: clientData.full_name || 'Sin nombre'
+      });
+      return {
+        apiKey: clientData.api_key || null,
+        clientId: clientData.client_id || null
+      };
+    }
+    
+    // Si no es un array, intentar obtener directamente
+    if (data && typeof data === 'object') {
+      return {
+        apiKey: data.api_key || data.apiKey || null,
+        clientId: data.client_id || data.clientId || null
+      };
+    }
+    
+    console.warn('No se encontró información del cliente');
+    return { apiKey: null, clientId: null };
+  } catch (error) {
+    console.error('Error al obtener API key del cliente:', error);
+    return { apiKey: null, clientId: null };
+  }
+}
+
+// Función para obtener datos del dashboard
+export async function getDashboardData(clientId: string): Promise<any> {
+  try {
+    console.log('Solicitando datos del dashboard para client_id:', clientId);
+    
+    const response = await fetch(GET_DASHBOARD_WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        client_id: clientId
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Error al obtener datos del dashboard: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    console.log('Respuesta completa del webhook dashboard:', data);
+    
+    // El webhook devuelve un array con los datos
+    if (Array.isArray(data) && data.length > 0) {
+      const dashboardResponse = data[0];
+      console.log('Objeto dashboard extraído:', dashboardResponse);
+      
+      if (dashboardResponse.dashboard_data) {
+        console.log('Dashboard data encontrado:', dashboardResponse.dashboard_data);
+        console.log('Métricas generales:', dashboardResponse.dashboard_data.metricas_generales);
+        console.log('Razones de desconexión:', dashboardResponse.dashboard_data.razones_desconexion);
+        console.log('Llamadas por día:', dashboardResponse.dashboard_data.llamadas_por_dia);
+        console.log('Llamadas por hora:', dashboardResponse.dashboard_data.llamadas_por_hora);
+        
+        return dashboardResponse; // Retorna todo el objeto que incluye dashboard_data
+      } else {
+        console.warn('No se encontró dashboard_data en la respuesta');
+        return dashboardResponse;
+      }
+    }
+    
+    console.warn('Formato inesperado de respuesta del dashboard:', data);
+    return data;
+  } catch (error) {
+    console.error('Error al obtener datos del dashboard:', error);
+    throw error;
   }
 }
 

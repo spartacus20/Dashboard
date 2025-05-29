@@ -95,6 +95,7 @@ export interface CallStats {
   completed: number;
   failed: number;
   averageDuration: string;
+  averageDurationSeconds: number;
 }
 
 export interface RetellPhoneNumber {
@@ -188,4 +189,14 @@ export interface BatchCallTask {
   end_timestamp?: number;
   duration_ms?: number;
   [key: string]: any; // Para campos adicionales que puedan existir
+}
+
+export interface ClientData {
+  id: number;
+  email: string;
+  client_id: string;
+  api_key: string;
+  full_name?: string;
+  created_at?: string;
+  updated_at?: string;
 }
