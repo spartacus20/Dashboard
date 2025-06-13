@@ -200,3 +200,19 @@ export interface ClientData {
   created_at?: string;
   updated_at?: string;
 }
+
+export interface Agenda {
+  id: number;
+  created_at: string;
+  phone_number: string;
+  client_id: string;
+  call_id: string;
+  nombre: string;
+  direccion: string;
+  local: string;
+  ciudad: string;
+  region: string;
+  codigo_postal: string;
+  fecha_agendamiento: string;
+  tipo_agenda: string;
+}

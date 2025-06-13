@@ -561,9 +561,29 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     totalPages: contextTotalPages,
     hasMorePages,
     setFilterCriteria: contextSetFilterCriteria,
-    filterCriteria: contextFilterCriteria
+    filterCriteria: contextFilterCriteria,
+    dashboardData,
+    totalCallsFiltered // Agregar totalCallsFiltered del contexto
   } = useCallsContext();
   
+  let totalCallsDisplay: number | undefined = undefined;
+  let totalCallsLabel: string = '';
+
+  // Priorizar totalCallsFiltered cuando está disponible (indica filtros aplicados)
+  if (totalCallsFiltered !== null && totalCallsFiltered !== undefined) {
+    totalCallsDisplay = totalCallsFiltered;
+    totalCallsLabel = totalCallsFiltered === 1 ? 'llamada filtrada' : 'llamadas filtradas';
+  } else if (dashboardData?.dashboard_data?.metricas_generales?.total_llamadas !== undefined) {
+    totalCallsDisplay = dashboardData.dashboard_data.metricas_generales.total_llamadas;
+    totalCallsLabel = totalCallsDisplay === 1 ? 'llamada en servidor' : 'llamadas en servidor';
+  } else if (totalCalls !== undefined) {
+    totalCallsDisplay = totalCalls;
+    totalCallsLabel = totalCallsDisplay === 1 ? 'llamada cargada' : 'llamadas cargadas';
+  } else {
+    totalCallsDisplay = 0;
+    totalCallsLabel = 'llamadas';
+  }
+
   // Estados locales para paginación y filtrado
   const [calls, setCalls] = React.useState<DetailedRetellCall[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -587,14 +607,14 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   const [showColumnCustomizer, setShowColumnCustomizer] = React.useState(false);
   const [visibleColumns, setVisibleColumns] = React.useState({
     callId: true,
-    status: true,
+    status: false, 
     timestamp: true,
     duration: true,
     disconnectionReason: true,
     callType: true,
     agent: false,
     fromNumber: false,
-    toNumber: false
+    toNumber: true // Cambiado a true para que sea visible por defecto
   });
   
   // Opciones de filtrado de duración
@@ -609,6 +629,9 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   const [disconnectionReasons, setDisconnectionReasons] = React.useState<string[]>([]);
   const [startDate, setStartDate] = React.useState('');
   const [endDate, setEndDate] = React.useState('');
+
+  // Flag para evitar cargas automáticas cuando se están aplicando filtros manualmente
+  const isApplyingFilters = React.useRef(false);
 
   // Cargar página cuando cambia currentPage
   React.useEffect(() => {
@@ -732,15 +755,15 @@ export function Recordings({ onNavigate }: RecordingsProps) {
 
   // Iniciar la carga de datos la primera vez que se monta el componente
   React.useEffect(() => {
-    // Solo cargamos si no hay datos y no está cargando ya
-    if (allCalls.length === 0 && !loadingAllCalls) {
+    // Solo cargamos si no hay datos, no está cargando ya, y no estamos aplicando filtros manualmente
+    if (allCalls.length === 0 && !loadingAllCalls && !isApplyingFilters.current) {
       loadAllCalls();
     }
     
     // Sincronizamos los estados locales con el contexto
     setDisconnectionReasons(contextDisconnectionReasons);
     setError(contextError);
-  }, [allCalls.length, loadingAllCalls, loadAllCalls, contextDisconnectionReasons, contextError]);
+  }, [allCalls.length, loadingAllCalls, contextDisconnectionReasons, contextError]); // Removido loadAllCalls de las dependencias
 
   // Actualizar las llamadas mostradas cuando cambia la página
   React.useEffect(() => {
@@ -801,7 +824,9 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     
     const handleDurationChange = () => {
       if (audioRef.current) {
-        setAudioDuration(audioRef.current.duration);
+        const newDuration = audioRef.current.duration;
+        // Establecer en 0 si la duración es NaN, no es finita, o es negativa.
+        setAudioDuration(newDuration && isFinite(newDuration) && newDuration > 0 ? newDuration : 0);
       }
     };
     
@@ -827,10 +852,13 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         audioRef.current.removeEventListener('durationchange', handleDurationChange);
         audioRef.current.removeEventListener('ended', handleEnded);
         audioRef.current.removeEventListener('error', handleError);
-        audioRef.current.remove();
+        // Limpiar la fuente y pedir al navegador que aborte la carga si la hay
+        audioRef.current.src = '';
+        audioRef.current.removeAttribute('src'); // Para algunos navegadores
+        audioRef.current.load(); // Esto aborta la descarga y resetea el elemento
       }
     };
-  }, []);
+  }, []); // El array de dependencias vacío es correcto aquí
 
   // Función para formatear segundos a formato MM:SS
   const formatTime = (time: number) => {
@@ -850,29 +878,41 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   };
 
   const togglePlayPause = async (callId: string) => {
-    if (audioRef.current) {
-      if (playingId === callId) {
-        audioRef.current.pause();
-        setPlayingId(null);
-      } else {
-        try {
-          // If another audio is playing, stop it first
-          if (playingId) {
-            audioRef.current.pause();
-            setAudioCurrentTime(0);
-          }
-          // Set the new audio source
-          const call = allCalls.find(c => c.call_id === callId);
-          if (call?.recording_url) {
-            audioRef.current.src = call.recording_url;
-            audioRef.current.currentTime = 0;
-            await audioRef.current.play();
-            setPlayingId(callId);
-          }
-        } catch (error) {
-          console.error('Error playing audio:', error);
-          setPlayingId(null);
+    if (!audioRef.current) return;
+
+    const callToPlay = allCalls.find(c => c.call_id === callId);
+    if (!callToPlay?.recording_url) {
+      console.error('Recording URL not found for callId:', callId);
+      setPlayingId(null);
+      return;
+    }
+
+    // Si es la pista actual y se está reproduciendo, la pausamos.
+    if (playingId === callId && !audioRef.current.paused) {
+      audioRef.current.pause();
+      setPlayingId(null);
+    } else {
+      // Si es una nueva pista, o la pista actual está pausada, o era otra pista la que se reproducía.
+
+      // Si la URL de la grabación es diferente a la actual en el reproductor.
+      if (audioRef.current.src !== callToPlay.recording_url) {
+        // Pausar si algo más se estaba reproduciendo.
+        if (playingId && !audioRef.current.paused) {
+          audioRef.current.pause();
         }
+        audioRef.current.src = callToPlay.recording_url;
+        audioRef.current.currentTime = 0; // Reiniciar tiempo del reproductor.
+        setAudioCurrentTime(0);          // Reiniciar estado de tiempo actual para UI.
+        setAudioDuration(0);             // Reiniciar estado de duración para UI (se actualizará con 'durationchange').
+      }
+      // Si es la misma URL y estaba pausada, currentTime ya está donde debe. La duración es conocida.
+
+      try {
+        await audioRef.current.play();
+        setPlayingId(callId); // Marcar esta llamada como la que se está reproduciendo.
+      } catch (error) {
+        console.error('Error playing audio:', error);
+        setPlayingId(null); // Limpiar estado de reproducción en caso de error.
       }
     }
   };
@@ -881,6 +921,47 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   const openCallModal = (call: DetailedRetellCall) => {
     setSelectedCallModal(call);
     setSelectedCall(call.call_id);
+
+    if (audioRef.current) { // Ensure audioRef is initialized
+      if (call.recording_url) {
+        // Recording URL is present
+        if (audioRef.current.src !== call.recording_url) {
+          // New source: pause if playing, set src, reset UI states, load.
+          if (!audioRef.current.paused) {
+            audioRef.current.pause();
+          }
+          // Clear playingId if the source is changing and something was marked as playing
+          if (playingId) { 
+            setPlayingId(null);
+          }
+          audioRef.current.src = call.recording_url;
+          setAudioCurrentTime(0);
+          setAudioDuration(0); // Explicitly reset duration state for UI
+          audioRef.current.load(); // Load new source, should trigger 'durationchange'
+        } else {
+          // Same source: modal reopened for the same call.
+          // Sync UI states with the audio element's current reality.
+          setAudioCurrentTime(audioRef.current.currentTime);
+          const currentAudioDuration = audioRef.current.duration;
+          setAudioDuration(currentAudioDuration && isFinite(currentAudioDuration) && currentAudioDuration > 0 ? currentAudioDuration : 0);
+        }
+      } else {
+        // No recording_url for this call. Clear the player.
+        if (!audioRef.current.paused) {
+          audioRef.current.pause();
+        }
+        if (audioRef.current.hasAttribute('src')) {
+             audioRef.current.removeAttribute('src');
+        }
+        setAudioCurrentTime(0);
+        setAudioDuration(0);
+        audioRef.current.load(); // Reset the audio element to initial state.
+        
+        if (playingId === call.call_id) {
+            setPlayingId(null);
+        }
+      }
+    }
   };
 
   const closeCallModal = () => {
@@ -957,7 +1038,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     }
     
     if (visibleColumns.toNumber) {
-      headers.push('Número de Destino');
+      headers.push('Número de Teléfono'); // Etiqueta actualizada para CSV
       columns.push('to_number');
     }
     
@@ -1005,12 +1086,23 @@ export function Recordings({ onNavigate }: RecordingsProps) {
 
   // Reset all filters
   const resetAllFilters = () => {
+    // Marcar que estamos aplicando filtros manualmente
+    isApplyingFilters.current = true;
+    
     setSearchTerm('');
     setStartDate('');
     setEndDate('');
     setDisconnectionReasonFilter(null);
     setDurationFilter(null);
     setCurrentPage(1);
+    
+    // Limpiar filtros en el contexto
+    contextSetFilterCriteria({});
+    
+    // Recargar datos sin filtros
+    loadAllCalls(true).finally(() => {
+      isApplyingFilters.current = false;
+    });
   };
 
   // Calcular el recuento total de filtros aplicados
@@ -1103,8 +1195,8 @@ export function Recordings({ onNavigate }: RecordingsProps) {
             <>
               {/* Número total de llamadas */}
               <Badge variant="default">
-                <span className="mr-1">{allCalls.length.toLocaleString()}</span> 
-                {allCalls.length === 1 ? 'llamada total' : 'llamadas totales'}
+                <span className="mr-1">{totalCallsDisplay?.toLocaleString()}</span> 
+                {totalCallsLabel}
                 {allCallsLoaded && (
                   <svg className="ml-2 w-4 h-4 text-green-300" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
@@ -1195,7 +1287,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                         callType: 'Tipo de llamada',
                         agent: 'Agente',
                         fromNumber: 'Número de Origen',
-                        toNumber: 'Número de Destino'
+                        toNumber: 'Número de Teléfono' // Etiqueta actualizada
                       }).map(([key, label]) => (
                         <div key={key} className="flex items-center">
                           <input
@@ -1221,14 +1313,14 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                         onClick={() => {
                           setVisibleColumns({
                             callId: true,
-                            status: true,
+                            status: false,
                             timestamp: true,
                             duration: true,
                             disconnectionReason: true,
                             callType: true,
                             agent: false,
                             fromNumber: false,
-                            toNumber: false
+                            toNumber: true // Asegurar que el reset también lo ponga visible
                           });
                         }}
                         variant="outline" 
@@ -1308,18 +1400,28 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                 placeholder="Fecha final"
               />
               <Button 
-                onClick={() => {
-                  // Actualizar los filtros en el contexto
-                  const criteria: FilterCriteria = {};
-                  if (startDate || endDate) {
-                    criteria.date_range = {};
-                    if (startDate) criteria.date_range.start = startDate;
-                    if (endDate) criteria.date_range.end = endDate;
-                  }
-                  contextSetFilterCriteria(criteria);
+                onClick={async () => {
+                  // Marcar que estamos aplicando filtros manualmente
+                  isApplyingFilters.current = true;
                   
-                  // Recargar los datos con los nuevos filtros
-                  loadAllCalls(true);
+                  try {
+                    // Crear el criterio de filtro
+                    const criteria: FilterCriteria = {};
+                    if (startDate || endDate) {
+                      criteria.date_range = {};
+                      if (startDate) criteria.date_range.start = startDate;
+                      if (endDate) criteria.date_range.end = endDate;
+                    }
+                    
+                    // Actualizar los filtros en el contexto para futuras referencias
+                    contextSetFilterCriteria(criteria);
+                    
+                    // Recargar los datos pasando los criterios directamente
+                    await loadAllCalls(true, criteria);
+                  } finally {
+                    // Quitar el flag después de completar la operación
+                    isApplyingFilters.current = false;
+                  }
                 }}
                 variant="default"
                 size="sm"
@@ -1457,7 +1559,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                           
                           {visibleColumns.toNumber && call.to_number && (
                             <div className="text-sm text-gray-400">
-                              <span className="font-medium">Destino:</span> {call.to_number}
+                              <span className="font-medium">Teléfono:</span> {call.to_number} {/* Etiqueta actualizada en la tabla */}
                             </div>
                           )}
                           
@@ -1531,7 +1633,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                     ) : (
                       <>
                         Mostrando {(currentPage - 1) * itemsPerPage + 1}-
-                        {Math.min(currentPage * itemsPerPage, allCalls.length)} 
+                        {Math.min(currentPage * itemsPerPage, totalCallsDisplay)} 
                         {contextTotalPages > 0 && hasMorePages && ' de muchas más'} grabaciones
                       </>
                     )}

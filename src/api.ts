@@ -1,8 +1,9 @@
-import { RetellCall, FilterCriteria, CallStats, RetellPhoneNumber, RetellAgent, RetellBatchCall, ClientData } from './types';
+import { RetellCall, FilterCriteria, CallStats, RetellPhoneNumber, RetellAgent, RetellBatchCall, ClientData, Agenda } from './types';
 
 const WEBHOOK_URL = 'https://n8n.aiagencyusa.com/webhook/ed980be2-4957-44cf-8f61-8b8c4d4957e8';
 const GET_CLIENT_WEBHOOK_URL = 'https://n8n.aiagencyusa.com/webhook/get-client';
 const GET_DASHBOARD_WEBHOOK_URL = 'https://n8n.aiagencyusa.com/webhook/get-dashboard';
+const GET_AGENDAS_WEBHOOK_URL = 'https://n8n.aiagencyusa.com/webhook/get-agendas';
 const API_URL = 'https://api.retellai.com/v2/list-calls';
 
 async function fetchAllCalls(
@@ -46,7 +47,7 @@ export async function fetchCalls(
   filterCriteria?: FilterCriteria,
   page: number = 1,
   clientId?: string
-): Promise<{ calls: RetellCall[]; pagination_key?: string; totalPages?: number }> {
+): Promise<{ calls: RetellCall[]; pagination_key?: string; totalPages?: number; totalCallsFiltered?: number | null }> {
   try {
     // Usar el webhook de n8n para obtener las llamadas
     const requestBody: any = {
@@ -64,7 +65,7 @@ export async function fetchCalls(
       if (filterCriteria.date_range.start) {
         // Convertir a formato ISO si no lo está
         const startDate = new Date(filterCriteria.date_range.start);
-        requestBody.fecha_inicio = startDate.toISOString();
+        requestBody.fecha_inicio = startDate.toISOString().split('T')[0];
       }
       
       if (filterCriteria.date_range.end) {
@@ -72,7 +73,7 @@ export async function fetchCalls(
         const endDate = new Date(filterCriteria.date_range.end);
         // Asegurar que incluya todo el día final
         endDate.setHours(23, 59, 59, 999);
-        requestBody.fecha_fin = endDate.toISOString();
+        requestBody.fecha_fin = endDate.toISOString().split('T')[0];
       }
     }
     
@@ -127,11 +128,13 @@ export async function fetchCalls(
       
       // Obtener información de paginación
       const totalPages = parseInt(responseData.total_paginas) || 0;
+      const totalCallsFiltered = responseData.total_llamadas || null;
       
       return { 
         calls, 
         pagination_key: undefined, // El webhook usa paginación por página
-        totalPages: totalPages
+        totalPages: totalPages,
+        totalCallsFiltered: totalCallsFiltered
       };
     }
     
@@ -180,7 +183,7 @@ export async function fetchCalls(
 export function calculateStats(calls: RetellCall[]): CallStats {
   const total = calls.length;
   
-  // Contar llamadas completadas y fallidas
+  // Contar llamadas efectivas y fallidas
   // Los estados de llamada pueden venir en diferentes formatos según la API
   const completed = calls.filter(call => {
     const status = (call.call_status || call.status || '').toLowerCase();
@@ -474,18 +477,31 @@ export async function getClientApiKey(email: string): Promise<{ apiKey: string |
 }
 
 // Función para obtener datos del dashboard
-export async function getDashboardData(clientId: string): Promise<any> {
+export async function getDashboardData(
+  clientId: string, 
+  fechaInicio?: string, 
+  fechaFin?: string
+): Promise<any> {
   try {
     console.log('Solicitando datos del dashboard para client_id:', clientId);
+    console.log('Fechas de filtro:', { fechaInicio, fechaFin });
+    
+    const requestBody: any = {
+      client_id: clientId
+    };
+    
+    // Agregar fechas al body si se proporcionan
+    if (fechaInicio && fechaFin) {
+      requestBody.fecha_inicio = fechaInicio;
+      requestBody.fecha_fin = fechaFin;
+    }
     
     const response = await fetch(GET_DASHBOARD_WEBHOOK_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        client_id: clientId
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
@@ -519,6 +535,76 @@ export async function getDashboardData(clientId: string): Promise<any> {
   } catch (error) {
     console.error('Error al obtener datos del dashboard:', error);
     throw error;
+  }
+}
+
+// Función para obtener agendas
+export async function fetchAgendas(clientId: string): Promise<Agenda[]> {
+  try {
+    console.log('Solicitando agendas para client_id:', clientId);
+    
+    const response = await fetch(GET_AGENDAS_WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        client_id: clientId
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Error al obtener agendas: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    console.log('Respuesta completa del webhook de agendas:', data);
+    
+    // Manejar diferentes formatos de respuesta posibles
+    let agendas: Agenda[] = [];
+    
+    if (Array.isArray(data)) {
+      if (data.length > 0) {
+        const firstItem = data[0];
+        // Si el primer elemento tiene una propiedad 'agendas'
+        if (firstItem && typeof firstItem === 'object' && firstItem.agendas) {
+          agendas = Array.isArray(firstItem.agendas) ? firstItem.agendas : [];
+        }
+        // Si el primer elemento tiene una propiedad 'agendamientos' 
+        else if (firstItem && typeof firstItem === 'object' && firstItem.agendamientos) {
+          agendas = Array.isArray(firstItem.agendamientos) ? firstItem.agendamientos : [];
+        }
+        // Si el array contiene directamente las agendas
+        else if (firstItem && firstItem.id) {
+          agendas = data;
+        }
+        // Si es un objeto que contiene las agendas como array
+        else {
+          agendas = [];
+        }
+      }
+    }
+    // Si la respuesta es un objeto directamente
+    else if (data && typeof data === 'object') {
+      if (data.agendas && Array.isArray(data.agendas)) {
+        agendas = data.agendas;
+      } else if (data.agendamientos && Array.isArray(data.agendamientos)) {
+        agendas = data.agendamientos;
+      } else {
+        agendas = [];
+      }
+    }
+    
+    console.log(`Se procesaron ${agendas.length} agendas`);
+    console.log('Agendas procesadas:', agendas);
+    
+    // Asegurar que devolvemos un array válido
+    return Array.isArray(agendas) ? agendas : [];
+    
+  } catch (error) {
+    console.error('Error al obtener agendas del webhook:', error);
+    // En caso de error, devolver array vacío en lugar de lanzar la excepción
+    return [];
   }
 }
 

@@ -66,7 +66,7 @@ http://localhost:5173/dashboard?apikey=TU_API_KEY_DE_RETELL
 ### Dashboard
 La página principal muestra estadísticas generales incluyendo:
 - Total de llamadas
-- Llamadas completadas/fallidas
+- Llamadas efectivas/fallidas
 - Duración promedio
 - Gráficos de distribución de llamadas
 

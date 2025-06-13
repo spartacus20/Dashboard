@@ -5,6 +5,7 @@ import { Sidebar } from './components/layout/Sidebar';
 import { Dashboard } from './pages/Dashboard';
 import { Recordings } from './pages/Recordings';
 import { PhoneNumbers } from './pages/PhoneNumbers';
+import { Agendas } from './pages/Agendas';
 import { useCallsContext } from './context/CallsContext';
 import { X, Upload, Phone, Info, Check, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 
@@ -1241,6 +1242,11 @@ function DashboardApp() {
         {currentPage === 'phones' && (
           <PhoneNumbers
             onNavigate={setCurrentPage as (page: 'dashboard' | 'recordings' | 'phones') => void}
+          />
+        )}
+        {currentPage === 'agendas' && (
+          <Agendas
+            onNavigate={setCurrentPage as (page: string) => void}
           />
         )}
         {currentPage === 'batch-call' && (

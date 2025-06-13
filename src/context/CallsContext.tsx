@@ -9,7 +9,7 @@ interface CallsContextType {
   loadingProgress: number;
   error: string | null;
   totalCalls: number;
-  loadAllCalls: (forceRefresh?: boolean) => Promise<void>;
+  loadAllCalls: (forceRefresh?: boolean, customFilterCriteria?: FilterCriteria) => Promise<void>;
   loadCallsPage: (page: number, filterCriteria?: FilterCriteria) => Promise<RetellCall[]>;
   disconnectionReasons: string[];
   allCallsLoaded: boolean;
@@ -35,7 +35,8 @@ interface CallsContextType {
   filterCriteria: FilterCriteria;
   dashboardData: any;
   loadingDashboardData: boolean;
-  loadDashboardData: () => Promise<void>;
+  loadDashboardData: (fechaInicio?: string, fechaFin?: string) => Promise<void>;
+  totalCallsFiltered: number | null;
 }
 
 const CallsContext = createContext<CallsContextType | undefined>(undefined);
@@ -63,6 +64,9 @@ export function CallsProvider({ children }: CallsProviderProps) {
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [clientId, setClientId] = useState<string | null>(null);
+  
+  // Estado para el total de llamadas filtrado
+  const [totalCallsFiltered, setTotalCallsFiltered] = useState<number | null>(null);
   
   // Estados de paginación
   const [currentPage, setCurrentPage] = useState(1);
@@ -154,6 +158,12 @@ export function CallsProvider({ children }: CallsProviderProps) {
         console.log(`Total de páginas disponibles: ${response.totalPages}`);
       }
       
+      // Extraer el total de llamadas filtrado si está disponible
+      if (response.totalCallsFiltered !== undefined && response.totalCallsFiltered !== null) {
+        setTotalCallsFiltered(response.totalCallsFiltered);
+        console.log(`Total de llamadas filtrado: ${response.totalCallsFiltered}`);
+      }
+      
       console.log(`Página ${page}: ${newCalls.length} llamadas cargadas`);
       
       // Marcar la página como cargada
@@ -201,7 +211,7 @@ export function CallsProvider({ children }: CallsProviderProps) {
   }, [apiKey, clientId, filterCriteria]);
 
   // Función para cargar la primera página de llamadas
-  const loadAllCalls = useCallback(async (forceRefresh = false) => {
+  const loadAllCalls = useCallback(async (forceRefresh = false, customFilterCriteria?: FilterCriteria) => {
     // Si ya tenemos datos y no ha caducado la caché, no hacemos nada (a menos que sea forzado)
     const now = Date.now();
     if (
@@ -224,6 +234,7 @@ export function CallsProvider({ children }: CallsProviderProps) {
     if (forceRefresh) {
       setAllCalls([]);
       setError(null);
+      setTotalCallsFiltered(null); // Resetear el total filtrado
       loadedPages.current.clear();
       loadingPages.current.clear(); // Limpiar también las páginas en proceso
       setCurrentPage(1);
@@ -232,8 +243,8 @@ export function CallsProvider({ children }: CallsProviderProps) {
     }
     
     // Cargar solo la primera página con los filtros actuales
-    await loadCallsPage(1, filterCriteria);
-  }, [apiKey, allCalls.length, lastUpdated, loadCallsPage, filterCriteria]);
+    await loadCallsPage(1, customFilterCriteria || filterCriteria);
+  }, [apiKey, allCalls.length, lastUpdated, loadCallsPage]);
 
   // Función para cargar las batch calls
   const loadBatchCalls = useCallback(async (forceRefresh = false) => {
@@ -372,7 +383,7 @@ export function CallsProvider({ children }: CallsProviderProps) {
   }, [apiKey, phoneNumbersLoaded, phoneNumbersUpdated, loadingPhoneNumbers, noPhoneNumbersAvailable]);
 
   // Función para cargar los datos del dashboard
-  const loadDashboardData = useCallback(async () => {
+  const loadDashboardData = useCallback(async (fechaInicio?: string, fechaFin?: string) => {
     if (!clientId) {
       console.log('Esperando client_id para cargar datos del dashboard...');
       return;
@@ -381,8 +392,8 @@ export function CallsProvider({ children }: CallsProviderProps) {
     setLoadingDashboardData(true);
     
     try {
-      console.log('Cargando datos del dashboard');
-      const data = await getDashboardData(clientId);
+      console.log('Cargando datos del dashboard con fechas:', { fechaInicio, fechaFin });
+      const data = await getDashboardData(clientId, fechaInicio, fechaFin);
       setDashboardData(data);
       console.log('Datos del dashboard cargados:', data);
     } catch (err) {
@@ -439,7 +450,8 @@ export function CallsProvider({ children }: CallsProviderProps) {
     filterCriteria,
     dashboardData,
     loadingDashboardData,
-    loadDashboardData
+    loadDashboardData,
+    totalCallsFiltered
   };
 
   return (
