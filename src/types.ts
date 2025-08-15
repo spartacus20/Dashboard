@@ -215,4 +215,6 @@ export interface Agenda {
   codigo_postal: string;
   fecha_agendamiento: string;
   tipo_agenda: string;
+  recordings?: string;
+  transcript?: string;
 }

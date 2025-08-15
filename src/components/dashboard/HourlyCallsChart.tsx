@@ -82,7 +82,7 @@ export function HourlyCallsChart({ calls }: HourlyCallsChartProps) {
       title: {
         display: true,
         text: 'Llamadas Largas (+16s) por Hora',
-        color: '#fff'
+        color: '#1e40af'
       },
       tooltip: {
         callbacks: {
@@ -95,19 +95,19 @@ export function HourlyCallsChart({ calls }: HourlyCallsChartProps) {
     scales: {
       x: {
         ticks: {
-          color: '#9ca3af'
+          color: '#475569'
         },
         grid: {
-          color: '#374151'
+          color: '#cbd5e1'
         }
       },
       y: {
         ticks: {
-          color: '#9ca3af',
+          color: '#475569',
           precision: 0
         },
         grid: {
-          color: '#374151'
+          color: '#cbd5e1'
         }
       }
     }
@@ -119,29 +119,31 @@ export function HourlyCallsChart({ calls }: HourlyCallsChartProps) {
     datasets: [
       {
         data: hourlyData,
-        backgroundColor: '#3b82f6',
-        hoverBackgroundColor: '#2563eb',
-        borderRadius: 6,
-        maxBarThickness: 40
+        backgroundColor: 'rgba(59, 130, 246, 0.8)',
+        hoverBackgroundColor: 'rgba(37, 99, 235, 0.9)',
+        borderRadius: 8,
+        maxBarThickness: 40,
+        borderColor: 'rgba(59, 130, 246, 1)',
+        borderWidth: 1
       }
     ],
   };
 
   return (
-    <div className="bg-gray-900 p-4 md:p-6 rounded-xl shadow-lg border border-gray-800">
+    <div className="bg-gradient-to-br from-blue-50 to-indigo-100 p-4 md:p-6 rounded-xl shadow-lg border border-blue-200">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4">
         <div className="mb-4 md:mb-0">
-          <h3 className="text-lg font-semibold text-white">Llamadas Largas por Hora</h3>
-          <p className="text-sm text-gray-400">Distribución horaria de llamadas de más de 16 segundos</p>
+          <h3 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800">Llamadas Largas por Hora</h3>
+          <p className="text-sm text-blue-600">Distribución horaria de llamadas de más de 16 segundos</p>
         </div>
         <div className="flex flex-wrap gap-2 md:gap-4 w-full md:w-auto">
-          <div className="text-center px-3 py-1 bg-blue-900/30 rounded-md w-full md:w-auto">
-            <p className="text-xs text-gray-400">Total</p>
-            <p className="text-lg font-bold text-blue-400">{totalLongCalls}</p>
+          <div className="text-center px-3 py-1 bg-blue-200/50 rounded-md w-full md:w-auto">
+            <p className="text-xs text-blue-600 font-medium">Total</p>
+            <p className="text-lg font-bold text-blue-900">{totalLongCalls}</p>
           </div>
-          <div className="text-center px-3 py-1 bg-blue-900/30 rounded-md w-full md:w-auto">
-            <p className="text-xs text-gray-400">Duración Promedio</p>
-            <p className="text-lg font-bold text-blue-400">{avgDuration}s</p>
+          <div className="text-center px-3 py-1 bg-blue-200/50 rounded-md w-full md:w-auto">
+            <p className="text-xs text-blue-600 font-medium">Duración Promedio</p>
+            <p className="text-lg font-bold text-blue-900">{avgDuration}s</p>
           </div>
         </div>
       </div>

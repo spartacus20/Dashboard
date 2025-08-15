@@ -8,16 +8,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 // Componentes UI simplificados
 const Input = ({ className = "", ...props }) => (
   <input 
-    className={`flex h-10 w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white ${className}`}
+    className={`flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 ${className}`}
     {...props} 
   />
 );
 
 const Badge = ({ children, variant = "default", className = "" }) => {
   const variantClasses = {
-    default: "bg-purple-600 text-white",
-    secondary: "bg-gray-800 text-white",
-    outline: "border border-gray-700 text-gray-300",
+    default: "bg-gradient-to-r from-blue-600 to-indigo-700 text-white",
+    secondary: "bg-slate-200 text-slate-700",
+    outline: "border border-slate-300 text-slate-600",
   };
   
   return (
@@ -28,17 +28,17 @@ const Badge = ({ children, variant = "default", className = "" }) => {
 };
 
 const Skeleton = ({ className = "", ...props }) => (
-  <div className={`animate-pulse rounded-md bg-gray-800 ${className}`} {...props} />
+  <div className={`animate-pulse rounded-md bg-slate-200 ${className}`} {...props} />
 );
 
 // Componente de diálogo simplificado para el modal
-const Dialog = ({ children, isOpen, onClose }) => {
+const Dialog = ({ children, isOpen, onClose }: { children: React.ReactNode; isOpen: boolean; onClose: () => void }) => {
   if (!isOpen) return null;
   
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="fixed inset-0 bg-black/80" onClick={onClose}></div>
-      <div className="z-50 p-6 bg-gray-900 rounded-lg border border-gray-800 max-w-4xl w-full max-h-[90vh] overflow-auto">
+      <div className="z-50 p-6 bg-white rounded-lg border border-slate-200 shadow-xl max-w-4xl w-full max-h-[90vh] overflow-auto">
         {children}
       </div>
     </div>
@@ -46,42 +46,43 @@ const Dialog = ({ children, isOpen, onClose }) => {
 };
 
 // Componente Select simplificado
-const Select = ({ children, value, onValueChange, className = "" }) => {
+const Select = ({ children, value, onValueChange, className = "" }: { children: React.ReactNode; value: string; onValueChange?: (value: string) => void; className?: string }) => {
   return (
     <div className={`relative ${className}`}>
       <select 
         value={value} 
         onChange={(e) => onValueChange?.(e.target.value)}
-        className="flex h-10 w-full items-center justify-between rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white appearance-none cursor-pointer"
+        className="flex h-10 w-full items-center justify-between rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500"
       >
         {children}
       </select>
-      <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 opacity-50 pointer-events-none" />
+      <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 opacity-50 pointer-events-none text-slate-500" />
     </div>
   );
 };
 
-const SelectItem = ({ value, children }) => {
+const SelectItem = ({ value, children }: { value: string; children: React.ReactNode }) => {
   return <option value={value}>{children}</option>;
 };
 
 // Componentes de paginación simplificados
-const PaginationButton = ({ onClick, children, isActive, className = "" }) => (
+const PaginationButton = ({ onClick, children, isActive, className = "" }: { onClick: () => void; children: React.ReactNode; isActive: boolean; className?: string }) => (
   <button
     onClick={onClick}
     className={`inline-flex items-center justify-center text-sm font-medium h-9 min-w-9 px-2 rounded-md ${
       isActive 
-        ? "bg-purple-600 text-white" 
-        : "text-gray-400 hover:text-white hover:bg-gray-800"
+        ? "bg-gradient-to-r from-blue-600 to-indigo-700 text-white" 
+        : "text-slate-600 hover:text-slate-800 hover:bg-slate-100"
     } ${className}`}
   >
     {children}
   </button>
 );
 
-const PaginationPrevious = ({ onClick, disabled }) => (
+const PaginationPrevious = ({ onClick, disabled }: { onClick: () => void; disabled: boolean }) => (
   <PaginationButton 
     onClick={onClick}
+    isActive={false}
     className={disabled ? "opacity-50 cursor-not-allowed" : ""}
   >
     <ChevronLeft className="h-4 w-4 mr-1" />
@@ -89,9 +90,10 @@ const PaginationPrevious = ({ onClick, disabled }) => (
   </PaginationButton>
 );
 
-const PaginationNext = ({ onClick, disabled }) => (
+const PaginationNext = ({ onClick, disabled }: { onClick: () => void; disabled: boolean }) => (
   <PaginationButton 
     onClick={onClick}
+    isActive={false}
     className={disabled ? "opacity-50 cursor-not-allowed" : ""}
   >
     <span>Siguiente</span>
@@ -1120,14 +1122,14 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     if (!selectedCallModal?.recording_url) return null;
     
     return (
-      <Card>
+      <Card className="bg-white shadow-sm border-slate-200">
         <CardContent className="p-4">
-          <h3 className="text-lg font-semibold text-white mb-4">Reproductor</h3>
+          <h3 className="text-lg font-semibold text-slate-800 mb-4">Reproductor</h3>
           <div className="space-y-4">
             <div className="flex items-center gap-4">
               <button
                 onClick={togglePlayPauseModal}
-                className="p-3 bg-purple-600 rounded-full hover:bg-purple-700 transition-colors"
+                className="p-3 bg-gradient-to-r from-blue-600 to-indigo-700 rounded-full hover:from-blue-700 hover:to-indigo-800 transition-colors"
               >
                 {playingId === selectedCallModal.call_id ? (
                   <Pause className="w-6 h-6 text-white" />
@@ -1139,9 +1141,9 @@ export function Recordings({ onNavigate }: RecordingsProps) {
               <a
                 href={selectedCallModal.recording_url}
                 download
-                className="p-3 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors"
+                className="p-3 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors"
               >
-                <Download className="w-6 h-6 text-white" />
+                <Download className="w-6 h-6 text-slate-700" />
               </a>
             </div>
             
@@ -1154,14 +1156,14 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                   max={audioDuration || 100}
                   value={audioCurrentTime}
                   onChange={handleProgressChange}
-                  className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                   style={{
-                    background: `linear-gradient(to right, #9333ea 0%, #9333ea ${(audioCurrentTime / (audioDuration || 1)) * 100}%, #374151 ${(audioCurrentTime / (audioDuration || 1)) * 100}%, #374151 100%)`
+                    background: `linear-gradient(to right, #2563eb 0%, #2563eb ${(audioCurrentTime / (audioDuration || 1)) * 100}%, #e2e8f0 ${(audioCurrentTime / (audioDuration || 1)) * 100}%, #e2e8f0 100%)`
                   }}
                 />
               </div>
               
-              <div className="flex justify-between text-xs text-gray-400">
+              <div className="flex justify-between text-xs text-slate-600">
                 <span>{formatTime(audioCurrentTime)}</span>
                 <span>{formatTime(audioDuration)}</span>
               </div>
@@ -1173,10 +1175,10 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   };
 
   return (
-    <div className="p-8">
+    <div className="p-8 bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
       <div className="mb-8">
-        <h2 className="text-2xl font-bold text-white mb-2">Grabaciones</h2>
-        <div className="flex flex-wrap items-center gap-2 text-gray-400">
+        <h2 className="text-2xl font-bold text-slate-800 mb-2">Grabaciones</h2>
+        <div className="flex flex-wrap items-center gap-2 text-slate-600">
           <p>Escucha y analiza las conversaciones de IA</p>
           
           {/* Estado de carga de todas las llamadas */}
@@ -1220,10 +1222,10 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         </div>
       </div>
 
-      <Card>
-        <CardHeader className="border-b border-gray-800 pb-4">
+      <Card className="bg-white shadow-lg border-0">
+        <CardHeader className="border-b border-slate-200 pb-4 bg-gradient-to-r from-slate-50 to-blue-50">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <CardTitle>Grabaciones</CardTitle>
+            <CardTitle className="text-slate-800">Grabaciones</CardTitle>
             
             <div className="flex items-center gap-2">
               <Button
@@ -1272,10 +1274,10 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                 </Button>
                 
                 {showColumnCustomizer && (
-                  <div className="absolute right-0 mt-2 w-64 bg-gray-800 rounded-md shadow-lg z-50 border border-gray-700 column-customizer-dropdown">
-                    <div className="p-3 border-b border-gray-700">
-                      <h3 className="text-sm font-medium text-white">Personalizar columnas</h3>
-                      <p className="text-xs text-gray-400 mt-1">Selecciona las columnas que deseas ver</p>
+                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-md shadow-xl z-50 border border-slate-200 column-customizer-dropdown">
+                    <div className="p-3 border-b border-slate-200">
+                      <h3 className="text-sm font-medium text-slate-800">Personalizar columnas</h3>
+                      <p className="text-xs text-slate-600 mt-1">Selecciona las columnas que deseas ver</p>
                     </div>
                     <div className="p-3 space-y-2">
                       {Object.entries({
@@ -1300,15 +1302,15 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                                 [key]: !visibleColumns[key]
                               });
                             }}
-                            className="rounded bg-gray-700 border-gray-600 text-purple-600 focus:ring-purple-500"
+                            className="rounded bg-white border-slate-300 text-blue-600 focus:ring-blue-500"
                           />
-                          <label htmlFor={`column-${key}`} className="ml-2 text-sm text-gray-300">
+                          <label htmlFor={`column-${key}`} className="ml-2 text-sm text-slate-700">
                             {label}
                           </label>
                         </div>
                       ))}
                     </div>
-                    <div className="p-3 border-t border-gray-700 flex justify-between">
+                    <div className="p-3 border-t border-slate-200 flex justify-between">
                       <Button 
                         onClick={() => {
                           setVisibleColumns({
@@ -1353,49 +1355,49 @@ export function Recordings({ onNavigate }: RecordingsProps) {
           {/* Mostrar progreso de carga si está cargando */}
           {loadingAllCalls && (
             <div className="mt-4">
-              <div className="flex justify-between items-center text-xs text-white mb-1">
+              <div className="flex justify-between items-center text-xs text-slate-700 mb-1">
                 <span className="font-medium">Cargando grabaciones...</span>
                 <span>Página {contextCurrentPage} de {contextTotalPages || '?'}</span>
               </div>
-              <div className="w-full bg-gray-800 rounded-full h-3 mb-1 overflow-hidden border border-gray-700">
+              <div className="w-full bg-slate-200 rounded-full h-3 mb-1 overflow-hidden border border-slate-300">
                 <div 
-                  className="bg-gradient-to-r from-purple-600 to-indigo-600 h-3 rounded-full transition-all duration-500 ease-in-out"
+                  className="bg-gradient-to-r from-blue-600 to-indigo-600 h-3 rounded-full transition-all duration-500 ease-in-out"
                   style={{ 
                     width: '100%',
                     animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite"
                   }}
                 ></div>
               </div>
-              <div className="flex justify-between items-center text-xs text-gray-400">
+              <div className="flex justify-between items-center text-xs text-slate-600">
                 <p className="flex items-center">
-                  <svg className="animate-spin mr-1 h-3 w-3 text-purple-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <svg className="animate-spin mr-1 h-3 w-3 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
                   Obteniendo datos...
                 </p>
-                <p className="text-purple-400 font-medium">
+                <p className="text-blue-600 font-medium">
                   {allCalls.length} llamadas cargadas
                 </p>
               </div>
             </div>
           )}
         </CardHeader>
-        <CardContent className="pt-6">
+        <CardContent className="pt-6 bg-white">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4 mb-6">
             {/* Filtro de fechas */}
             <div className="lg:col-span-5 flex gap-2 items-center">
               <Input
                 type="date"
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setStartDate(e.target.value)}
                 className="w-full"
                 placeholder="Fecha inicial"
               />
               <Input
                 type="date"
                 value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEndDate(e.target.value)}
                 className="w-full"
                 placeholder="Fecha final"
               />
@@ -1462,12 +1464,12 @@ export function Recordings({ onNavigate }: RecordingsProps) {
             {/* Búsqueda */}
             <div className="lg:col-span-12 md:col-span-2 relative">
               <div className="relative">
-                <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Search className="w-5 h-5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 <Input
                   type="text"
                   placeholder="Buscar grabación..."
                   value={searchTerm}
-                  onChange={(e) => {
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                     setSearchTerm(e.target.value);
                     setCurrentPage(1); // Reset to first page when search changes
                   }}
@@ -1479,7 +1481,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                       setSearchTerm('');
                       setCurrentPage(1);
                     }}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -1500,9 +1502,9 @@ export function Recordings({ onNavigate }: RecordingsProps) {
             </div>
           ) : filteredCalls.length === 0 ? (
             <div className="py-16 text-center">
-              <PhoneOff className="mx-auto h-12 w-12 text-gray-500 mb-4" />
-              <h3 className="text-xl font-medium text-white mb-2">No se encontraron grabaciones</h3>
-              <p className="text-gray-400 max-w-md mx-auto mb-6">
+              <PhoneOff className="mx-auto h-12 w-12 text-slate-400 mb-4" />
+              <h3 className="text-xl font-medium text-slate-800 mb-2">No se encontraron grabaciones</h3>
+              <p className="text-slate-600 max-w-md mx-auto mb-6">
                 {searchTerm || startDate || endDate || disconnectionReasonFilter || durationFilter
                   ? "No hay grabaciones que coincidan con tus filtros. Intenta ajustar los criterios de búsqueda."
                   : "Aún no hay grabaciones disponibles en tu cuenta."}
@@ -1520,7 +1522,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                 {calls.map((call) => (
                   <Card 
                     key={call.call_id} 
-                    className={`overflow-hidden transition-all duration-200 hover:border-purple-700 cursor-pointer ${selectedCall === call.call_id ? 'border-purple-600 ring-1 ring-purple-600' : 'border-gray-800'}`}
+                    className={`overflow-hidden transition-all duration-200 hover:border-blue-400 cursor-pointer bg-white shadow-sm ${selectedCall === call.call_id ? 'border-blue-500 ring-2 ring-blue-200' : 'border-slate-200'}`}
                     onClick={() => openCallModal(call)}
                   >
                     <CardContent className="p-4">
@@ -1533,53 +1535,53 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                               </Badge>
                             )}
                             {visibleColumns.timestamp && (
-                              <span className="text-sm text-gray-400">
+                              <span className="text-sm text-slate-600">
                                 {new Date(call.start_timestamp || 0).toLocaleString()}
                               </span>
                             )}
                           </div>
                           
                           {visibleColumns.callId && (
-                            <h3 className="text-lg font-medium text-white">
+                            <h3 className="text-lg font-medium text-slate-800">
                               ID: {call.call_id.substring(0, 14)}...
                             </h3>
                           )}
                           
                           {visibleColumns.agent && call.agent_id && (
-                            <div className="text-sm text-gray-400">
+                            <div className="text-sm text-slate-600">
                               <span className="font-medium">Agente:</span> {call.agent_id}
                             </div>
                           )}
                           
                           {visibleColumns.fromNumber && call.from_number && (
-                            <div className="text-sm text-gray-400">
+                            <div className="text-sm text-slate-600">
                               <span className="font-medium">Origen:</span> {call.from_number}
                             </div>
                           )}
                           
                           {visibleColumns.toNumber && call.to_number && (
-                            <div className="text-sm text-gray-400">
+                            <div className="text-sm text-slate-600">
                               <span className="font-medium">Teléfono:</span> {call.to_number} {/* Etiqueta actualizada en la tabla */}
                             </div>
                           )}
                           
                           <div className="flex flex-wrap gap-2">
                             {visibleColumns.duration && (
-                              <div className="flex items-center text-sm text-gray-400">
+                              <div className="flex items-center text-sm text-slate-600">
                                 <Clock className="w-4 h-4 mr-1" />
                                 {getDuration(call)}
                               </div>
                             )}
                             
                             {visibleColumns.disconnectionReason && call.disconnection_reason && (
-                              <div className="flex items-center text-sm text-gray-400">
+                              <div className="flex items-center text-sm text-slate-600">
                                 <PhoneOff className="w-4 h-4 mr-1" />
                                 {call.disconnection_reason}
                               </div>
                             )}
                             
                             {visibleColumns.callType && call.call_type && (
-                              <div className="text-sm text-gray-400">
+                              <div className="text-sm text-slate-600">
                                 Tipo: {call.call_type}
                               </div>
                             )}
@@ -1593,12 +1595,12 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                                 e.stopPropagation();
                                 togglePlayPause(call.call_id);
                               }}
-                              className="p-2 rounded-full bg-gray-800 hover:bg-purple-700 transition-colors"
+                              className="p-2 rounded-full bg-slate-100 hover:bg-blue-100 transition-colors"
                             >
                               {playingId === call.call_id ? (
-                                <Pause className="w-5 h-5 text-white" />
+                                <Pause className="w-5 h-5 text-blue-600" />
                               ) : (
-                                <Play className="w-5 h-5 text-white" />
+                                <Play className="w-5 h-5 text-blue-600" />
                               )}
                             </button>
                           )}
@@ -1622,8 +1624,8 @@ export function Recordings({ onNavigate }: RecordingsProps) {
               
               {/* Paginación */}
               {totalPages > 1 && (
-                <div className="flex justify-between items-center py-4 border-t border-gray-800">
-                  <div className="flex items-center text-sm text-gray-400">
+                <div className="flex justify-between items-center py-4 border-t border-slate-200">
+                  <div className="flex items-center text-sm text-slate-600">
                     {/* Mostrar información correcta según si hay filtros o no */}
                     {searchTerm || disconnectionReasonFilter || durationFilter || startDate || endDate ? (
                       <>
@@ -1633,7 +1635,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                     ) : (
                       <>
                         Mostrando {(currentPage - 1) * itemsPerPage + 1}-
-                        {Math.min(currentPage * itemsPerPage, totalCallsDisplay)} 
+                        {Math.min(currentPage * itemsPerPage, totalCallsDisplay || 0)} 
                         {contextTotalPages > 0 && hasMorePages && ' de muchas más'} grabaciones
                       </>
                     )}
@@ -1645,21 +1647,21 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                         className="flex items-center text-sm cursor-pointer"
                         onClick={() => setShowItemsPerPageDropdown(!showItemsPerPageDropdown)}
                       >
-                        <span className="text-gray-400 mr-2">Mostrar:</span>
-                        <span className="text-white">{itemsPerPage}</span>
+                        <span className="text-slate-600 mr-2">Mostrar:</span>
+                        <span className="text-slate-800">{itemsPerPage}</span>
                         {showItemsPerPageDropdown ? (
-                          <ChevronUp className="w-4 h-4 ml-1 text-gray-400" />
+                          <ChevronUp className="w-4 h-4 ml-1 text-slate-500" />
                         ) : (
-                          <ChevronDown className="w-4 h-4 ml-1 text-gray-400" />
+                          <ChevronDown className="w-4 h-4 ml-1 text-slate-500" />
                         )}
                       </div>
                       
                       {showItemsPerPageDropdown && (
-                        <div className="absolute mt-2 py-1 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-10 w-24 right-0">
+                        <div className="absolute mt-2 py-1 bg-white border border-slate-200 rounded-md shadow-lg z-10 w-24 right-0">
                           {itemsPerPageOptions.map(option => (
                             <div
                               key={option}
-                              className={`px-4 py-2 text-sm cursor-pointer hover:bg-gray-700 ${option === itemsPerPage ? 'text-purple-500' : 'text-white'}`}
+                              className={`px-4 py-2 text-sm cursor-pointer hover:bg-slate-100 ${option === itemsPerPage ? 'text-blue-600' : 'text-slate-700'}`}
                               onClick={() => handleItemsPerPageChange(option)}
                             >
                               {option}
@@ -1715,46 +1717,46 @@ export function Recordings({ onNavigate }: RecordingsProps) {
 
       {/* Modal para mostrar toda la información detallada */}
       {selectedCallModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-            <CardHeader className="border-b border-gray-800 flex justify-between items-center sticky top-0 bg-gray-900 p-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col bg-white shadow-2xl">
+            <CardHeader className="border-b border-slate-200 flex justify-between items-center sticky top-0 bg-gradient-to-r from-slate-50 to-blue-50 p-4">
               <div className="flex items-center">
-                <Phone className="w-5 h-5 text-purple-500 mr-2" />
-                <h2 className="text-xl font-bold text-white">{selectedCallModal.call_id}</h2>
+                <Phone className="w-5 h-5 text-blue-600 mr-2" />
+                <h2 className="text-xl font-bold text-slate-800">{selectedCallModal.call_id}</h2>
               </div>
               <button 
                 onClick={closeCallModal}
-                className="p-1 hover:bg-gray-800 rounded-full"
+                className="p-1 hover:bg-slate-200 rounded-full transition-colors"
               >
-                <X className="w-6 h-6 text-gray-400 hover:text-white" />
+                <X className="w-6 h-6 text-slate-500 hover:text-slate-700" />
               </button>
             </CardHeader>
             
-            <div className="overflow-y-auto p-6 flex-grow">
+            <div className="overflow-y-auto p-6 flex-grow bg-white">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                <Card>
+                <Card className="bg-white shadow-sm border-slate-200">
                   <CardContent className="p-4">
-                    <h3 className="text-lg font-semibold text-white mb-4">Información Básica</h3>
+                    <h3 className="text-lg font-semibold text-slate-800 mb-4">Información Básica</h3>
                     <div className="space-y-3">
                       <div>
-                        <p className="text-sm text-gray-400">ID del Agente</p>
-                        <p className="text-white">{selectedCallModal.agent_id}</p>
+                        <p className="text-sm text-slate-600">ID del Agente</p>
+                        <p className="text-slate-800">{selectedCallModal.agent_id}</p>
                       </div>
                       <div>
-                        <p className="text-sm text-gray-400">Estado de la Llamada</p>
-                        <p className="text-white">{selectedCallModal.call_status}</p>
+                        <p className="text-sm text-slate-600">Estado de la Llamada</p>
+                        <p className="text-slate-800">{selectedCallModal.call_status}</p>
                       </div>
                       <div>
-                        <p className="text-sm text-gray-400">Tipo de Llamada</p>
-                        <p className="text-white">{selectedCallModal.call_type}</p>
+                        <p className="text-sm text-slate-600">Tipo de Llamada</p>
+                        <p className="text-slate-800">{selectedCallModal.call_type}</p>
                       </div>
                       <div>
-                        <p className="text-sm text-gray-400">Fecha y Hora</p>
-                        <p className="text-white">{new Date(selectedCallModal.start_timestamp || 0).toLocaleString()}</p>
+                        <p className="text-sm text-slate-600">Fecha y Hora</p>
+                        <p className="text-slate-800">{new Date(selectedCallModal.start_timestamp || 0).toLocaleString()}</p>
                       </div>
                       <div>
-                        <p className="text-sm text-gray-400">Duración</p>
-                        <p className="text-white flex items-center gap-2">
+                        <p className="text-sm text-slate-600">Duración</p>
+                        <p className="text-slate-800 flex items-center gap-2">
                           <Clock className="w-4 h-4" />
                           {getDuration(selectedCallModal)}
                         </p>
@@ -1762,32 +1764,32 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                       {/* Metadatos adicionales si están disponibles */}
                       {selectedCallModal.from_number && (
                         <div>
-                          <p className="text-sm text-gray-400">Número de Origen</p>
-                          <p className="text-white">{selectedCallModal.from_number}</p>
+                          <p className="text-sm text-slate-600">Número de Origen</p>
+                          <p className="text-slate-800">{selectedCallModal.from_number}</p>
                         </div>
                       )}
                       {selectedCallModal.to_number && (
                         <div>
-                          <p className="text-sm text-gray-400">Número de Destino</p>
-                          <p className="text-white">{selectedCallModal.to_number}</p>
+                          <p className="text-sm text-slate-600">Número de Destino</p>
+                          <p className="text-slate-800">{selectedCallModal.to_number}</p>
                         </div>
                       )}
                       {selectedCallModal.metadata?.direction && (
                         <div>
-                          <p className="text-sm text-gray-400">Dirección</p>
-                          <p className="text-white capitalize">{selectedCallModal.metadata.direction}</p>
+                          <p className="text-sm text-slate-600">Dirección</p>
+                          <p className="text-slate-800 capitalize">{selectedCallModal.metadata.direction}</p>
                         </div>
                       )}
                       {selectedCallModal.call_cost && (
                         <div>
-                          <p className="text-sm text-gray-400">Costo Total</p>
-                          <p className="text-white">{formatCost(selectedCallModal.call_cost.total_cost || 0)}</p>
+                          <p className="text-sm text-slate-600">Costo Total</p>
+                          <p className="text-slate-800">{formatCost(selectedCallModal.call_cost.total_cost || 0)}</p>
                         </div>
                       )}
                       {selectedCallModal.disconnection_reason && (
                         <div>
-                          <p className="text-sm text-gray-400">Razón de Desconexión</p>
-                          <p className="text-white">{selectedCallModal.disconnection_reason}</p>
+                          <p className="text-sm text-slate-600">Razón de Desconexión</p>
+                          <p className="text-slate-800">{selectedCallModal.disconnection_reason}</p>
                         </div>
                       )}
                     </div>
@@ -1799,19 +1801,19 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                   {selectedCallModal.recording_url && <AudioPlayer />}
                   
                   {selectedCallModal.call_analysis && (
-                    <Card>
+                    <Card className="bg-white shadow-sm border-slate-200">
                       <CardContent className="p-4">
-                        <h3 className="text-lg font-semibold text-white mb-4">Análisis de la Llamada</h3>
+                        <h3 className="text-lg font-semibold text-slate-800 mb-4">Análisis de la Llamada</h3>
                         <div className="space-y-3">
                           {selectedCallModal.call_analysis.sentiment && (
                             <div>
-                              <p className="text-sm text-gray-400">Sentimiento</p>
-                              <p className="text-white">{selectedCallModal.call_analysis.sentiment}</p>
+                              <p className="text-sm text-slate-600">Sentimiento</p>
+                              <p className="text-slate-800">{selectedCallModal.call_analysis.sentiment}</p>
                             </div>
                           )}
                           {selectedCallModal.call_analysis.topics && selectedCallModal.call_analysis.topics.length > 0 && (
                             <div>
-                              <p className="text-sm text-gray-400">Temas</p>
+                              <p className="text-sm text-slate-600">Temas</p>
                               <div className="flex flex-wrap gap-2 mt-1">
                                 {selectedCallModal.call_analysis.topics.map((topic, index) => (
                                   <Badge key={index} variant="secondary">{topic}</Badge>
@@ -1822,12 +1824,12 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                           {/* Datos de análisis personalizados (si existen) */}
                           {selectedCallModal.call_analysis?.custom_analysis_data && Object.keys(selectedCallModal.call_analysis.custom_analysis_data).length > 0 && (
                             <div>
-                              <p className="text-sm text-gray-400">Datos de Análisis Personalizados</p>
-                              <div className="bg-gray-800 p-3 rounded-lg">
+                              <p className="text-sm text-slate-600">Datos de Análisis Personalizados</p>
+                              <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
                                 {Object.entries(selectedCallModal.call_analysis.custom_analysis_data).map(([key, value]) => (
-                                  <div key={key} className="flex justify-between border-b border-gray-700 py-2 last:border-0">
-                                    <span className="text-gray-300 font-medium capitalize">{key}:</span>
-                                    <span className="text-white">{String(value)}</span>
+                                  <div key={key} className="flex justify-between border-b border-slate-200 py-2 last:border-0">
+                                    <span className="text-slate-700 font-medium capitalize">{key}:</span>
+                                    <span className="text-slate-800">{String(value)}</span>
                                   </div>
                                 ))}
                               </div>
@@ -1842,9 +1844,9 @@ export function Recordings({ onNavigate }: RecordingsProps) {
               
               {/* Sección de la transcripción con formato mejorado */}
               {selectedCallModal.transcript && (
-                <Card className="mb-6">
+                <Card className="mb-6 bg-white shadow-sm border-slate-200">
                   <CardHeader className="pb-2">
-                    <h3 className="text-lg font-semibold text-white">Transcripción</h3>
+                    <h3 className="text-lg font-semibold text-slate-800">Transcripción</h3>
                   </CardHeader>
                   <CardContent className="p-4">
                     {formatTranscript(selectedCallModal.transcript)}
@@ -1854,9 +1856,9 @@ export function Recordings({ onNavigate }: RecordingsProps) {
               
               {/* Metadata */}
               {selectedCallModal.metadata && Object.keys(selectedCallModal.metadata).length > 0 && (
-                <Card className="mb-6">
+                <Card className="mb-6 bg-white shadow-sm border-slate-200">
                   <CardHeader className="pb-2">
-                    <h3 className="text-lg font-semibold text-white">Metadata</h3>
+                    <h3 className="text-lg font-semibold text-slate-800">Metadata</h3>
                   </CardHeader>
                   <CardContent className="p-4">
                     {renderJson(selectedCallModal.metadata)}
@@ -1866,9 +1868,9 @@ export function Recordings({ onNavigate }: RecordingsProps) {
 
               {/* Variables dinámicas */}
               {selectedCallModal.metadata?.retell_llm_dynamic_variables && Object.keys(selectedCallModal.metadata.retell_llm_dynamic_variables).length > 0 && (
-                <Card className="mb-6">
+                <Card className="mb-6 bg-white shadow-sm border-slate-200">
                   <CardHeader className="pb-2">
-                    <h3 className="text-lg font-semibold text-white">Variables Dinámicas</h3>
+                    <h3 className="text-lg font-semibold text-slate-800">Variables Dinámicas</h3>
                   </CardHeader>
                   <CardContent className="p-4">
                     {renderJson(selectedCallModal.metadata.retell_llm_dynamic_variables)}

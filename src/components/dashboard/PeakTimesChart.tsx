@@ -29,8 +29,10 @@ export function PeakTimesChart({ calls }: PeakTimesChartProps) {
     const hours = Array(24).fill(0);
     
     calls.forEach(call => {
-      const hour = new Date(call.start_timestamp).getHours();
-      hours[hour]++;
+      if (call.start_timestamp) {
+        const hour = new Date(call.start_timestamp).getHours();
+        hours[hour]++;
+      }
     });
     
     return hours;
@@ -46,10 +48,10 @@ export function PeakTimesChart({ calls }: PeakTimesChartProps) {
       title: {
         display: true,
         text: 'Distribución de Llamadas por Hora',
-        color: '#fff',
+        color: '#7c3aed',
         font: {
           size: 16,
-          weight: 'bold'
+          weight: 'bold' as const
         }
       },
       tooltip: {
@@ -61,7 +63,7 @@ export function PeakTimesChart({ calls }: PeakTimesChartProps) {
         padding: 12,
         titleFont: {
           size: 14,
-          weight: 'bold'
+          weight: 'bold' as const
         },
         bodyFont: {
           size: 13
@@ -119,7 +121,7 @@ export function PeakTimesChart({ calls }: PeakTimesChartProps) {
   };
 
   return (
-    <div className="bg-gray-900 p-6 rounded-xl shadow-lg border border-gray-800">
+    <div className="bg-gradient-to-br from-purple-50 to-violet-100 p-6 rounded-xl shadow-lg border border-purple-200">
       <div className="h-[400px]">
         <Bar options={options} data={data} />
       </div>

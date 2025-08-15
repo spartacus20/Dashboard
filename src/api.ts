@@ -1,9 +1,12 @@
 import { RetellCall, FilterCriteria, CallStats, RetellPhoneNumber, RetellAgent, RetellBatchCall, ClientData, Agenda } from './types';
 
-const WEBHOOK_URL = 'https://n8n.aiagencyusa.com/webhook/ed980be2-4957-44cf-8f61-8b8c4d4957e8';
-const GET_CLIENT_WEBHOOK_URL = 'https://n8n.aiagencyusa.com/webhook/get-client';
-const GET_DASHBOARD_WEBHOOK_URL = 'https://n8n.aiagencyusa.com/webhook/get-dashboard';
-const GET_AGENDAS_WEBHOOK_URL = 'https://n8n.aiagencyusa.com/webhook/get-agendas';
+// Obtener la URL base según el entorno
+const IS_PRODUCTION = import.meta.env.VITE_PRODUCTION_API === 'on';
+const BASE_URL = IS_PRODUCTION ? 'https://n8n.aiagencyusa.com/webhook/ed980be2-4957-44cf-8f61-8b8c4d4957e8' : 'https://api.iacreatorhub.com';
+const WEBHOOK_URL = BASE_URL;
+const GET_CLIENT_WEBHOOK_URL = IS_PRODUCTION ? 'https://n8n.aiagencyusa.com/webhook/get-client' : `${BASE_URL}/get-client`;
+const GET_DASHBOARD_WEBHOOK_URL = `${BASE_URL}/api/dashboard/get-dashboard`;
+const GET_AGENDAS_WEBHOOK_URL =  `${BASE_URL}/api/agenda/get-agenda`;
 const API_URL = 'https://api.retellai.com/v2/list-calls';
 
 async function fetchAllCalls(
@@ -511,23 +514,64 @@ export async function getDashboardData(
     const data = await response.json();
     console.log('Respuesta completa del webhook dashboard:', data);
     
-    // El webhook devuelve un array con los datos
-    if (Array.isArray(data) && data.length > 0) {
-      const dashboardResponse = data[0];
-      console.log('Objeto dashboard extraído:', dashboardResponse);
+    // La nueva API devuelve directamente el objeto con los datos
+    if (data && typeof data === 'object') {
+      console.log('Datos del dashboard recibidos:', data);
       
-      if (dashboardResponse.dashboard_data) {
-        console.log('Dashboard data encontrado:', dashboardResponse.dashboard_data);
-        console.log('Métricas generales:', dashboardResponse.dashboard_data.metricas_generales);
-        console.log('Razones de desconexión:', dashboardResponse.dashboard_data.razones_desconexion);
-        console.log('Llamadas por día:', dashboardResponse.dashboard_data.llamadas_por_dia);
-        console.log('Llamadas por hora:', dashboardResponse.dashboard_data.llamadas_por_hora);
-        
-        return dashboardResponse; // Retorna todo el objeto que incluye dashboard_data
-      } else {
-        console.warn('No se encontró dashboard_data en la respuesta');
-        return dashboardResponse;
-      }
+      // Transformar los datos al formato esperado por el frontend
+      const transformedData = {
+        dashboard_data: {
+          metricas_generales: {
+            total_llamadas: data.total_llamadas || 0,
+            llamadas_efectivas: data.llamadas_efectivas || 0,
+            llamadas_fallidas: data.llamadas_fallidas || 0,
+            costo_total: data.costo_total || 0,
+            total_agendamientos: data.total_agendamientos || 0,
+            costo_por_agenda: data.costo_por_agenda || 0
+          },
+          // Transformar costos_por_dia a llamadas_por_dia
+          llamadas_por_dia: data.costos_por_dia ? data.costos_por_dia.map((item: any) => ({
+            fecha: item.fecha,
+            dia_label: new Date(item.fecha).toLocaleDateString('es-ES', { 
+              weekday: 'short', 
+              month: 'short', 
+              day: 'numeric' 
+            }),
+            total_llamadas: Math.round(item.costo / 0.02), // Estimación basada en costo promedio por llamada
+            costo_dia: item.costo,
+            llamadas_efectivas: Math.round((item.costo / 0.02) * 0.2), // Estimación del 20% de efectividad
+            llamadas_fallidas: Math.round((item.costo / 0.02) * 0.8) // Estimación del 80% de fallidas
+          })) : [],
+          // Transformar distribucion_por_hora a llamadas_por_hora
+          llamadas_por_hora: data.distribucion_por_hora ? data.distribucion_por_hora.map((item: any) => ({
+            hora: item.hora,
+            hora_label: `${item.hora}:00`,
+            llamadas_mas_16_segundos: item.cantidad_agendas * 5, // Estimación: 5 llamadas por agenda
+            cantidad_agendas: item.cantidad_agendas
+          })) : [],
+          // Transformar razones_desconexion
+          razones_desconexion: data.razones_desconexion ? data.razones_desconexion.map((item: any) => ({
+            razon: item.razon,
+            total: item.cantidad,
+            porcentaje: ((item.cantidad / (data.total_llamadas || 1)) * 100).toFixed(2)
+          })) : [],
+          // Transformar tipos_vivienda
+          tipos_vivienda: data.tipos_vivienda ? data.tipos_vivienda.map((item: any) => ({
+            tipo: item.tipo,
+            cantidad: item.cantidad,
+            porcentaje: ((item.cantidad / (data.total_llamadas || 1)) * 100).toFixed(2)
+          })) : [],
+          // Transformar llamadas_efectivas_por_hora
+          llamadas_efectivas_por_hora: data.llamadas_efectivas_por_hora ? data.llamadas_efectivas_por_hora.map((item: any) => ({
+            hora: item.hora,
+            hora_label: `${item.hora.toString().padStart(2, '0')}:00`,
+            cantidad_llamadas: item.cantidad_llamadas || 0
+          })) : []
+        }
+      };
+      
+      console.log('Datos transformados:', transformedData);
+      return transformedData;
     }
     
     console.warn('Formato inesperado de respuesta del dashboard:', data);
@@ -538,27 +582,172 @@ export async function getDashboardData(
   }
 }
 
-// Función para obtener agendas
+// Función para obtener todas las agendas con paginación
+export async function fetchAllAgendas(
+  clientId: string, 
+  searchTerm?: string, 
+  filterType?: string, 
+  dateFrom?: string, 
+  dateTo?: string
+): Promise<Agenda[]> {
+  try {
+    console.log('Solicitando TODAS las agendas para client_id:', clientId);
+    console.log('Filtros aplicados:', { searchTerm, filterType, dateFrom, dateTo });
+    
+    let allAgendas: Agenda[] = [];
+    let page = 1;
+    let hasMore = true;
+    
+    while (hasMore) {
+      const requestBody: any = {
+        client_id: clientId,
+        page: page,
+        per_page: 100 // Máximo por página
+      };
+      
+      // Agregar filtros si están disponibles
+      if (searchTerm) {
+        requestBody.search = searchTerm;
+      }
+      
+      if (filterType && filterType !== 'all') {
+        requestBody.tipo_agenda = filterType;
+      }
+      
+      if (dateFrom) {
+        requestBody.fecha_inicio = dateFrom;
+      }
+      
+      if (dateTo) {
+        requestBody.fecha_fin = dateTo;
+      }
+      
+      console.log(`Página ${page}:`, requestBody);
+      
+      const response = await fetch(GET_AGENDAS_WEBHOOK_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Error en la respuesta:', response.status, response.statusText, errorText);
+        throw new Error(`Error al obtener agendas: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log(`Respuesta página ${page}:`, data);
+      
+      // Procesar la respuesta
+      let agendas: Agenda[] = [];
+      let responseData = data;
+      
+      // Si es un array, tomar el primer elemento
+      if (Array.isArray(data)) {
+        if (data.length > 0) {
+          responseData = data[0];
+        } else {
+          console.log('Respuesta vacía');
+          break;
+        }
+      }
+      
+      // Extraer las agendas del objeto de respuesta
+      if (responseData && typeof responseData === 'object') {
+        if (responseData.agendas && Array.isArray(responseData.agendas)) {
+          agendas = responseData.agendas;
+        } else if (responseData.agendamientos && Array.isArray(responseData.agendamientos)) {
+          agendas = responseData.agendamientos;
+        } else if (responseData.data && Array.isArray(responseData.data)) {
+          agendas = responseData.data;
+        } else if (responseData.agendas && !Array.isArray(responseData.agendas)) {
+          // Si agendas no es un array, podría ser un objeto con paginación
+          console.log('Estructura de respuesta inesperada:', responseData);
+          break;
+        }
+      }
+      
+      console.log(`Página ${page}: ${agendas.length} agendas obtenidas`);
+      
+      // Si no obtuvimos agendas, probablemente es el final
+      if (agendas.length === 0) {
+        console.log('No se obtuvieron agendas en esta página, finalizando paginación');
+        break;
+      }
+      
+      // Agregar las agendas de esta página al total
+      allAgendas = [...allAgendas, ...agendas];
+      
+      // Determinar si hay más páginas
+      // Si obtenemos menos de 100 agendas, probablemente es la última página
+      // También verificar si la respuesta indica el total de páginas
+      const totalPages = data.total_paginas || data.totalPages || 0;
+      const totalAgendas = data.total_agendas || data.totalAgendas || 0;
+      
+      console.log(`Página ${page}: ${agendas.length} agendas, Total páginas: ${totalPages}, Total agendas: ${totalAgendas}`);
+      
+      if (totalPages > 0) {
+        // Si conocemos el total de páginas, usar esa información
+        hasMore = page < totalPages;
+      } else {
+        // Si no conocemos el total, usar la heurística
+        hasMore = agendas.length === 100;
+      }
+      
+      if (hasMore) {
+        page++;
+        // Pequeña pausa para no sobrecargar el servidor
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Verificación de seguridad para evitar bucles infinitos
+        if (page > 100) {
+          console.warn('Límite de páginas alcanzado (100), deteniendo paginación');
+          break;
+        }
+      }
+    }
+    
+    console.log(`Total de agendas obtenidas: ${allAgendas.length}`);
+    return allAgendas;
+    
+  } catch (error) {
+    console.error('Error al obtener todas las agendas:', error);
+    throw error;
+  }
+}
+
+// Función para obtener agendas (versión original para la página)
 export async function fetchAgendas(clientId: string): Promise<Agenda[]> {
   try {
     console.log('Solicitando agendas para client_id:', clientId);
+    console.log('URL del endpoint:', GET_AGENDAS_WEBHOOK_URL);
+    
+    const requestBody = {
+      client_id: clientId
+    };
+    
+    console.log('Body de la petición:', requestBody);
     
     const response = await fetch(GET_AGENDAS_WEBHOOK_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        client_id: clientId
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
-      throw new Error(`Error al obtener agendas: ${response.status} ${response.statusText}`);
+      const errorText = await response.text();
+      console.error('Error en la respuesta:', response.status, response.statusText, errorText);
+      throw new Error(`Error al obtener agendas: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
     const data = await response.json();
     console.log('Respuesta completa del webhook de agendas:', data);
+    console.log('Tipo de respuesta:', typeof data, Array.isArray(data) ? 'Array' : 'Object');
     
     // Manejar diferentes formatos de respuesta posibles
     let agendas: Agenda[] = [];

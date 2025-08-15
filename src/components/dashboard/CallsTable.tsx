@@ -40,12 +40,12 @@ export function CallsTable({
   const [showFilters, setShowFilters] = React.useState(false);
 
   return (
-    <div className="bg-gray-900 rounded-xl shadow-lg border border-gray-800">
-      <div className="p-6 border-b border-gray-800">
+    <div className="bg-gradient-to-br from-slate-50 to-gray-100 rounded-xl shadow-lg border border-slate-200">
+      <div className="p-6 border-b border-slate-200">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-lg font-semibold text-white">Llamadas Recientes</h3>
-            <p className="text-sm text-gray-400 mt-1">Total: {calls.length} llamadas</p>
+            <h3 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-slate-700 to-gray-800">Llamadas Recientes</h3>
+            <p className="text-sm text-slate-600 mt-1">Total: {calls.length} llamadas</p>
           </div>
           <div className="flex items-center gap-4">
             <div>
@@ -53,31 +53,31 @@ export function CallsTable({
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-white mr-2"
+                className="px-4 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-700 mr-2"
                 placeholder="Fecha inicial"
               />
               <input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-white"
+                className="px-4 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-700"
                 placeholder="Fecha final"
               />
             </div>
             <div className="relative">
-              <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Search className="w-5 h-5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 placeholder="Buscar llamada..."
                 value={searchTerm}
                 onChange={(e) => onSearchChange(e.target.value)}
-                className="pl-10 pr-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-white placeholder-gray-400"
+                className="pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-700 placeholder-slate-400"
               />
             </div>
             <button 
               onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-2 px-4 py-2 border border-gray-700 rounded-lg hover:bg-gray-800 ${
-                Object.keys(filters).length > 0 ? 'text-purple-400 border-purple-400' : 'text-gray-400'
+              className={`flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-slate-100 transition-colors ${
+                Object.keys(filters).length > 0 ? 'text-blue-600 border-blue-400 bg-blue-50' : 'text-slate-600 border-slate-300'
               }`}
             >
               <Filter className="w-4 h-4" />

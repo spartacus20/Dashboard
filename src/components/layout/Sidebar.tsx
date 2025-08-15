@@ -60,7 +60,7 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
       {/* Botón de menú móvil (visible solo en pantallas pequeñas) */}
       <button 
         onClick={toggleMobileMenu}
-        className="fixed top-4 left-4 z-50 p-2 bg-gray-900 rounded-md shadow-md md:hidden"
+        className="fixed top-4 left-4 z-50 p-2 bg-[#05163b] border border-[#0a2a5a] rounded-md shadow-md md:hidden"
       >
         {isMobileMenuOpen ? (
           <X className="w-6 h-6 text-white" />
@@ -72,12 +72,12 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
       {/* Overlay para cerrar el menú en móvil al tocar fuera */}
       {isMobileMenuOpen && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+          className="fixed inset-0 bg-black bg-opacity-30 z-40 md:hidden"
           onClick={toggleMobileMenu}
         ></div>
       )}
       
-      <div className={`fixed top-0 left-0 h-full w-64 bg-gray-900 border-r border-gray-800 p-4 z-40 transition-transform duration-300 ease-in-out transform ${
+      <div className={`fixed top-0 left-0 h-full w-64 bg-[#05163b] border-r border-[#0a2a5a] p-4 z-40 transition-transform duration-300 ease-in-out transform ${
         isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
       }`}>
         <div className="flex items-center justify-between mb-8">
@@ -85,16 +85,16 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
         </div>
         
         {/* Indicador de API key en uso */}
-        <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-gray-800 rounded-md text-xs text-gray-300">
-          <Key className="w-4 h-4 text-purple-400" />
+        <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-[#0a2a5a] rounded-md text-xs text-gray-300">
+          <Key className="w-4 h-4 text-blue-400" />
           <div className="overflow-hidden text-ellipsis">
-            <span className="text-gray-500">API Key:</span> {truncatedApiKey}
+            <span className="text-gray-400">API Key:</span> {truncatedApiKey}
           </div>
         </div>
         
         {/* Indicador de estado de caché */}
         {cacheStatus && (
-          <div className="mt-2 text-xs text-gray-400 mb-4">
+          <div className="mt-2 text-xs text-gray-300 mb-4">
             {isLoading || loadingAllCalls ? (
               <div className="space-y-2">
                 <span className="flex items-center text-blue-400">
@@ -108,9 +108,9 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
                 {/* Barra de progreso */}
                 {loadingProgress > 0 && (
                   <div className="w-full">
-                    <div className="w-full bg-gray-800 rounded-full h-1.5">
+                    <div className="w-full bg-[#0a2a5a] rounded-full h-1.5">
                       <div
-                        className="bg-blue-500 h-1.5 rounded-full"
+                        className="bg-blue-400 h-1.5 rounded-full"
                         style={{ width: `${progressPercentage}%` }}
                       ></div>
                     </div>
@@ -134,8 +134,8 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
             }}
             className={`flex w-full items-center gap-2 px-4 py-2 ${
               currentPage === 'dashboard'
-                ? 'text-purple-400 bg-gray-800'
-                : 'text-gray-400 hover:bg-gray-800'
+                ? 'text-white bg-[#0a2a5a] border border-[#1e4a8a]'
+                : 'text-gray-300 hover:bg-[#0a2a5a]'
             } rounded-lg`}
           >
             <BarChart3 className="w-5 h-5" />
@@ -147,8 +147,8 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
             }}
             className={`flex w-full items-center gap-2 px-4 py-2 ${
               currentPage === 'agendas'
-                ? 'text-purple-400 bg-gray-800'
-                : 'text-gray-400 hover:bg-gray-800'
+                ? 'text-white bg-[#0a2a5a] border border-[#1e4a8a]'
+                : 'text-gray-300 hover:bg-[#0a2a5a]'
             } rounded-lg`}
           >
             <Calendar className="w-5 h-5" />
@@ -160,8 +160,8 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
             }}
             className={`flex w-full items-center gap-2 px-4 py-2 ${
               currentPage === 'recordings'
-                ? 'text-purple-400 bg-gray-800'
-                : 'text-gray-400 hover:bg-gray-800'
+                ? 'text-white bg-[#0a2a5a] border border-[#1e4a8a]'
+                : 'text-gray-300 hover:bg-[#0a2a5a]'
             } rounded-lg`}
           >
             <Mic className="w-5 h-5" />
@@ -173,8 +173,8 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
             }}
             className={`flex w-full items-center gap-2 px-4 py-2 ${
               currentPage === 'phones'
-                ? 'text-purple-400 bg-gray-800'
-                : 'text-gray-400 hover:bg-gray-800'
+                ? 'text-white bg-[#0a2a5a] border border-[#1e4a8a]'
+                : 'text-gray-300 hover:bg-[#0a2a5a]'
             } rounded-lg`}
           >
             <Phone className="w-5 h-5" />
@@ -187,8 +187,8 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
               }}
               className={`flex w-full items-center gap-2 px-4 py-2 ${
                 currentPage === 'batch-call'
-                  ? 'text-purple-400 bg-gray-800'
-                  : 'text-gray-400 hover:bg-gray-800'
+                  ? 'text-white bg-[#0a2a5a] border border-[#1e4a8a]'
+                  : 'text-gray-300 hover:bg-[#0a2a5a]'
               } rounded-lg`}
             >
               <PhoneOutgoing className="w-5 h-5" />

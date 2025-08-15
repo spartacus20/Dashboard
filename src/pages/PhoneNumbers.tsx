@@ -147,74 +147,74 @@ function CallModal({ phoneNumber, onClose, apiKey }: CallModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-900 rounded-xl shadow-xl border border-gray-800 w-full max-w-md">
-        <div className="flex justify-between items-center border-b border-gray-800 p-4">
-          <h3 className="text-lg font-medium text-white">Realizar llamada</h3>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md">
+        <div className="flex justify-between items-center border-b border-slate-200 p-4 bg-gradient-to-r from-slate-50 to-blue-50">
+          <h3 className="text-lg font-medium text-slate-800">Realizar llamada</h3>
           <button 
             onClick={onClose}
-            className="p-1 hover:bg-gray-800 rounded-full"
+            className="p-1 hover:bg-slate-200 rounded-full transition-colors"
           >
-            <X className="w-5 h-5 text-gray-400 hover:text-white" />
+            <X className="w-5 h-5 text-slate-500 hover:text-slate-700" />
           </button>
         </div>
         
-        <div className="p-5 space-y-5">
+        <div className="p-5 space-y-5 bg-white">
           <div>
-            <p className="text-gray-400 mb-1">Desde el número:</p>
-            <div className="flex items-center bg-gray-800 p-3 rounded-lg">
-              <Phone className="w-5 h-5 text-purple-400 mr-2" />
-              <span className="text-white">{phoneNumber.phone_number_pretty}</span>
+            <p className="text-slate-600 mb-1">Desde el número:</p>
+            <div className="flex items-center bg-slate-50 p-3 rounded-lg border border-slate-200">
+              <Phone className="w-5 h-5 text-blue-600 mr-2" />
+              <span className="text-slate-800">{phoneNumber.phone_number_pretty}</span>
             </div>
           </div>
           
           <div>
-            <label className="block text-gray-400 mb-1">Número de destino *</label>
+            <label className="block text-slate-600 mb-1">Número de destino *</label>
             <input
               type="text"
               value={toNumber}
               onChange={(e) => setToNumber(e.target.value)}
               placeholder="+1 (555) 123-4567"
-              className="w-full p-3 rounded-lg bg-gray-800 border border-gray-700 text-white"
+              className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
           </div>
 
           <div className="relative agent-dropdown">
-            <label className="block text-gray-400 mb-1">Agente para la llamada *</label>
+            <label className="block text-slate-600 mb-1">Agente para la llamada *</label>
             {loadingAgents ? (
-              <div className="flex items-center bg-gray-800 p-3 rounded-lg border border-gray-700 text-gray-400">
-                <svg className="animate-spin mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <div className="flex items-center bg-slate-50 p-3 rounded-lg border border-slate-200 text-slate-600">
+                <svg className="animate-spin mr-2 h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
                 Cargando agentes...
               </div>
             ) : agentsError ? (
-              <div className="p-3 bg-red-900/30 border border-red-800 rounded-lg text-red-300 text-sm">
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
                 {agentsError}
               </div>
             ) : agents.length === 0 ? (
-              <div className="flex items-center bg-gray-800 p-3 rounded-lg border border-gray-700 text-gray-400">
+              <div className="flex items-center bg-slate-50 p-3 rounded-lg border border-slate-200 text-slate-600">
                 No se encontraron agentes disponibles
               </div>
             ) : (
               <>
                 <button
                   onClick={() => setShowAgentsDropdown(!showAgentsDropdown)}
-                  className="w-full flex items-center justify-between p-3 rounded-lg bg-gray-800 border border-gray-700 text-white"
+                  className="w-full flex items-center justify-between p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <div className="flex items-center">
-                    <User className="w-5 h-5 text-purple-400 mr-2" />
+                    <User className="w-5 h-5 text-blue-600 mr-2" />
                     <span>
                       {selectedAgent ? selectedAgent.agent_name : 'Seleccionar agente'}
                     </span>
                   </div>
-                  <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${showAgentsDropdown ? 'transform rotate-180' : ''}`} />
+                  <ChevronDown className={`w-5 h-5 text-slate-500 transition-transform ${showAgentsDropdown ? 'transform rotate-180' : ''}`} />
                 </button>
                 
                 {showAgentsDropdown && (
-                  <div className="absolute mt-1 w-full bg-gray-800 rounded-lg shadow-lg z-10 border border-gray-700 max-h-60 overflow-y-auto">
+                  <div className="absolute mt-1 w-full bg-white rounded-lg shadow-lg z-10 border border-slate-200 max-h-60 overflow-y-auto">
                     <ul className="py-1">
                       {agents.map((agent) => (
                         <li key={agent.agent_id}>
@@ -222,14 +222,14 @@ function CallModal({ phoneNumber, onClose, apiKey }: CallModalProps) {
                             onClick={() => handleSelectAgent(agent)}
                             className={`w-full text-left px-4 py-2 flex items-center ${
                               selectedAgent?.agent_id === agent.agent_id
-                                ? 'bg-purple-600 text-white'
-                                : 'text-gray-300 hover:bg-gray-700'
+                                ? 'bg-blue-600 text-white'
+                                : 'text-slate-700 hover:bg-slate-100'
                             }`}
                           >
                             <User className="w-4 h-4 mr-2" />
                             <div>
                               <p>{agent.agent_name}</p>
-                              <p className="text-xs text-gray-400 truncate">{agent.agent_id}</p>
+                              <p className="text-xs text-slate-500 truncate">{agent.agent_id}</p>
                             </div>
                           </button>
                         </li>
@@ -243,10 +243,10 @@ function CallModal({ phoneNumber, onClose, apiKey }: CallModalProps) {
 
           <div>
             <div className="flex justify-between items-center mb-1">
-              <label className="text-gray-400">Variables dinámicas (opcional)</label>
+              <label className="text-slate-600">Variables dinámicas (opcional)</label>
               <button 
                 onClick={addDynamicVariable}
-                className="text-purple-400 hover:text-purple-300 flex items-center text-sm"
+                className="text-blue-600 hover:text-blue-700 flex items-center text-sm"
               >
                 <Plus className="w-4 h-4 mr-1" /> Añadir variable
               </button>
@@ -259,21 +259,21 @@ function CallModal({ phoneNumber, onClose, apiKey }: CallModalProps) {
                   value={variable.key}
                   onChange={(e) => updateDynamicVariable(index, 'key', e.target.value)}
                   placeholder="Nombre"
-                  className="flex-1 p-2 rounded-lg bg-gray-800 border border-gray-700 text-white"
+                  className="flex-1 p-2 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <input
                   type="text"
                   value={variable.value}
                   onChange={(e) => updateDynamicVariable(index, 'value', e.target.value)}
                   placeholder="Valor"
-                  className="flex-1 p-2 rounded-lg bg-gray-800 border border-gray-700 text-white"
+                  className="flex-1 p-2 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 {index > 0 && (
                   <button 
                     onClick={() => removeDynamicVariable(index)}
-                    className="p-1 hover:bg-gray-700 rounded-full"
+                    className="p-1 hover:bg-slate-200 rounded-full transition-colors"
                   >
-                    <X className="w-5 h-5 text-gray-400 hover:text-white" />
+                    <X className="w-5 h-5 text-slate-500 hover:text-slate-700" />
                   </button>
                 )}
               </div>
@@ -281,13 +281,13 @@ function CallModal({ phoneNumber, onClose, apiKey }: CallModalProps) {
           </div>
           
           {error && (
-            <div className="p-3 bg-red-900/30 border border-red-800 rounded-lg text-red-300 text-sm">
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
               {error}
             </div>
           )}
           
           {success && (
-            <div className="p-3 bg-green-900/30 border border-green-800 rounded-lg text-green-300 text-sm">
+            <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
               {success}
             </div>
           )}
@@ -295,7 +295,7 @@ function CallModal({ phoneNumber, onClose, apiKey }: CallModalProps) {
           <div className="flex justify-end pt-3">
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 mr-2"
+              className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 mr-2 transition-colors"
             >
               Cancelar
             </button>
@@ -304,8 +304,8 @@ function CallModal({ phoneNumber, onClose, apiKey }: CallModalProps) {
               disabled={loading || !toNumber || !selectedAgent}
               className={`px-4 py-2 rounded-lg text-white flex items-center ${
                 loading || !toNumber || !selectedAgent
-                  ? 'bg-purple-700/50 cursor-not-allowed'
-                  : 'bg-purple-600 hover:bg-purple-700'
+                  ? 'bg-blue-400 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800'
               }`}
             >
               {loading ? (
@@ -388,23 +388,23 @@ export function PhoneNumbers({ onNavigate }: PhoneNumbersProps) {
   };
   
   return (
-    <div className="p-8">
+    <div className="p-8 bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
       <div className="mb-8">
-        <h2 className="text-2xl font-bold text-white mb-2">Números de Teléfono</h2>
-        <p className="text-gray-400">Gestiona los números de teléfono asociados a tus agentes de IA</p>
+        <h2 className="text-2xl font-bold text-slate-800 mb-2">Números de Teléfono</h2>
+        <p className="text-slate-600">Gestiona los números de teléfono asociados a tus agentes de IA</p>
       </div>
       
-      <div className="bg-gray-900 rounded-xl shadow-lg border border-gray-800">
-        <div className="p-6 border-b border-gray-800 flex flex-wrap items-center justify-between gap-4">
-          <h3 className="text-lg font-semibold text-white">Números de Teléfono</h3>
+      <div className="bg-white rounded-xl shadow-lg border border-slate-200">
+        <div className="p-6 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4 bg-gradient-to-r from-slate-50 to-blue-50">
+          <h3 className="text-lg font-semibold text-slate-800">Números de Teléfono</h3>
           
           <button
             onClick={loadPhoneNumbers}
             disabled={loading}
             className={`px-4 py-2 rounded-lg text-white flex items-center ${
               loading
-                ? 'bg-gray-700 cursor-not-allowed'
-                : 'bg-green-600 hover:bg-green-700'
+                ? 'bg-slate-400 cursor-not-allowed'
+                : 'bg-gradient-to-r from-green-600 to-emerald-700 hover:from-green-700 hover:to-emerald-800'
             }`}
           >
             {loading ? (
@@ -424,75 +424,75 @@ export function PhoneNumbers({ onNavigate }: PhoneNumbersProps) {
           </button>
         </div>
         
-        <div className="divide-y divide-gray-800">
+        <div className="divide-y divide-slate-200">
           {/* Estado de carga */}
           {loading && (
-            <div className="p-6 text-center text-gray-400">
+            <div className="p-6 text-center text-slate-600">
               Cargando números de teléfono...
             </div>
           )}
           
           {/* Mostrar error si lo hay */}
           {error && (
-            <div className="p-6 text-center text-red-400">
+            <div className="p-6 text-center text-red-600">
               {error}
             </div>
           )}
           
           {/* No se encontraron resultados */}
           {!loading && !error && phoneNumbers.length === 0 && (
-            <div className="p-6 text-center text-gray-400">
+            <div className="p-6 text-center text-slate-600">
               No se encontraron números de teléfono
             </div>
           )}
           
           {/* Lista de números de teléfono */}
           {!loading && !error && phoneNumbers.map((phone) => (
-            <div key={phone.phone_number} className="p-6 hover:bg-gray-800/30 transition-colors">
+            <div key={phone.phone_number} className="p-6 hover:bg-slate-50 transition-colors">
               <div className="flex items-start justify-between">
                 <div className="flex-grow">
                   <div className="flex items-center gap-2 mb-2">
-                    <Phone className="w-5 h-5 text-purple-400" />
-                    <h4 className="text-white font-medium text-lg">{phone.phone_number_pretty}</h4>
+                    <Phone className="w-5 h-5 text-blue-600" />
+                    <h4 className="text-slate-800 font-medium text-lg">{phone.phone_number_pretty}</h4>
                     <button 
                       onClick={() => copyToClipboard(phone.phone_number)}
-                      className="ml-2 p-1 rounded-md hover:bg-gray-700 transition-colors"
+                      className="ml-2 p-1 rounded-md hover:bg-slate-200 transition-colors"
                       title="Copiar número"
                     >
-                      <Copy className="w-4 h-4 text-gray-400 hover:text-white" />
+                      <Copy className="w-4 h-4 text-slate-500 hover:text-slate-700" />
                     </button>
                     {copiedNumber === phone.phone_number && (
-                      <span className="text-green-400 text-sm">¡Copiado!</span>
+                      <span className="text-green-600 text-sm">¡Copiado!</span>
                     )}
                   </div>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-sm text-gray-400">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-sm text-slate-600">
                     {phone.nickname && (
                       <div>
-                        <p className="text-gray-500">Nombre</p>
-                        <p className="text-white">{phone.nickname}</p>
+                        <p className="text-slate-500">Nombre</p>
+                        <p className="text-slate-800">{phone.nickname}</p>
                       </div>
                     )}
                     
                     <div>
-                      <p className="text-gray-500">Tipo</p>
-                      <p className="text-white">{phone.phone_number_type}</p>
+                      <p className="text-slate-500">Tipo</p>
+                      <p className="text-slate-800">{phone.phone_number_type}</p>
                     </div>
                     
                     <div>
-                      <p className="text-gray-500">Código de área</p>
-                      <p className="text-white">{phone.area_code}</p>
+                      <p className="text-slate-500">Código de área</p>
+                      <p className="text-slate-800">{phone.area_code}</p>
                     </div>
                     
                     <div>
-                      <p className="text-gray-500">Última modificación</p>
-                      <p className="text-white">{formatDate(phone.last_modification_timestamp)}</p>
+                      <p className="text-slate-500">Última modificación</p>
+                      <p className="text-slate-800">{formatDate(phone.last_modification_timestamp)}</p>
                     </div>
                     
                     <div>
-                      <p className="text-gray-500">Agente de entrada</p>
+                      <p className="text-slate-500">Agente de entrada</p>
                       <div className="flex items-center">
-                        <p className="text-white mr-2">
+                        <p className="text-slate-800 mr-2">
                           {phone.inbound_agent_id ? `${phone.inbound_agent_id.substring(0, 10)}...` : 'No asignado'}
                         </p>
                         {phone.inbound_agent_id && (
@@ -500,7 +500,7 @@ export function PhoneNumbers({ onNavigate }: PhoneNumbersProps) {
                             href={getAgentUrl(phone.inbound_agent_id)} 
                             target="_blank" 
                             rel="noopener noreferrer"
-                            className="text-purple-400 hover:text-purple-300"
+                            className="text-blue-600 hover:text-blue-700"
                           >
                             <ExternalLink className="w-4 h-4" />
                           </a>
@@ -509,9 +509,9 @@ export function PhoneNumbers({ onNavigate }: PhoneNumbersProps) {
                     </div>
                     
                     <div>
-                      <p className="text-gray-500">Agente de salida</p>
+                      <p className="text-slate-500">Agente de salida</p>
                       <div className="flex items-center">
-                        <p className="text-white mr-2">
+                        <p className="text-slate-800 mr-2">
                           {phone.outbound_agent_id ? `${phone.outbound_agent_id.substring(0, 10)}...` : 'No asignado'}
                         </p>
                         {phone.outbound_agent_id && (
@@ -519,7 +519,7 @@ export function PhoneNumbers({ onNavigate }: PhoneNumbersProps) {
                             href={getAgentUrl(phone.outbound_agent_id)} 
                             target="_blank" 
                             rel="noopener noreferrer"
-                            className="text-purple-400 hover:text-purple-300"
+                            className="text-blue-600 hover:text-blue-700"
                           >
                             <ExternalLink className="w-4 h-4" />
                           </a>
@@ -529,8 +529,8 @@ export function PhoneNumbers({ onNavigate }: PhoneNumbersProps) {
                     
                     {phone.inbound_webhook_url && (
                       <div className="col-span-1 md:col-span-2">
-                        <p className="text-gray-500">URL de webhook</p>
-                        <p className="text-white truncate">{phone.inbound_webhook_url}</p>
+                        <p className="text-slate-500">URL de webhook</p>
+                        <p className="text-slate-800 truncate">{phone.inbound_webhook_url}</p>
                       </div>
                     )}
                   </div>
@@ -538,7 +538,7 @@ export function PhoneNumbers({ onNavigate }: PhoneNumbersProps) {
                 
                 <button
                   onClick={() => setSelectedPhone(phone)}
-                  className="px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center"
+                  className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-lg hover:from-blue-700 hover:to-indigo-800 transition-colors flex items-center"
                 >
                   <Phone className="w-4 h-4 mr-1" />
                   Llamar

@@ -9,6 +9,23 @@ export default defineConfig({
     exclude: ['lucide-react'],
   },
   server: {
-    headers: corsHeaders
+    headers: corsHeaders,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        secure: false,
+      }
+    }
+  },
+  build: {
+    rollupOptions: {
+      input: {
+        main: './index.html',
+      },
+    },
+    outDir: 'dist',
+    assetsDir: 'assets',
+    copyPublicDir: true
   }
 });

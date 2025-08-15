@@ -1210,7 +1210,7 @@ function DashboardApp() {
   }
 
   return (
-    <div className="min-h-screen bg-black">
+    <div className="min-h-screen bg-gray-50">
       <Sidebar 
         currentPage={currentPage} 
         onPageChange={setCurrentPage} 

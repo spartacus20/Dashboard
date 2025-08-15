@@ -4,6 +4,15 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Chart } from "../components/ui/chart";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend
+} from "recharts";
 
 // Componente para mostrar esqueletos de carga
 const DashboardSkeleton = () => {
@@ -61,6 +70,22 @@ function translateDisconnectionReason(reason: string): string {
   return translations[reason] || reason;
 }
 
+// Función para traducir tipos de vivienda
+function translateHousingType(type: string): string {
+  const translations: Record<string, string> = {
+    'no_identificado': 'No identificado',
+    'casa': 'Casa',
+    'alquiler': 'Alquiler',
+    'piso': 'Piso',
+    'apartamento': 'Apartamento',
+    'duplex': 'Dúplex',
+    'chalet': 'Chalet',
+    'estudio': 'Estudio'
+  };
+  
+  return translations[type] || type;
+}
+
 // Función para generar datos del gráfico de desconexión
 function generateDisconnectionData(calls: any[], dashboardData?: any) {
   // Si tenemos datos del dashboard, usarlos directamente
@@ -91,14 +116,85 @@ function generateDailyCallsData(dashboardData?: any) {
   return [];
 }
 
-// Función para generar datos del gráfico de llamadas por hora
-function generateHourlyCallsData(dashboardData?: any) {
-  if (dashboardData?.dashboard_data?.llamadas_por_hora && Array.isArray(dashboardData.dashboard_data.llamadas_por_hora)) {
-    return dashboardData.dashboard_data.llamadas_por_hora.map((item: any) => ({
-      label: item.hora_label || `${item.hora}:00`,
-      calls: item.llamadas_mas_16_segundos || 0,
-      hour: item.hora
+// Función para generar datos del gráfico de llamadas efectivas por hora
+function generateEffectiveCallsData(dashboardData?: any, hourStart?: string, hourEnd?: string) {
+  if (dashboardData?.dashboard_data?.llamadas_efectivas_por_hora && Array.isArray(dashboardData.dashboard_data.llamadas_efectivas_por_hora)) {
+    const startHour = parseInt(hourStart || '0');
+    const endHour = parseInt(hourEnd || '23');
+    
+    // Crear un mapa de los datos existentes para acceso rápido
+    const dataMap = new Map();
+    dashboardData.dashboard_data.llamadas_efectivas_por_hora.forEach((item: any) => {
+      dataMap.set(parseInt(item.hora), item.cantidad_llamadas || 0);
+    });
+    
+    // Generar datos solo para las horas que tienen registros
+    const dataWithRecords = [];
+    for (let hour = startHour; hour <= endHour; hour++) {
+      const llamadas = dataMap.get(hour) || 0;
+      if (llamadas > 0) { // Solo incluir horas con registros
+        dataWithRecords.push({
+          label: `${hour.toString().padStart(2, '0')}:00`,
+          llamadas: llamadas,
+          hour: hour
+        });
+      }
+    }
+    
+    return dataWithRecords;
+  }
+  
+  return [];
+}
+
+// Función para generar datos del gráfico de tipos de vivienda
+function generateHousingTypeData(dashboardData?: any) {
+  if (dashboardData?.dashboard_data?.tipos_vivienda && Array.isArray(dashboardData.dashboard_data.tipos_vivienda)) {
+    // Filtrar excluyendo "no_identificado"
+    const filteredData = dashboardData.dashboard_data.tipos_vivienda.filter((item: any) => 
+      item.tipo !== 'no_identificado'
+    );
+    
+    // Calcular el total de los datos filtrados para recalcular porcentajes
+    const totalFiltered = filteredData.reduce((sum: number, item: any) => sum + (item.cantidad || 0), 0);
+    
+    return filteredData.map((item: any) => ({
+      label: translateHousingType(item.tipo),
+      cantidad: item.cantidad || 0,
+      porcentaje: totalFiltered > 0 ? ((item.cantidad || 0) / totalFiltered * 100).toFixed(2) : '0',
+      tipo: item.tipo
     }));
+  }
+  
+  return [];
+}
+
+// Función para generar datos del gráfico de agendamientos por hora
+function generateHourlyAgendasData(dashboardData?: any, hourStart?: string, hourEnd?: string) {
+  if (dashboardData?.dashboard_data?.llamadas_por_hora && Array.isArray(dashboardData.dashboard_data.llamadas_por_hora)) {
+    const startHour = parseInt(hourStart || '8');
+    const endHour = parseInt(hourEnd || '23');
+    
+    // Crear un mapa de los datos existentes para acceso rápido
+    const dataMap = new Map();
+    dashboardData.dashboard_data.llamadas_por_hora.forEach((item: any) => {
+      dataMap.set(parseInt(item.hora), item.cantidad_agendas || 0);
+    });
+    
+    // Generar datos solo para las horas que tienen registros
+    const dataWithRecords = [];
+    for (let hour = startHour; hour <= endHour; hour++) {
+      const agendas = dataMap.get(hour) || 0;
+      if (agendas > 0) { // Solo incluir horas con registros
+        dataWithRecords.push({
+          label: `${hour.toString().padStart(2, '0')}:00`,
+          agendas: agendas,
+          hour: hour
+        });
+      }
+    }
+    
+    return dataWithRecords;
   }
   
   return [];
@@ -131,10 +227,94 @@ export function Dashboard({
   dashboardData,
   loadDashboardData
 }: DashboardProps) {
+  // Error boundary simple
+  const [hasError, setHasError] = React.useState(false);
+  const [errorMessage, setErrorMessage] = React.useState<string>('');
+
+  React.useEffect(() => {
+    const handleError = (error: ErrorEvent) => {
+      console.error('Error capturado en Dashboard:', error);
+      setHasError(true);
+      setErrorMessage(error.message || 'Error desconocido');
+    };
+
+    window.addEventListener('error', handleError);
+    return () => window.removeEventListener('error', handleError);
+  }, []);
+
+  if (hasError) {
+    return (
+      <div className="p-8">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+          <h2 className="text-lg font-semibold text-red-800 mb-2">Error en el Dashboard</h2>
+          <p className="text-red-700 mb-4">{errorMessage}</p>
+          <button 
+            onClick={() => {
+              setHasError(false);
+              setErrorMessage('');
+              window.location.reload();
+            }}
+            className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+          >
+            Recargar página
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Estados para filtros de período
-  const [timePeriod, setTimePeriod] = useState<string>('all');
+  const [timePeriod, setTimePeriod] = useState<string>('week');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
+  
+  // Estados para filtro de rango de horas (agendamientos)
+  const [hourRangeStart, setHourRangeStart] = useState<string>('8');
+  const [hourRangeEnd, setHourRangeEnd] = useState<string>('23');
+  
+  // Estados para filtro de rango de horas (llamadas efectivas)
+  const [effectiveCallsHourStart, setEffectiveCallsHourStart] = useState<string>('0');
+  const [effectiveCallsHourEnd, setEffectiveCallsHourEnd] = useState<string>('23');
+  
+  // Función para validar y actualizar el rango de horas (agendamientos)
+  const handleHourRangeChange = (type: 'start' | 'end', value: string) => {
+    const startHour = parseInt(type === 'start' ? value : hourRangeStart);
+    const endHour = parseInt(type === 'end' ? value : hourRangeEnd);
+    
+    if (type === 'start') {
+      setHourRangeStart(value);
+      // Si la hora de inicio es mayor que la de fin, ajustar la de fin
+      if (startHour > endHour) {
+        setHourRangeEnd(value);
+      }
+    } else {
+      setHourRangeEnd(value);
+      // Si la hora de fin es menor que la de inicio, ajustar la de inicio
+      if (endHour < startHour) {
+        setHourRangeStart(value);
+      }
+    }
+  };
+  
+  // Función para validar y actualizar el rango de horas (llamadas efectivas)
+  const handleEffectiveCallsHourRangeChange = (type: 'start' | 'end', value: string) => {
+    const startHour = parseInt(type === 'start' ? value : effectiveCallsHourStart);
+    const endHour = parseInt(type === 'end' ? value : effectiveCallsHourEnd);
+    
+    if (type === 'start') {
+      setEffectiveCallsHourStart(value);
+      // Si la hora de inicio es mayor que la de fin, ajustar la de fin
+      if (startHour > endHour) {
+        setEffectiveCallsHourEnd(value);
+      }
+    } else {
+      setEffectiveCallsHourEnd(value);
+      // Si la hora de fin es menor que la de inicio, ajustar la de inicio
+      if (endHour < startHour) {
+        setEffectiveCallsHourStart(value);
+      }
+    }
+  };
   
   // Log para depurar
   React.useEffect(() => {
@@ -144,6 +324,23 @@ export function Dashboard({
       console.log('Dashboard - razones_desconexion:', dashboardData.razones_desconexion);
     }
   }, [dashboardData]);
+
+  // Efecto para cargar datos la primera vez con la última semana
+  React.useEffect(() => {
+    if (!loadDashboardData) return;
+    // Solo cargar en el primer render
+    if (timePeriod === 'week') {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const weekStart = new Date(today);
+      weekStart.setDate(today.getDate() - 7);
+      const weekStartStr = weekStart.toISOString().split('T')[0];
+      const tomorrow = new Date(today);
+      tomorrow.setDate(today.getDate() + 1);
+      const tomorrowStr = tomorrow.toISOString().split('T')[0];
+      loadDashboardData(weekStartStr, tomorrowStr);
+    }
+  }, [loadDashboardData]);
 
   // Función para calcular las fechas según el período seleccionado
   const calculateDatesForPeriod = (period: string, customStart?: string, customEnd?: string) => {
@@ -209,72 +406,139 @@ export function Dashboard({
   const filterDataByPeriod = (data: any[], dateField: string = 'fecha') => {
     if (!data || !Array.isArray(data)) return data;
     
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
-    switch (timePeriod) {
-      case 'today':
-        return data.filter(item => {
-          const itemDate = new Date(item[dateField]);
-          return itemDate >= today;
-        });
+    try {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       
-      case 'week':
-        const weekStart = new Date(today);
-        weekStart.setDate(today.getDate() - 7);
-        return data.filter(item => {
-          const itemDate = new Date(item[dateField]);
-          return itemDate >= weekStart;
-        });
-      
-      case 'month':
-        const monthStart = new Date(today);
-        monthStart.setMonth(today.getMonth() - 1);
-        return data.filter(item => {
-          const itemDate = new Date(item[dateField]);
-          return itemDate >= monthStart;
-        });
-      
-      case 'custom':
-        if (customStartDate && customEndDate) {
-          const startDate = new Date(customStartDate);
-          const endDate = new Date(customEndDate);
-          endDate.setHours(23, 59, 59, 999); // Incluir todo el día final
+      switch (timePeriod) {
+        case 'today':
           return data.filter(item => {
-            const itemDate = new Date(item[dateField]);
-            return itemDate >= startDate && itemDate <= endDate;
+            try {
+              const itemDate = new Date(item[dateField]);
+              return !isNaN(itemDate.getTime()) && itemDate >= today;
+            } catch (error) {
+              console.warn('Error procesando fecha:', item[dateField], error);
+              return false;
+            }
           });
-        }
-        return data;
-      
-      default:
-        return data;
+        
+        case 'week':
+          const weekStart = new Date(today);
+          weekStart.setDate(today.getDate() - 7);
+          return data.filter(item => {
+            try {
+              const itemDate = new Date(item[dateField]);
+              return !isNaN(itemDate.getTime()) && itemDate >= weekStart;
+            } catch (error) {
+              console.warn('Error procesando fecha:', item[dateField], error);
+              return false;
+            }
+          });
+        
+        case 'month':
+          const monthStart = new Date(today);
+          monthStart.setMonth(today.getMonth() - 1);
+          return data.filter(item => {
+            try {
+              const itemDate = new Date(item[dateField]);
+              return !isNaN(itemDate.getTime()) && itemDate >= monthStart;
+            } catch (error) {
+              console.warn('Error procesando fecha:', item[dateField], error);
+              return false;
+            }
+          });
+        
+        case 'custom':
+          if (customStartDate && customEndDate) {
+            try {
+              const startDate = new Date(customStartDate);
+              const endDate = new Date(customEndDate);
+              endDate.setHours(23, 59, 59, 999); // Incluir todo el día final
+              return data.filter(item => {
+                try {
+                  const itemDate = new Date(item[dateField]);
+                  return !isNaN(itemDate.getTime()) && itemDate >= startDate && itemDate <= endDate;
+                } catch (error) {
+                  console.warn('Error procesando fecha:', item[dateField], error);
+                  return false;
+                }
+              });
+            } catch (error) {
+              console.warn('Error procesando fechas personalizadas:', error);
+              return data;
+            }
+          }
+          return data;
+        
+        default:
+          return data;
+      }
+    } catch (error) {
+      console.error('Error en filterDataByPeriod:', error);
+      return data;
     }
   };
   
   // Datos para los gráficos con filtrado
   const filteredDailyData = useMemo(() => {
-    if (dashboardData?.dashboard_data?.llamadas_por_dia) {
-      return filterDataByPeriod(dashboardData.dashboard_data.llamadas_por_dia, 'fecha');
+    try {
+      if (dashboardData?.dashboard_data?.llamadas_por_dia) {
+        console.log('Datos originales de llamadas_por_dia:', dashboardData.dashboard_data.llamadas_por_dia);
+        const filtered = filterDataByPeriod(dashboardData.dashboard_data.llamadas_por_dia, 'fecha');
+        console.log('Datos filtrados:', filtered);
+        return filtered;
+      }
+      console.log('No hay datos de llamadas_por_dia en dashboardData');
+      return [];
+    } catch (error) {
+      console.error('Error procesando filteredDailyData:', error);
+      return [];
     }
-    return [];
   }, [dashboardData, timePeriod, customStartDate, customEndDate]);
 
   const disconnectionData = useMemo(() => generateDisconnectionData([], dashboardData), [dashboardData]);
   const dailyCallsData = useMemo(() => {
-    if (filteredDailyData && filteredDailyData.length > 0) {
-      return filteredDailyData.map((item: any) => ({
-        label: item.dia_label || item.fecha,
-        llamadas: item.total_llamadas || 0,
-        costo: item.costo_dia || 0,
-        fecha: item.fecha
-      }));
+    console.log('Procesando dailyCallsData con filteredDailyData:', filteredDailyData);
+    try {
+      if (filteredDailyData && filteredDailyData.length > 0) {
+        const processedData = filteredDailyData.map((item: any) => {
+          try {
+            return {
+              label: item.dia_label || item.fecha || 'Fecha desconocida',
+              llamadas: Number(item.total_llamadas) || 0,
+              costo: Number(item.costo_dia) || 0,
+              fecha: item.fecha || ''
+            };
+          } catch (error) {
+            console.warn('Error procesando item en dailyCallsData:', item, error);
+            return {
+              label: 'Error',
+              llamadas: 0,
+              costo: 0,
+              fecha: ''
+            };
+          }
+        });
+        console.log('dailyCallsData procesado:', processedData);
+        return processedData;
+      }
+      console.log('No hay datos filtrados para dailyCallsData');
+      return [];
+    } catch (error) {
+      console.error('Error procesando dailyCallsData:', error);
+      return [];
     }
-    return [];
   }, [filteredDailyData]);
   
-  const hourlyCallsData = useMemo(() => generateHourlyCallsData(dashboardData), [dashboardData]);
+  const hourlyAgendasData = useMemo(() => generateHourlyAgendasData(dashboardData, hourRangeStart, hourRangeEnd), [dashboardData, hourRangeStart, hourRangeEnd]);
+  const housingTypeData = useMemo(() => generateHousingTypeData(dashboardData), [dashboardData]);
+  const effectiveCallsData = useMemo(() => generateEffectiveCallsData(dashboardData, effectiveCallsHourStart, effectiveCallsHourEnd), [dashboardData, effectiveCallsHourStart, effectiveCallsHourEnd]);
 
+  // Log para verificar datos del gráfico
+  React.useEffect(() => {
+    console.log('Renderizando Chart con datos:', dailyCallsData);
+  }, [dailyCallsData]);
+  
   // Métricas calculadas con datos filtrados
   const filteredMetrics = useMemo(() => {
     if (!filteredDailyData || filteredDailyData.length === 0) {
@@ -291,16 +555,41 @@ export function Dashboard({
     
     return { totalLlamadas, costoTotal };
   }, [filteredDailyData, dashboardData]);
+
+  // Eliminar la Card y el contenido del gráfico de llamadas por día
+  
+  // Procesar los datos para el gráfico apilado (efectivas/fallidas) optimizado
+  const stackedDailyChartData = React.useMemo(() => {
+    // Filtrar días sin llamadas
+    const filtered = filteredDailyData.filter(item => {
+      const anyItem = item as any;
+      const total = (typeof anyItem.llamadas_efectivas === 'number' ? anyItem.llamadas_efectivas : 0)
+        + (typeof anyItem.llamadas_fallidas === 'number' ? anyItem.llamadas_fallidas : 0);
+      return total > 0;
+    });
+    // Limitar a los últimos 30 días si hay muchos datos
+    const limited = filtered.length > 30 ? filtered.slice(-30) : filtered;
+    return limited.map(item => {
+      const anyItem = item as any;
+      return {
+        label: item.label,
+        efectivas: typeof anyItem.llamadas_efectivas === 'number' ? anyItem.llamadas_efectivas : 0,
+        fallidas: typeof anyItem.llamadas_fallidas === 'number' ? anyItem.llamadas_fallidas : 0,
+        fecha: item.fecha,
+        costo: typeof anyItem.costo_dia === 'number' ? anyItem.costo_dia : 0
+      };
+    });
+  }, [filteredDailyData]);
   
   return (
     <div className="p-8">
       <div className="mb-8">
-        <h2 className="text-2xl font-bold text-white mb-2">Dashboard</h2>
-        <p className="text-gray-400">
+        <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800 mb-2">Dashboard</h2>
+        <p className="text-slate-600">
           Análisis de llamadas con uMindsAI
         </p>
         {dashboardData && (
-          <div className="mt-2 inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-900/30 text-green-400 border border-green-800">
+          <div className="mt-2 inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
             <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
             </svg>
@@ -311,9 +600,9 @@ export function Dashboard({
 
       {/* Filtros de período */}
       {dashboardData && (
-        <div className="mb-6 flex flex-wrap gap-4 items-center p-4 bg-gray-900/50 rounded-lg border border-gray-800">
+        <div className="mb-6 flex flex-wrap gap-4 items-center p-4 bg-slate-100 rounded-lg border border-slate-200">
           <div className="flex items-center gap-2">
-            <label htmlFor="timePeriod" className="text-sm font-medium text-gray-300">
+            <label htmlFor="timePeriod" className="text-sm font-medium text-slate-700">
               Período:
             </label>
             <Select value={timePeriod} onValueChange={setTimePeriod}>
@@ -333,7 +622,7 @@ export function Dashboard({
           {timePeriod === 'custom' && (
             <div className="flex gap-4 items-center">
               <div className="flex items-center gap-2">
-                <label htmlFor="startDate" className="text-sm font-medium text-gray-300">
+                <label htmlFor="startDate" className="text-sm font-medium text-slate-700">
                   Desde:
                 </label>
                 <input
@@ -341,11 +630,11 @@ export function Dashboard({
                   id="startDate"
                   value={customStartDate}
                   onChange={(e) => setCustomStartDate(e.target.value)}
-                  className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div className="flex items-center gap-2">
-                <label htmlFor="endDate" className="text-sm font-medium text-gray-300">
+                <label htmlFor="endDate" className="text-sm font-medium text-slate-700">
                   Hasta:
                 </label>
                 <input
@@ -353,13 +642,13 @@ export function Dashboard({
                   id="endDate"
                   value={customEndDate}
                   onChange={(e) => setCustomEndDate(e.target.value)}
-                  className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
           )}
           
-          <div className="text-xs text-gray-400">
+          <div className="text-xs text-slate-600">
             {timePeriod === 'all' && 'Mostrando todos los datos disponibles'}
             {timePeriod === 'today' && 'Mostrando datos de hoy'}
             {timePeriod === 'week' && 'Mostrando datos de los últimos 7 días'}
@@ -373,12 +662,12 @@ export function Dashboard({
       {loading ? (
         <DashboardSkeleton />
       ) : error ? (
-        <div className="p-8 bg-red-900/20 rounded-xl border border-red-800">
-          <p className="text-red-400">{error}</p>
+        <div className="p-8 bg-red-50 rounded-xl border border-red-200">
+          <p className="text-red-700">{error}</p>
         </div>
       ) : !dashboardData ? (
-        <div className="p-8 bg-yellow-900/20 rounded-xl border border-yellow-800">
-          <p className="text-yellow-400 text-lg mb-4">⚠️ No se han cargado los datos del dashboard desde el servidor.</p>
+        <div className="p-8 bg-yellow-50 rounded-xl border border-yellow-200">
+          <p className="text-yellow-700 text-lg mb-4">⚠️ No se han cargado los datos del dashboard desde el servidor.</p>
           {loadDashboardData && (
             <Button onClick={() => loadDashboardData && loadDashboardData()} variant="default">
               Cargar datos del servidor
@@ -391,7 +680,7 @@ export function Dashboard({
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6 mb-8">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Total de Llamadas</CardTitle>
+                <CardTitle className="text-sm font-medium">Llamadas Lanzadas</CardTitle>
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   viewBox="0 0 24 24"
@@ -400,26 +689,21 @@ export function Dashboard({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth="2"
-                  className="h-4 w-4 text-purple-400"
+                  className="h-4 w-4 text-muted-foreground"
                 >
-                  <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                  <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
                 </svg>
               </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {timePeriod === 'all' 
-                    ? (dashboardData?.dashboard_data?.metricas_generales?.total_llamadas?.toLocaleString() || 0)
-                    : filteredMetrics.totalLlamadas.toLocaleString()
-                  }
+              <CardContent className="flex flex-col items-center justify-center text-center">
+                <div className="text-xl font-bold text-center">
+                  {dashboardData?.dashboard_data?.metricas_generales?.total_llamadas?.toLocaleString() || 0}
                 </div>
-                <p className="text-xs text-gray-400">
-                  {timePeriod === 'all' ? 'Total registrado en el servidor' : 'Total en el período seleccionado'}
-                </p>
+                <p className="text-xs text-slate-600 text-center">Total registrado en el servidor</p>
               </CardContent>
             </Card>
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Llamadas Efectivas</CardTitle>
+                <CardTitle className="text-sm font-medium">Costo Total</CardTitle>
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   viewBox="0 0 24 24"
@@ -428,21 +712,49 @@ export function Dashboard({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth="2"
-                  className="h-4 w-4 text-green-400"
+                  className="h-4 w-4 text-muted-foreground"
                 >
-                  <path d="M12 2v20M2 12h20" />
+                  <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
                 </svg>
               </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {dashboardData?.dashboard_data?.metricas_generales?.llamadas_efectivas?.toLocaleString() || 0}
+              <CardContent className="flex flex-col items-center justify-center text-center">
+                <div className="text-xl font-bold text-center">
+                  ${dashboardData?.dashboard_data?.metricas_generales?.costo_total?.toFixed(2) || "0.00"}
                 </div>
-                <p className="text-xs text-gray-400">
-                  {dashboardData?.dashboard_data?.metricas_generales?.porcentaje_efectivas 
-                    ? `${dashboardData.dashboard_data.metricas_generales.porcentaje_efectivas}% del total`
-                    : "0% del total"
-                  }
-                </p>
+                <p className="text-xs text-slate-600 text-center">Costo total de llamadas</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">Llamadas Contestadas</CardTitle>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  className="h-4 w-4 text-emerald-400"
+                >
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                  <polyline points="22,4 12,14.01 9,11.01"/>
+                </svg>
+              </CardHeader>
+              <CardContent className="flex flex-col items-center justify-center text-center">
+                <div className="text-xl font-bold text-center">
+                  {(() => {
+                    const total = dashboardData?.dashboard_data?.metricas_generales?.total_llamadas || 0;
+                    const efectivas = dashboardData?.dashboard_data?.metricas_generales?.llamadas_efectivas || 0;
+                    if (total > 0) {
+                      return <span className="font-bold">{((efectivas / total) * 100).toFixed(2)}%</span>;
+                    }
+                    return <span className="font-bold">0%</span>;
+                  })()}
+                </div>
+                <div className="text-xs text-slate-600 text-center">
+                  {dashboardData?.dashboard_data?.metricas_generales?.llamadas_efectivas?.toLocaleString() || 0} llamadas contestadas
+                </div>
               </CardContent>
             </Card>
             <Card>
@@ -458,44 +770,25 @@ export function Dashboard({
                   strokeWidth="2"
                   className="h-4 w-4 text-red-400"
                 >
-                  <path d="M12 5v14M5 12h14" />
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="15" y1="9" x2="9" y2="15"/>
+                  <line x1="9" y1="9" x2="15" y2="15"/>
                 </svg>
               </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {dashboardData?.dashboard_data?.metricas_generales?.llamadas_fallidas?.toLocaleString() || 0}
+              <CardContent className="flex flex-col items-center justify-center text-center">
+                <div className="text-xl font-bold text-center">
+                  {(() => {
+                    const total = dashboardData?.dashboard_data?.metricas_generales?.total_llamadas || 0;
+                    const fallidas = dashboardData?.dashboard_data?.metricas_generales?.llamadas_fallidas || 0;
+                    if (total > 0) {
+                      return <span className="font-bold">{((fallidas / total) * 100).toFixed(2)}%</span>;
+                    }
+                    return <span className="font-bold">0%</span>;
+                  })()}
                 </div>
-                <p className="text-xs text-gray-400">
-                  {dashboardData?.dashboard_data?.metricas_generales?.porcentaje_fallidas 
-                    ? `${dashboardData.dashboard_data.metricas_generales.porcentaje_fallidas}% del total`
-                    : "0% del total"
-                  }
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Costo Total</CardTitle>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  className="h-4 w-4 text-yellow-400"
-                >
-                  <path d="M12 2v20M17 5H7L12 2l5 3zM17 19H7L12 22l5-3z" />
-                </svg>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  ${filteredMetrics.costoTotal.toFixed(2)}
+                <div className="text-xs text-slate-600 text-center">
+                  {dashboardData?.dashboard_data?.metricas_generales?.llamadas_fallidas?.toLocaleString() || 0} llamadas fallidas
                 </div>
-                <p className="text-xs text-gray-400">
-                  {timePeriod === 'all' ? 'Suma de costos por día' : 'Costo en el período seleccionado'}
-                </p>
               </CardContent>
             </Card>
             <Card>
@@ -509,7 +802,7 @@ export function Dashboard({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth="2"
-                  className="h-4 w-4 text-orange-400"
+                  className="h-4 w-4 text-blue-400"
                 >
                   <rect width="18" height="18" x="3" y="4" rx="2" ry="2"/>
                   <line x1="16" x2="16" y1="2" y2="6"/>
@@ -517,13 +810,20 @@ export function Dashboard({
                   <line x1="3" x2="21" y1="10" y2="10"/>
                 </svg>
               </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos?.toLocaleString() || 0}
+              <CardContent className="flex flex-col items-center justify-center text-center">
+                <div className="text-xl font-bold text-center">
+                  {(() => {
+                    const efectivas = dashboardData?.dashboard_data?.metricas_generales?.llamadas_efectivas || 0;
+                    const agendas = dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos || 0;
+                    if (efectivas > 0) {
+                      return <span className="font-bold">{((agendas / efectivas) * 100).toFixed(2)}%</span>;
+                    }
+                    return <span className="font-bold">0%</span>;
+                  })()}
                 </div>
-                <p className="text-xs text-gray-400">
-                  Citas programadas
-                </p>
+                <div className="text-xs text-slate-600 text-center">
+                  {dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos?.toLocaleString() || 0} agendamientos
+                </div>
               </CardContent>
             </Card>
             <Card>
@@ -545,160 +845,199 @@ export function Dashboard({
                   <rect width="18" height="18" x="3" y="4" rx="2" ry="2"/>
                 </svg>
               </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  ${dashboardData?.dashboard_data?.metricas_generales?.coste_por_agenda?.toFixed(2) || "0.00"}
+              <CardContent className="flex flex-col items-center justify-center text-center">
+                <div className="text-xl font-bold text-center">
+                  {(() => {
+                    const costo = dashboardData?.dashboard_data?.metricas_generales?.costo_total || 0;
+                    const agendas = dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos || 0;
+                    if (agendas > 0) {
+                      return <span className="font-bold">${(costo / agendas).toFixed(2)}</span>;
+                    }
+                    return <span className="font-bold">$0.00</span>;
+                  })()}
                 </div>
-                <p className="text-xs text-gray-400">
-                  Costo promedio por cita
-                </p>
+                <div className="text-xs text-slate-600 text-center">
+                  {dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos?.toLocaleString() || 0} agendamientos
+                </div>
               </CardContent>
             </Card>
           </div>
           
           {/* Gráfico de llamadas por día */}
-          {dailyCallsData && dailyCallsData.length > 0 && (
-            <Card className="mb-8">
-              <CardHeader>
-                <CardTitle>Llamadas por Día</CardTitle>
-                <CardDescription>
-                  {timePeriod === 'all' 
-                    ? 'Evolución de llamadas en los últimos días'
-                    : `Evolución de llamadas en el período seleccionado (${dailyCallsData.length} días)`
-                  }
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[350px]">
-                  <Chart 
-                    data={dailyCallsData}
-                    type="bar"
-                    xKey="label"
-                    yKey="llamadas"
-                    height={350}
-                    colors={["#6366f1"]}
-                    showGrid={true}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          )}
-          
-          {/* Tabla detallada de llamadas y costos por día */}
-          {filteredDailyData && filteredDailyData.length > 0 && (
-            <Card className="mb-8">
-              <CardHeader>
-                <CardTitle>Detalle de Llamadas y Costos por Día</CardTitle>
-                <CardDescription>
-                  {timePeriod === 'all' 
-                    ? 'Análisis día a día de volumen de llamadas y costos asociados'
-                    : `Análisis del período seleccionado (${filteredDailyData.length} días)`
-                  }
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-gray-800">
-                        <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Fecha</th>
-                        <th className="text-right py-3 px-4 text-sm font-medium text-gray-400">Total Llamadas</th>
-                        <th className="text-right py-3 px-4 text-sm font-medium text-gray-400">Costo del Día</th>
-                        <th className="text-right py-3 px-4 text-sm font-medium text-gray-400">Costo por Llamada</th>
-                        <th className="py-3 px-4 text-sm font-medium text-gray-400">Tendencia</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredDailyData.map((item: any, index: number) => {
-                        const costPerCall = item.total_llamadas > 0 ? (item.costo_dia / item.total_llamadas) : 0;
-                        const prevItem = index > 0 ? filteredDailyData[index - 1] : null;
-                        const trend = prevItem ? 
-                          (item.total_llamadas > prevItem.total_llamadas ? 'up' : 
-                           item.total_llamadas < prevItem.total_llamadas ? 'down' : 'equal') : 'equal';
-                        
-                        return (
-                          <tr key={item.fecha} className="border-b border-gray-800 hover:bg-gray-900/50">
-                            <td className="py-3 px-4 text-sm text-white font-medium">
-                              {item.dia_label || item.fecha}
-                              <div className="text-xs text-gray-400">{item.fecha}</div>
-                            </td>
-                            <td className="py-3 px-4 text-sm text-gray-300 text-right">
-                              {(item.total_llamadas || 0).toLocaleString()}
-                            </td>
-                            <td className="py-3 px-4 text-sm text-yellow-400 text-right font-medium">
-                              ${(item.costo_dia || 0).toFixed(2)}
-                            </td>
-                            <td className="py-3 px-4 text-sm text-gray-300 text-right">
-                              ${costPerCall.toFixed(4)}
-                            </td>
-                            <td className="py-3 px-4">
-                              <div className="flex items-center justify-center">
-                                {trend === 'up' && (
-                                  <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                                  </svg>
-                                )}
-                                {trend === 'down' && (
-                                  <svg className="w-4 h-4 text-red-400" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M14.707 10.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 12.586V5a1 1 0 012 0v7.586l2.293-2.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                  </svg>
-                                )}
-                                {trend === 'equal' && (
-                                  <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
-                                  </svg>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                    <tfoot>
-                      <tr className="border-t border-gray-700 bg-gray-900/30">
-                        <td className="py-3 px-4 text-sm font-medium text-gray-400">Total</td>
-                        <td className="py-3 px-4 text-sm font-medium text-white text-right">
-                          {filteredMetrics.totalLlamadas.toLocaleString()}
-                        </td>
-                        <td className="py-3 px-4 text-sm font-medium text-yellow-400 text-right">
-                          ${filteredMetrics.costoTotal.toFixed(2)}
-                        </td>
-                        <td className="py-3 px-4 text-sm font-medium text-gray-400 text-right">
-                          ${filteredMetrics.totalLlamadas > 0 
-                            ? (filteredMetrics.costoTotal / filteredMetrics.totalLlamadas).toFixed(4)
-                            : "0.0000"
-                          }
-                        </td>
-                        <td></td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          {/* Eliminar la Card y el contenido del gráfico de llamadas por día */}
           
           {/* Gráficos de distribución */}
           <div className="grid gap-4 md:grid-cols-2 mb-8">
-            {/* Gráfico de llamadas por hora */}
-            {dashboardData?.dashboard_data?.llamadas_por_hora && (
-              <Card>
+            {/* Gráfico de agendamientos por hora */}
+            {hourlyAgendasData && hourlyAgendasData.length > 0 && (
+              <Card className="mb-8 shadow-lg border border-slate-200">
                 <CardHeader>
-                  <CardTitle>Distribución por Hora</CardTitle>
-                  <CardDescription>
-                    Llamadas por hora del día (más de 16 segundos)
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                      <CardTitle className="text-base font-semibold text-slate-800">Agendamientos por Hora</CardTitle>
+                      <CardDescription className="text-slate-500">
+                        Distribución de agendamientos por hora del día
+                      </CardDescription>
+                    </div>
+                    
+                    {/* Filtro de rango de horas */}
+                    <div className="flex flex-wrap items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                      <div className="flex items-center gap-2">
+                        <label htmlFor="hourStart" className="text-xs font-medium text-slate-700">
+                          Desde:
+                        </label>
+                        <Select value={hourRangeStart} onValueChange={(value) => handleHourRangeChange('start', value)}>
+                          <SelectTrigger className="w-20 h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Array.from({ length: 24 }, (_, i) => (
+                              <SelectItem key={i} value={i.toString()}>
+                                {i.toString().padStart(2, '0')}:00
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        <label htmlFor="hourEnd" className="text-xs font-medium text-slate-700">
+                          Hasta:
+                        </label>
+                        <Select value={hourRangeEnd} onValueChange={(value) => handleHourRangeChange('end', value)}>
+                          <SelectTrigger className="w-20 h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Array.from({ length: 24 }, (_, i) => (
+                              <SelectItem key={i} value={i.toString()}>
+                                {i.toString().padStart(2, '0')}:00
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      <div className="text-xs text-slate-600">
+                        {hourRangeStart === '8' && hourRangeEnd === '23' 
+                          ? 'Horario laboral (8:00 - 23:00)' 
+                          : `${hourRangeStart.padStart(2, '0')}:00 - ${hourRangeEnd.padStart(2, '0')}:00`}
+                      </div>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0 md:p-6">
+                  <div className="h-[300px] bg-white rounded-xl p-4 md:p-6">
+                    <Chart 
+                      data={hourlyAgendasData}
+                      type="line"
+                      xKey="label"
+                      yKey="agendas"
+                      height={300}
+                      colors={["#10b981"]}
+                      showLegend={false}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            
+            {/* Gráfico de tipos de vivienda */}
+            {housingTypeData && housingTypeData.length > 0 && (
+              <Card className="mb-8 shadow-lg border border-slate-200">
+                <CardHeader>
+                  <CardTitle className="text-base font-semibold text-slate-800">Tipos de Vivienda</CardTitle>
+                  <CardDescription className="text-slate-500">
+                    Distribución de tipos de vivienda de los clientes
                   </CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <div className="h-[300px]">
+                <CardContent className="p-0 md:p-6">
+                  <div className="h-[300px] bg-white rounded-xl p-4 md:p-6">
                     <Chart 
-                      data={hourlyCallsData}
-                      type="bar"
+                      data={housingTypeData}
+                      type="pie"
                       xKey="label"
-                      yKey="calls"
+                      yKey="cantidad"
                       height={300}
-                      colors={["#3b82f6"]}
-                      showGrid={true}
+                      colors={["#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#ef4444"]}
+                      showLegend={true}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+          
+          {/* Gráficos adicionales */}
+          <div className="grid gap-4 md:grid-cols-2 mb-8">
+            {/* Gráfico de llamadas efectivas por hora */}
+            {effectiveCallsData && effectiveCallsData.length > 0 && (
+              <Card className="mb-8 shadow-lg border border-slate-200">
+                <CardHeader>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                      <CardTitle className="text-base font-semibold text-slate-800">Llamadas Efectivas por Hora</CardTitle>
+                      <CardDescription className="text-slate-500">
+                        Distribución de llamadas efectivas a lo largo del día
+                      </CardDescription>
+                    </div>
+                    
+                    {/* Filtro de rango de horas */}
+                    <div className="flex flex-wrap items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                      <div className="flex items-center gap-2">
+                        <label htmlFor="effectiveCallsHourStart" className="text-xs font-medium text-slate-700">
+                          Desde:
+                        </label>
+                        <Select value={effectiveCallsHourStart} onValueChange={(value) => handleEffectiveCallsHourRangeChange('start', value)}>
+                          <SelectTrigger className="w-20 h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Array.from({ length: 24 }, (_, i) => (
+                              <SelectItem key={i} value={i.toString()}>
+                                {i.toString().padStart(2, '0')}:00
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        <label htmlFor="effectiveCallsHourEnd" className="text-xs font-medium text-slate-700">
+                          Hasta:
+                        </label>
+                        <Select value={effectiveCallsHourEnd} onValueChange={(value) => handleEffectiveCallsHourRangeChange('end', value)}>
+                          <SelectTrigger className="w-20 h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Array.from({ length: 24 }, (_, i) => (
+                              <SelectItem key={i} value={i.toString()}>
+                                {i.toString().padStart(2, '0')}:00
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      <div className="text-xs text-slate-600">
+                        {effectiveCallsHourStart === '0' && effectiveCallsHourEnd === '23' 
+                          ? 'Todas las horas' 
+                          : `${effectiveCallsHourStart.padStart(2, '0')}:00 - ${effectiveCallsHourEnd.padStart(2, '0')}:00`}
+                      </div>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0 md:p-6">
+                  <div className="h-[300px] bg-white rounded-xl p-4 md:p-6">
+                    <Chart 
+                      data={effectiveCallsData}
+                      type="line"
+                      xKey="label"
+                      yKey="llamadas"
+                      height={300}
+                      colors={["#dc2626"]}
+                      showLegend={false}
                     />
                   </div>
                 </CardContent>
@@ -706,27 +1045,114 @@ export function Dashboard({
             )}
             
             {/* Gráfico de razones de desconexión */}
-            {dashboardData?.dashboard_data?.razones_desconexion && (
-              <Card>
+            {disconnectionData && disconnectionData.length > 0 && (
+              <Card className="mb-8 shadow-lg border border-slate-200">
                 <CardHeader>
-                  <CardTitle>Principales Razones de Desconexión</CardTitle>
-                  <CardDescription>
-                    Top {Math.min(5, dashboardData.dashboard_data.razones_desconexion.length)} razones con porcentajes
+                  <CardTitle className="text-base font-semibold text-slate-800">Principales Razones de Desconexión</CardTitle>
+                  <CardDescription className="text-slate-500">
+                    Top {Math.min(5, disconnectionData.length)} razones con porcentajes
                   </CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <Chart 
-                    data={disconnectionData}
-                    type="pie"
-                    xKey="reason"
-                    yKey="count"
-                    height={300}
-                    colors={["#8b5cf6", "#d946ef", "#a855f7", "#6366f1", "#3b82f6"]}
-                  />
+                <CardContent className="p-0 md:p-6">
+                  <div className="h-[300px] bg-white rounded-xl p-4 md:p-6">
+                    <Chart 
+                      data={disconnectionData}
+                      type="pie"
+                      xKey="reason"
+                      yKey="count"
+                      height={300}
+                      colors={["#8b5cf6", "#d946ef", "#a855f7", "#6366f1", "#3b82f6"]}
+                      showLegend={true}
+                    />
+                  </div>
                 </CardContent>
               </Card>
             )}
           </div>
+          
+          {/* Resumen detallado de llamadas efectivas por hora */}
+          {dashboardData?.dashboard_data?.llamadas_efectivas_por_hora && (
+            <Card className="mb-8">
+              <CardHeader>
+                <CardTitle>Resumen de Llamadas Efectivas por Hora</CardTitle>
+                <CardDescription>
+                  Horas con mayor actividad de llamadas efectivas
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {dashboardData.dashboard_data.llamadas_efectivas_por_hora
+                    .sort((a: any, b: any) => (b.cantidad_llamadas || 0) - (a.cantidad_llamadas || 0))
+                    .slice(0, 8)
+                    .map((item: any, index: number) => (
+                      <div key={`${item.hora}-${index}`} className="bg-gradient-to-br from-red-50 to-rose-100 p-4 rounded-lg border border-red-200">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-red-700">
+                            {item.hora_label || `${item.hora.toString().padStart(2, '0')}:00`}
+                          </span>
+                          <span className="text-xs text-red-600">
+                            #{index + 1}
+                          </span>
+                        </div>
+                        <div className="text-2xl font-bold text-red-900 mb-2">
+                          {item.cantidad_llamadas.toLocaleString()}
+                        </div>
+                        <div className="text-xs text-red-600">
+                          llamadas efectivas
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          
+          {/* Resumen detallado de tipos de vivienda */}
+          {dashboardData?.dashboard_data?.tipos_vivienda && (
+            <Card className="mb-8">
+              <CardHeader>
+                <CardTitle>Resumen Detallado de Tipos de Vivienda</CardTitle>
+                <CardDescription>
+                  Estadísticas completas de distribución de viviendas (excluyendo no identificados)
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {dashboardData.dashboard_data.tipos_vivienda
+                    .filter((item: any) => item.tipo !== 'no_identificado')
+                    .map((item: any, index: number) => {
+                      // Calcular porcentaje basado en datos filtrados
+                      const totalFiltered = dashboardData.dashboard_data.tipos_vivienda
+                        .filter((filterItem: any) => filterItem.tipo !== 'no_identificado')
+                        .reduce((sum: number, filterItem: any) => sum + (filterItem.cantidad || 0), 0);
+                      const porcentaje = totalFiltered > 0 ? ((item.cantidad || 0) / totalFiltered * 100).toFixed(2) : '0';
+                      
+                      return (
+                        <div key={`${item.tipo}-${index}`} className="bg-gradient-to-br from-orange-50 to-amber-100 p-4 rounded-lg border border-orange-200">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-medium text-orange-700">
+                              {translateHousingType(item.tipo)}
+                            </span>
+                            <span className="text-xs text-orange-600">
+                              {porcentaje}%
+                            </span>
+                          </div>
+                          <div className="text-2xl font-bold text-orange-900 mb-2">
+                            {item.cantidad.toLocaleString()}
+                          </div>
+                          <div className="w-full bg-orange-200 rounded-full h-2">
+                            <div 
+                              className="bg-gradient-to-r from-orange-600 to-amber-600 h-2 rounded-full transition-all duration-500"
+                              style={{ width: `${porcentaje}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
           
           {/* Resumen detallado de desconexiones */}
           {dashboardData?.dashboard_data?.razones_desconexion && (
@@ -740,19 +1166,19 @@ export function Dashboard({
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {dashboardData.dashboard_data.razones_desconexion.slice(0, 6).map((item: any, index: number) => (
-                    <div key={index} className="bg-gray-900 p-4 rounded-lg">
+                    <div key={`${item.razon}-${index}`} className="bg-gradient-to-br from-purple-50 to-violet-100 p-4 rounded-lg border border-purple-200">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-gray-300">
+                        <span className="text-sm font-medium text-purple-700">
                           {translateDisconnectionReason(item.razon)}
                         </span>
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs text-purple-600">
                           {item.porcentaje}%
                         </span>
                       </div>
-                      <div className="text-2xl font-bold text-white mb-2">
+                      <div className="text-2xl font-bold text-purple-900 mb-2">
                         {item.total.toLocaleString()}
                       </div>
-                      <div className="w-full bg-gray-800 rounded-full h-2">
+                      <div className="w-full bg-purple-200 rounded-full h-2">
                         <div 
                           className="bg-gradient-to-r from-purple-600 to-indigo-600 h-2 rounded-full transition-all duration-500"
                           style={{ width: `${item.porcentaje}%` }}
@@ -760,6 +1186,151 @@ export function Dashboard({
                       </div>
                     </div>
                   ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          
+          {/* Tabla detallada de llamadas efectivas por hora */}
+          {dashboardData?.dashboard_data?.llamadas_efectivas_por_hora && (
+            <Card className="mb-8">
+              <CardHeader>
+                <CardTitle>Análisis Detallado de Llamadas Efectivas por Hora</CardTitle>
+                <CardDescription>
+                  Distribución completa de llamadas efectivas a lo largo del día
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-slate-200">
+                        <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Hora</th>
+                        <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">Llamadas Efectivas</th>
+                        <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">Porcentaje</th>
+                        <th className="py-3 px-4 text-sm font-medium text-slate-600">Distribución</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dashboardData.dashboard_data.llamadas_efectivas_por_hora
+                        .sort((a: any, b: any) => parseInt(a.hora) - parseInt(b.hora))
+                        .map((item: any, index: number) => {
+                          const total = dashboardData.dashboard_data.llamadas_efectivas_por_hora
+                            .reduce((sum: number, totalItem: any) => sum + (totalItem.cantidad_llamadas || 0), 0);
+                          const porcentaje = total > 0 ? ((item.cantidad_llamadas || 0) / total * 100).toFixed(2) : '0';
+                          
+                          return (
+                            <tr key={`${item.hora}-${index}`} className="border-b border-slate-200 hover:bg-slate-50">
+                              <td className="py-3 px-4 text-sm text-slate-700 font-medium">
+                                {item.hora_label || `${item.hora.toString().padStart(2, '0')}:00`}
+                              </td>
+                              <td className="py-3 px-4 text-sm text-slate-600 text-right">
+                                {(item.cantidad_llamadas || 0).toLocaleString()}
+                              </td>
+                              <td className="py-3 px-4 text-sm text-slate-600 text-right">
+                                {porcentaje}%
+                              </td>
+                              <td className="py-3 px-4">
+                                <div className="w-full bg-slate-200 rounded-full h-2">
+                                  <div 
+                                    className="bg-gradient-to-r from-red-600 to-rose-600 h-2 rounded-full transition-all duration-500"
+                                    style={{ width: `${porcentaje}%` }}
+                                  />
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-slate-200 bg-slate-50">
+                        <td className="py-3 px-4 text-sm font-medium text-slate-600">Total</td>
+                        <td className="py-3 px-4 text-sm font-medium text-slate-800 text-right">
+                          {dashboardData.dashboard_data.llamadas_efectivas_por_hora
+                            .reduce((sum: number, item: any) => sum + (item.cantidad_llamadas || 0), 0)
+                            .toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-sm font-medium text-slate-600 text-right">
+                          100%
+                        </td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          
+          {/* Tabla detallada de tipos de vivienda */}
+          {dashboardData?.dashboard_data?.tipos_vivienda && (
+            <Card className="mb-8">
+              <CardHeader>
+                <CardTitle>Análisis Detallado de Tipos de Vivienda</CardTitle>
+                <CardDescription>
+                  Distribución completa de los tipos de vivienda de los clientes (excluyendo no identificados)
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-slate-200">
+                        <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Tipo de Vivienda</th>
+                        <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">Cantidad</th>
+                        <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">Porcentaje</th>
+                        <th className="py-3 px-4 text-sm font-medium text-slate-600">Distribución</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dashboardData.dashboard_data.tipos_vivienda
+                        .filter((item: any) => item.tipo !== 'no_identificado')
+                        .map((item: any, index: number) => {
+                          // Calcular porcentaje basado en datos filtrados
+                          const totalFiltered = dashboardData.dashboard_data.tipos_vivienda
+                            .filter((filterItem: any) => filterItem.tipo !== 'no_identificado')
+                            .reduce((sum: number, filterItem: any) => sum + (filterItem.cantidad || 0), 0);
+                          const porcentaje = totalFiltered > 0 ? ((item.cantidad || 0) / totalFiltered * 100).toFixed(2) : '0';
+                          
+                          return (
+                            <tr key={`${item.tipo}-${index}`} className="border-b border-slate-200 hover:bg-slate-50">
+                              <td className="py-3 px-4 text-sm text-slate-700 font-medium">
+                                {translateHousingType(item.tipo || 'Desconocido')}
+                              </td>
+                              <td className="py-3 px-4 text-sm text-slate-600 text-right">
+                                {(item.cantidad || 0).toLocaleString()}
+                              </td>
+                              <td className="py-3 px-4 text-sm text-slate-600 text-right">
+                                {porcentaje}%
+                              </td>
+                              <td className="py-3 px-4">
+                                <div className="w-full bg-slate-200 rounded-full h-2">
+                                  <div 
+                                    className="bg-gradient-to-r from-orange-600 to-amber-600 h-2 rounded-full transition-all duration-500"
+                                    style={{ width: `${porcentaje}%` }}
+                                  />
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-slate-200 bg-slate-50">
+                        <td className="py-3 px-4 text-sm font-medium text-slate-600">Total</td>
+                        <td className="py-3 px-4 text-sm font-medium text-slate-800 text-right">
+                          {dashboardData.dashboard_data.tipos_vivienda
+                            .filter((item: any) => item.tipo !== 'no_identificado')
+                            .reduce((sum: number, item: any) => sum + (item.cantidad || 0), 0)
+                            .toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-sm font-medium text-slate-600 text-right">
+                          100%
+                        </td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  </table>
                 </div>
               </CardContent>
             </Card>
@@ -778,27 +1349,27 @@ export function Dashboard({
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
-                      <tr className="border-b border-gray-800">
-                        <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Razón</th>
-                        <th className="text-right py-3 px-4 text-sm font-medium text-gray-400">Total</th>
-                        <th className="text-right py-3 px-4 text-sm font-medium text-gray-400">Porcentaje</th>
-                        <th className="py-3 px-4 text-sm font-medium text-gray-400">Distribución</th>
+                      <tr className="border-b border-slate-200">
+                        <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Razón</th>
+                        <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">Total</th>
+                        <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">Porcentaje</th>
+                        <th className="py-3 px-4 text-sm font-medium text-slate-600">Distribución</th>
                       </tr>
                     </thead>
                     <tbody>
                       {dashboardData.dashboard_data.razones_desconexion.map((item: any, index: number) => (
-                        <tr key={index} className="border-b border-gray-800 hover:bg-gray-900/50">
-                          <td className="py-3 px-4 text-sm text-white font-medium">
+                        <tr key={`${item.razon}-${index}`} className="border-b border-slate-200 hover:bg-slate-50">
+                          <td className="py-3 px-4 text-sm text-slate-700 font-medium">
                             {translateDisconnectionReason(item.razon || 'Desconocida')}
                           </td>
-                          <td className="py-3 px-4 text-sm text-gray-300 text-right">
+                          <td className="py-3 px-4 text-sm text-slate-600 text-right">
                             {(item.total || 0).toLocaleString()}
                           </td>
-                          <td className="py-3 px-4 text-sm text-gray-300 text-right">
+                          <td className="py-3 px-4 text-sm text-slate-600 text-right">
                             {item.porcentaje || 0}%
                           </td>
                           <td className="py-3 px-4">
-                            <div className="w-full bg-gray-800 rounded-full h-2">
+                            <div className="w-full bg-slate-200 rounded-full h-2">
                               <div 
                                 className="bg-gradient-to-r from-purple-600 to-indigo-600 h-2 rounded-full transition-all duration-500"
                                 style={{ width: `${item.porcentaje || 0}%` }}
@@ -809,14 +1380,14 @@ export function Dashboard({
                       ))}
                     </tbody>
                     <tfoot>
-                      <tr className="border-t border-gray-700">
-                        <td className="py-3 px-4 text-sm font-medium text-gray-400">Total</td>
-                        <td className="py-3 px-4 text-sm font-medium text-white text-right">
+                      <tr className="border-t border-slate-200 bg-slate-50">
+                        <td className="py-3 px-4 text-sm font-medium text-slate-600">Total</td>
+                        <td className="py-3 px-4 text-sm font-medium text-slate-800 text-right">
                           {dashboardData.dashboard_data.razones_desconexion
                             .reduce((sum: number, item: any) => sum + (item.total || 0), 0)
                             .toLocaleString()}
                         </td>
-                        <td className="py-3 px-4 text-sm font-medium text-gray-400 text-right">
+                        <td className="py-3 px-4 text-sm font-medium text-slate-600 text-right">
                           100%
                         </td>
                         <td></td>

@@ -19,36 +19,36 @@ export function CallsTableContent({
   return (
     <div className="overflow-x-auto">
       <table className="w-full">
-        <thead className="bg-gray-800">
+        <thead className="bg-slate-100">
           <tr>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
               Fecha y Hora
             </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
               ID de Llamada
             </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
               Duración
             </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
               Agente
             </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
               Estado
             </th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-800">
+        <tbody className="divide-y divide-slate-200">
           {loading && (
             <tr>
-              <td colSpan={5} className="px-6 py-4 text-center text-gray-400">
+              <td colSpan={5} className="px-6 py-4 text-center text-slate-500">
                 Cargando llamadas...
               </td>
             </tr>
           )}
           {error && (
             <tr>
-              <td colSpan={5} className="px-6 py-4 text-center text-red-400">
+              <td colSpan={5} className="px-6 py-4 text-center text-red-600">
                 {error}
               </td>
             </tr>
@@ -60,26 +60,26 @@ export function CallsTableContent({
             
             return (
               <tr key={call.call_id}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                  {new Date(call.start_timestamp).toLocaleString()}
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
+                  {call.start_timestamp ? new Date(call.start_timestamp).toLocaleString() : '-'}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
                   {call.call_id}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
                   {duration}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
                   {call.agent_id}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span
                     className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                       call.call_status === 'ended'
-                        ? 'bg-green-900/50 text-green-400'
+                        ? 'bg-green-100 text-green-800'
                         : call.call_status === 'error'
-                        ? 'bg-red-900/50 text-red-400'
-                        : 'bg-yellow-900/50 text-yellow-400'
+                        ? 'bg-red-100 text-red-800'
+                        : 'bg-yellow-100 text-yellow-800'
                     }`}
                   >
                     {call.call_status === 'ended' ? 'Completada' : 
@@ -92,7 +92,7 @@ export function CallsTableContent({
           })}
           {!loading && !error && calls.length === 0 && (
             <tr>
-              <td colSpan={5} className="px-6 py-4 text-center text-gray-400">
+              <td colSpan={5} className="px-6 py-4 text-center text-slate-500">
                 No se encontraron llamadas
               </td>
             </tr>
@@ -100,10 +100,10 @@ export function CallsTableContent({
         </tbody>
       </table>
       {paginationKey && !loading && !error && (
-        <div className="p-4 border-t border-gray-800">
+        <div className="p-4 border-t border-slate-200">
           <button
             onClick={onLoadMore}
-            className="w-full px-4 py-2 bg-gray-800 text-gray-300 rounded-lg hover:bg-gray-700 transition-colors"
+            className="w-full px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-lg hover:from-indigo-600 hover:to-purple-700 transition-all duration-200"
           >
             Cargar más llamadas
           </button>
