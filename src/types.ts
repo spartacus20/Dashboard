@@ -199,6 +199,12 @@ export interface ClientData {
   full_name?: string;
   created_at?: string;
   updated_at?: string;
+  // Campos opcionales de configuración que pueden venir desde get-client
+  agenda_enabled?: boolean;
+  calls_enabled?: boolean;
+  phone_filter?: string;
+  // Objeto de configuración genérico por si el backend devuelve un blob
+  config?: Record<string, any>;
 }
 
 export interface Agenda {

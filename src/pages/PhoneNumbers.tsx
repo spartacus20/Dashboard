@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Phone, Copy, RefreshCw, ExternalLink, X, Send, Plus, ChevronDown, User } from 'lucide-react';
+import { Phone, Copy, RefreshCw, ExternalLink, X, Send, Plus, ChevronDown, User, Trash2, AlertTriangle } from 'lucide-react';
 import { RetellPhoneNumber, RetellAgent } from '../types';
-import { fetchPhoneNumbers, createPhoneCall, fetchAgents } from '../api';
+import { fetchPhoneNumbers, createPhoneCall, fetchAgents, importPhoneNumber, deletePhoneNumber } from '../api';
 import { useCallsContext } from '../context/CallsContext';
 
 interface PhoneNumbersProps {
@@ -330,15 +330,356 @@ function CallModal({ phoneNumber, onClose, apiKey }: CallModalProps) {
   );
 }
 
+// Definir la interfaz para el modal de añadir número de teléfono
+interface AddPhoneModalProps {
+  onClose: () => void;
+  onSuccess: () => void;
+  apiKey: string | null;
+}
+
+// Componente para el modal de añadir número de teléfono
+function AddPhoneModal({ onClose, onSuccess, apiKey }: AddPhoneModalProps) {
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [nickname, setNickname] = useState('');
+  const [terminationUri, setTerminationUri] = useState('');
+  const [sipUsername, setSipUsername] = useState('');
+  const [sipPassword, setSipPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  // Función para añadir el número de teléfono
+  const handleAddPhone = async () => {
+    if (!apiKey) {
+      setError('API key no configurada');
+      return;
+    }
+
+    if (!phoneNumber.trim()) {
+      setError('El número de teléfono es obligatorio');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const phoneData: any = {
+        phone_number: phoneNumber.trim()
+      };
+
+      // Añadir campos opcionales solo si tienen valor
+      if (nickname.trim()) {
+        phoneData.nickname = nickname.trim();
+      }
+      if (terminationUri.trim()) {
+        phoneData.termination_uri = terminationUri.trim();
+      }
+      if (sipUsername.trim()) {
+        phoneData.sip_trunk_auth_username = sipUsername.trim();
+      }
+      if (sipPassword.trim()) {
+        phoneData.sip_trunk_auth_password = sipPassword.trim();
+      }
+
+      const result = await importPhoneNumber(apiKey, phoneData);
+      setSuccess(`Número de teléfono añadido con éxito. ID: ${result.phone_number_id || 'N/A'}`);
+      
+      // Limpiar el formulario
+      setPhoneNumber('');
+      setNickname('');
+      setTerminationUri('');
+      setSipUsername('');
+      setSipPassword('');
+      
+      // Notificar éxito al componente padre después de un breve delay
+      setTimeout(() => {
+        onSuccess();
+        onClose();
+      }, 2000);
+    } catch (err) {
+      console.error('Error al añadir número de teléfono:', err);
+      setError(err instanceof Error ? err.message : 'Error al añadir el número de teléfono');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md">
+        <div className="flex justify-between items-center border-b border-slate-200 p-4 bg-gradient-to-r from-slate-50 to-blue-50">
+          <h3 className="text-lg font-medium text-slate-800">Añadir Número de Teléfono</h3>
+          <button 
+            onClick={onClose}
+            className="p-1 hover:bg-slate-200 rounded-full transition-colors"
+          >
+            <X className="w-5 h-5 text-slate-500 hover:text-slate-700" />
+          </button>
+        </div>
+        
+        <div className="p-5 space-y-5 bg-white">
+          <div>
+            <label className="block text-slate-600 mb-1">Número de teléfono *</label>
+            <input
+              type="text"
+              value={phoneNumber}
+              onChange={(e) => setPhoneNumber(e.target.value)}
+              placeholder="+1234567890"
+              className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            />
+            <p className="text-xs text-slate-500 mt-1">Formato: +[código de país][número]</p>
+          </div>
+
+          <div>
+            <label className="block text-slate-600 mb-1">Nombre (opcional)</label>
+            <input
+              type="text"
+              value={nickname}
+              onChange={(e) => setNickname(e.target.value)}
+              placeholder="Mi número principal"
+              className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-600 mb-1">URI de terminación (opcional)</label>
+            <input
+              type="text"
+              value={terminationUri}
+              onChange={(e) => setTerminationUri(e.target.value)}
+              placeholder="sip:termination@example.com"
+              className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-600 mb-1">Usuario SIP (opcional)</label>
+            <input
+              type="text"
+              value={sipUsername}
+              onChange={(e) => setSipUsername(e.target.value)}
+              placeholder="usuario_sip"
+              className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-600 mb-1">Contraseña SIP (opcional)</label>
+            <input
+              type="password"
+              value={sipPassword}
+              onChange={(e) => setSipPassword(e.target.value)}
+              placeholder="contraseña_sip"
+              className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+              {error}
+            </div>
+          )}
+          
+          {success && (
+            <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
+              {success}
+            </div>
+          )}
+          
+          <div className="flex justify-end pt-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 mr-2 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleAddPhone}
+              disabled={loading || !phoneNumber.trim()}
+              className={`px-4 py-2 rounded-lg text-white flex items-center ${
+                loading || !phoneNumber.trim()
+                  ? 'bg-blue-400 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800'
+              }`}
+            >
+              {loading ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Procesando...
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4 mr-1" />
+                  Añadir número
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Definir la interfaz para el modal de eliminar número de teléfono
+interface DeletePhoneModalProps {
+  phoneNumber: RetellPhoneNumber;
+  onClose: () => void;
+  onSuccess: () => void;
+  apiKey: string | null;
+}
+
+// Componente para el modal de confirmación de eliminación
+function DeletePhoneModal({ phoneNumber, onClose, onSuccess, apiKey }: DeletePhoneModalProps) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Función para eliminar el número de teléfono
+  const handleDeletePhone = async () => {
+    if (!apiKey) {
+      setError('API key no configurada');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      await deletePhoneNumber(apiKey, phoneNumber.phone_number);
+      
+      // Crear notificación de éxito
+      const notification = document.createElement('div');
+      notification.style.position = 'fixed';
+      notification.style.top = '16px';
+      notification.style.right = '16px';
+      notification.style.backgroundColor = 'rgba(6, 78, 59, 0.9)'; // bg-green-900 con transparencia
+      notification.style.color = 'white';
+      notification.style.padding = '8px 16px';
+      notification.style.borderRadius = '8px';
+      notification.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.1)';
+      notification.style.zIndex = '9999';
+      notification.style.opacity = '0';
+      notification.style.transition = 'opacity 0.3s ease-in-out';
+      notification.textContent = 'Número de teléfono eliminado correctamente';
+      document.body.appendChild(notification);
+      
+      // Mostrar la notificación
+      setTimeout(() => {
+        notification.style.opacity = '1';
+      }, 10);
+      
+      // Eliminar la notificación después de 3 segundos
+      setTimeout(() => {
+        notification.style.opacity = '0';
+        setTimeout(() => {
+          if (document.body.contains(notification)) {
+            document.body.removeChild(notification);
+          }
+        }, 300);
+      }, 3000);
+      
+      // Notificar éxito al componente padre
+      onSuccess();
+      onClose();
+    } catch (err) {
+      console.error('Error al eliminar número de teléfono:', err);
+      setError(err instanceof Error ? err.message : 'Error al eliminar el número de teléfono');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md">
+        <div className="flex justify-between items-center border-b border-slate-200 p-4 bg-gradient-to-r from-red-50 to-orange-50">
+          <div className="flex items-center">
+            <AlertTriangle className="w-6 h-6 text-red-600 mr-2" />
+            <h3 className="text-lg font-medium text-slate-800">Confirmar eliminación</h3>
+          </div>
+          <button 
+            onClick={onClose}
+            className="p-1 hover:bg-slate-200 rounded-full transition-colors"
+          >
+            <X className="w-5 h-5 text-slate-500 hover:text-slate-700" />
+          </button>
+        </div>
+        
+        <div className="p-5 space-y-5 bg-white">
+          <div>
+            <p className="text-slate-700 mb-3">
+              ¿Estás seguro de que quieres eliminar el número de teléfono <span className="font-bold text-slate-800">{phoneNumber.phone_number_pretty}</span>?
+            </p>
+            <p className="text-slate-600 text-sm">
+              Esta acción no se puede deshacer y eliminará permanentemente este número de teléfono y todos sus datos asociados.
+            </p>
+          </div>
+
+          {phoneNumber.nickname && (
+            <div className="bg-slate-50 p-3 rounded-lg">
+              <p className="text-slate-600 text-sm">Nombre: <span className="font-medium">{phoneNumber.nickname}</span></p>
+            </div>
+          )}
+          
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+              {error}
+            </div>
+          )}
+          
+          <div className="flex justify-end pt-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 mr-2 transition-colors"
+              disabled={loading}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleDeletePhone}
+              disabled={loading}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center"
+            >
+              {loading ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Eliminando...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Eliminar
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function PhoneNumbers({ onNavigate }: PhoneNumbersProps) {
   const [phoneNumbers, setPhoneNumbers] = useState<RetellPhoneNumber[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedNumber, setCopiedNumber] = useState<string | null>(null);
   const [selectedPhone, setSelectedPhone] = useState<RetellPhoneNumber | null>(null);
+  const [showAddPhoneModal, setShowAddPhoneModal] = useState(false);
+  const [showDeletePhoneModal, setShowDeletePhoneModal] = useState(false);
+  const [phoneToDelete, setPhoneToDelete] = useState<RetellPhoneNumber | null>(null);
   
-  // Usar el contexto para obtener la API key
-  const { apiKey } = useCallsContext();
+  // Usar el contexto para obtener la API key y el estado de llamadas
+  const { apiKey, callsEnabled, phoneFilter } = useCallsContext();
   
   // Cargar los números de teléfono
   const loadPhoneNumbers = async () => {
@@ -360,6 +701,11 @@ export function PhoneNumbers({ onNavigate }: PhoneNumbersProps) {
       setLoading(false);
     }
   };
+  
+  // Filtrar números de teléfono si hay un filtro activo
+  const filteredPhoneNumbers = phoneFilter 
+    ? phoneNumbers.filter(phone => phone.phone_number === phoneFilter)
+    : phoneNumbers;
   
   // Cargar los números al montar el componente
   useEffect(() => {
@@ -398,30 +744,40 @@ export function PhoneNumbers({ onNavigate }: PhoneNumbersProps) {
         <div className="p-6 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4 bg-gradient-to-r from-slate-50 to-blue-50">
           <h3 className="text-lg font-semibold text-slate-800">Números de Teléfono</h3>
           
-          <button
-            onClick={loadPhoneNumbers}
-            disabled={loading}
-            className={`px-4 py-2 rounded-lg text-white flex items-center ${
-              loading
-                ? 'bg-slate-400 cursor-not-allowed'
-                : 'bg-gradient-to-r from-green-600 to-emerald-700 hover:from-green-700 hover:to-emerald-800'
-            }`}
-          >
-            {loading ? (
-              <>
-                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Cargando...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="h-5 w-5 mr-1" />
-                Actualizar
-              </>
-            )}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowAddPhoneModal(true)}
+              className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-700 text-white rounded-lg hover:from-green-700 hover:to-emerald-800 transition-colors flex items-center"
+            >
+              <Plus className="h-5 w-5 mr-1" />
+              Añadir Número
+            </button>
+            
+            <button
+              onClick={loadPhoneNumbers}
+              disabled={loading}
+              className={`px-4 py-2 rounded-lg text-white flex items-center ${
+                loading
+                  ? 'bg-slate-400 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800'
+              }`}
+            >
+              {loading ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Cargando...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-5 w-5 mr-1" />
+                  Actualizar
+                </>
+              )}
+            </button>
+          </div>
         </div>
         
         <div className="divide-y divide-slate-200">
@@ -440,14 +796,29 @@ export function PhoneNumbers({ onNavigate }: PhoneNumbersProps) {
           )}
           
           {/* No se encontraron resultados */}
-          {!loading && !error && phoneNumbers.length === 0 && (
+          {!loading && !error && filteredPhoneNumbers.length === 0 && (
             <div className="p-6 text-center text-slate-600">
-              No se encontraron números de teléfono
+              {phoneFilter ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-center">
+                    <Phone className="w-12 h-12 text-red-400 mr-3" />
+                    <div>
+                      <h3 className="text-lg font-medium text-slate-800">Número no conectado</h3>
+                      <p className="text-slate-600">El número {phoneFilter} aún no está conectado a tu cuenta</p>
+                    </div>
+                  </div>
+                  <p className="text-sm text-slate-500">
+                    Por favor, añade el número de teléfono a tu cuenta 
+                  </p>
+                </div>
+              ) : (
+                "No se encontraron números de teléfono"
+              )}
             </div>
           )}
           
           {/* Lista de números de teléfono */}
-          {!loading && !error && phoneNumbers.map((phone) => (
+          {!loading && !error && filteredPhoneNumbers.map((phone) => (
             <div key={phone.phone_number} className="p-6 hover:bg-slate-50 transition-colors">
               <div className="flex items-start justify-between">
                 <div className="flex-grow">
@@ -536,13 +907,27 @@ export function PhoneNumbers({ onNavigate }: PhoneNumbersProps) {
                   </div>
                 </div>
                 
-                <button
-                  onClick={() => setSelectedPhone(phone)}
-                  className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-lg hover:from-blue-700 hover:to-indigo-800 transition-colors flex items-center"
-                >
-                  <Phone className="w-4 h-4 mr-1" />
-                  Llamar
-                </button>
+                <div className="flex gap-2">
+                  {callsEnabled && (
+                    <button
+                      onClick={() => setSelectedPhone(phone)}
+                      className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-lg hover:from-blue-700 hover:to-indigo-800 transition-colors flex items-center"
+                    >
+                      <Phone className="w-4 h-4 mr-1" />
+                      Llamar
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      setPhoneToDelete(phone);
+                      setShowDeletePhoneModal(true);
+                    }}
+                    className="px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center"
+                  >
+                    <Trash2 className="w-4 h-4 mr-1" />
+                    Eliminar
+                  </button>
+                </div>
               </div>
             </div>
           ))}
@@ -554,6 +939,28 @@ export function PhoneNumbers({ onNavigate }: PhoneNumbersProps) {
         <CallModal 
           phoneNumber={selectedPhone}
           onClose={() => setSelectedPhone(null)}
+          apiKey={apiKey}
+        />
+      )}
+
+      {/* Modal para añadir número de teléfono */}
+      {showAddPhoneModal && (
+        <AddPhoneModal
+          onClose={() => setShowAddPhoneModal(false)}
+          onSuccess={loadPhoneNumbers}
+          apiKey={apiKey}
+        />
+      )}
+
+      {/* Modal para eliminar número de teléfono */}
+      {showDeletePhoneModal && phoneToDelete && (
+        <DeletePhoneModal
+          phoneNumber={phoneToDelete}
+          onClose={() => {
+            setPhoneToDelete(null);
+            setShowDeletePhoneModal(false);
+          }}
+          onSuccess={loadPhoneNumbers}
           apiKey={apiKey}
         />
       )}

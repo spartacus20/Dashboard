@@ -10,7 +10,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: SidebarProps) {
-  const { loadingProgress, totalCalls, loadingAllCalls, apiKey } = useCallsContext();
+  const { loadingProgress, totalCalls, loadingAllCalls, apiKey, agendaEnabled } = useCallsContext();
   const progressPercentage = totalCalls > 0 ? Math.min(100, Math.round((loadingProgress / totalCalls) * 100)) : 0;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [showBatchCall, setShowBatchCall] = useState(false);
@@ -141,19 +141,21 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
             <BarChart3 className="w-5 h-5" />
             Dashboard
           </button>
-          <button
-            onClick={() => {
-              navigateWithParams('agendas');
-            }}
-            className={`flex w-full items-center gap-2 px-4 py-2 ${
-              currentPage === 'agendas'
-                ? 'text-white bg-[#0a2a5a] border border-[#1e4a8a]'
-                : 'text-gray-300 hover:bg-[#0a2a5a]'
-            } rounded-lg`}
-          >
-            <Calendar className="w-5 h-5" />
-            Agendas
-          </button>
+          {agendaEnabled && (
+            <button
+              onClick={() => {
+                navigateWithParams('agendas');
+              }}
+              className={`flex w-full items-center gap-2 px-4 py-2 ${
+                currentPage === 'agendas'
+                  ? 'text-white bg-[#0a2a5a] border border-[#1e4a8a]'
+                  : 'text-gray-300 hover:bg-[#0a2a5a]'
+              } rounded-lg`}
+            >
+              <Calendar className="w-5 h-5" />
+              Agendas
+            </button>
+          )}
           <button
             onClick={() => {
               navigateWithParams('recordings');

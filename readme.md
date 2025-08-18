@@ -5,7 +5,7 @@ uMindsAI Dashboard es una aplicación web para gestionar y visualizar llamadas r
 
 ## Características principales
 
-- **Autenticación segura**: Sistema de login con Supabase (email/password y OAuth)
+- **Acceso directo**: Sistema basado en client_id como parámetro de URL
 - **Dashboard analítico**: Visualiza métricas clave y estadísticas de tus llamadas
 - **Grabaciones**: Accede a todas las grabaciones con opciones avanzadas de filtrado
 - **Números de teléfono**: Gestiona los números telefónicos asociados a tus agentes
@@ -16,8 +16,7 @@ uMindsAI Dashboard es una aplicación web para gestionar y visualizar llamadas r
 ## Requisitos
 
 - Node.js (v14 o superior)
-- API key de Retell AI
-- Cuenta en Supabase (para autenticación)
+- Client ID válido para acceder al dashboard
 
 ## Instalación
 
@@ -32,34 +31,61 @@ cd uMindsAI-Dashboard
 npm install
 ```
 
-3. Configura las variables de entorno:
-   - Copia el archivo `env.example` a `.env`
-   - Añade tu URL y clave anónima de Supabase
-
-4. Configura Supabase:
-   - Crea un proyecto en [Supabase](https://supabase.com)
-   - Habilita la autenticación por email/password
-   - (Opcional) Configura proveedores OAuth (Google, GitHub)
-   - Copia la URL del proyecto y la clave anónima al archivo `.env`
-
-5. Inicia el servidor de desarrollo:
+3. Inicia el servidor de desarrollo:
 ```bash
 npm run dev
 ```
 
 ## Configuración
 
-### Autenticación con Supabase
-La aplicación ahora requiere autenticación para acceder. Los usuarios deben:
-1. Registrarse con email y contraseña
-2. O iniciar sesión con Google/GitHub (si está configurado)
+### Acceso con Client ID o API Key
+La aplicación requiere un `client_id` o `api_key` como parámetro en la URL para acceder:
 
-### API Key de Retell
-La API key de Retell AI se proporciona como parámetro en la URL después de iniciar sesión:
+**Opción 1 - Solo client_id (recomendado):**
+```
+http://localhost:5173/dashboard?client_id=TU_CLIENT_ID
+```
 
+**Opción 2 - Solo api_key:**
 ```
-http://localhost:5173/dashboard?apikey=TU_API_KEY_DE_RETELL
+http://localhost:5173/dashboard?api_key=TU_API_KEY
 ```
+
+**Opción 3 - Ambos parámetros:**
+```
+http://localhost:5173/dashboard?client_id=TU_CLIENT_ID&api_key=TU_API_KEY
+```
+
+**Opción 4 - Con control de agenda:**
+```
+http://localhost:5173/dashboard?client_id=TU_CLIENT_ID&agenda=false
+```
+
+**Opción 5 - Con control de llamadas:**
+```
+http://localhost:5173/dashboard?client_id=TU_CLIENT_ID&calls=false
+```
+
+**Opción 6 - Combinación de controles:**
+```
+http://localhost:5173/dashboard?client_id=TU_CLIENT_ID&agenda=false&calls=false
+```
+
+**Opción 7 - Filtrar por número específico:**
+```
+http://localhost:5173/dashboard?client_id=TU_CLIENT_ID&phone=+1234567890
+```
+
+**Opción 8 - Combinación completa:**
+```
+http://localhost:5173/dashboard?client_id=TU_CLIENT_ID&phone=+1234567890&agenda=false&calls=false
+```
+
+- **client_id**: Se utiliza para obtener automáticamente la API key de Retell AI asociada a tu cuenta
+- **api_key**: Se utiliza directamente sin necesidad de consultar al servidor
+- **agenda**: Controla la visibilidad de las funcionalidades de agenda (true/false, por defecto true)
+- **calls**: Controla la visibilidad de los botones de hacer llamadas (true/false, por defecto true)
+- **phone**: Filtra para mostrar solo un número de teléfono específico (con o sin +)
 
 ## Uso
 
@@ -84,6 +110,8 @@ Lista todos tus números telefónicos con información detallada:
 - Código de área
 - Agentes asociados
 - Fecha de última modificación
+- **Añadir nuevos números de teléfono** con configuración completa
+- **Eliminar números de teléfono** con confirmación de seguridad
 
 ### Realización de llamadas
 Para realizar una llamada desde la interfaz:
@@ -101,7 +129,6 @@ Para realizar una llamada desde la interfaz:
 - Tailwind CSS
 - Lucide Icons
 - Retell AI API
-- Supabase (Autenticación)
 - React Router DOM
 
 ## Características avanzadas
@@ -114,4 +141,3 @@ Para realizar una llamada desde la interfaz:
 
 ## Licencia
 Este proyecto está bajo la licencia MIT.
-# Dashboard

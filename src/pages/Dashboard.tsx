@@ -212,6 +212,7 @@ interface DashboardProps {
   filteredCallsCount: number;
   dashboardData?: any;
   loadDashboardData?: (fechaInicio?: string, fechaFin?: string) => void;
+  agendaEnabled?: boolean;
 }
 
 export function Dashboard({
@@ -225,7 +226,8 @@ export function Dashboard({
   totalCalls,
   filteredCallsCount,
   dashboardData,
-  loadDashboardData
+  loadDashboardData,
+  agendaEnabled = true
 }: DashboardProps) {
   // Error boundary simple
   const [hasError, setHasError] = React.useState(false);
@@ -677,7 +679,11 @@ export function Dashboard({
       ) : (
         <>
           {/* Sección de estadísticas del servidor */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6 mb-8">
+          <div className={`grid gap-4 mb-8 ${
+            agendaEnabled 
+              ? 'md:grid-cols-2 lg:grid-cols-6' 
+              : 'md:grid-cols-2 lg:grid-cols-4'
+          }`}>
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-sm font-medium">Llamadas Lanzadas</CardTitle>
@@ -791,85 +797,93 @@ export function Dashboard({
                 </div>
               </CardContent>
             </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Total Agendamientos</CardTitle>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  className="h-4 w-4 text-blue-400"
-                >
-                  <rect width="18" height="18" x="3" y="4" rx="2" ry="2"/>
-                  <line x1="16" x2="16" y1="2" y2="6"/>
-                  <line x1="8" x2="8" y1="2" y2="6"/>
-                  <line x1="3" x2="21" y1="10" y2="10"/>
-                </svg>
-              </CardHeader>
-              <CardContent className="flex flex-col items-center justify-center text-center">
-                <div className="text-xl font-bold text-center">
-                  {(() => {
-                    const efectivas = dashboardData?.dashboard_data?.metricas_generales?.llamadas_efectivas || 0;
-                    const agendas = dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos || 0;
-                    if (efectivas > 0) {
-                      return <span className="font-bold">{((agendas / efectivas) * 100).toFixed(2)}%</span>;
-                    }
-                    return <span className="font-bold">0%</span>;
-                  })()}
-                </div>
-                <div className="text-xs text-slate-600 text-center">
-                  {dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos?.toLocaleString() || 0} agendamientos
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Costo por Agenda</CardTitle>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  className="h-4 w-4 text-emerald-400"
-                >
-                  <line x1="12" x2="12" y1="2" y2="22"/>
-                  <path d="M17 5H7L12 2l5 3z"/>
-                  <path d="M17 19H7L12 22l5-3z"/>
-                  <rect width="18" height="18" x="3" y="4" rx="2" ry="2"/>
-                </svg>
-              </CardHeader>
-              <CardContent className="flex flex-col items-center justify-center text-center">
-                <div className="text-xl font-bold text-center">
-                  {(() => {
-                    const costo = dashboardData?.dashboard_data?.metricas_generales?.costo_total || 0;
-                    const agendas = dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos || 0;
-                    if (agendas > 0) {
-                      return <span className="font-bold">${(costo / agendas).toFixed(2)}</span>;
-                    }
-                    return <span className="font-bold">$0.00</span>;
-                  })()}
-                </div>
-                <div className="text-xs text-slate-600 text-center">
-                  {dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos?.toLocaleString() || 0} agendamientos
-                </div>
-              </CardContent>
-            </Card>
+            {agendaEnabled && (
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium">Total Agendamientos</CardTitle>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    className="h-4 w-4 text-blue-400"
+                  >
+                    <rect width="18" height="18" x="3" y="4" rx="2" ry="2"/>
+                    <line x1="16" x2="16" y1="2" y2="6"/>
+                    <line x1="8" x2="8" y1="2" y2="6"/>
+                    <line x1="3" x2="21" y1="10" y2="10"/>
+                  </svg>
+                </CardHeader>
+                <CardContent className="flex flex-col items-center justify-center text-center">
+                  <div className="text-xl font-bold text-center">
+                    {(() => {
+                      const efectivas = dashboardData?.dashboard_data?.metricas_generales?.llamadas_efectivas || 0;
+                      const agendas = dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos || 0;
+                      if (efectivas > 0) {
+                        return <span className="font-bold">{((agendas / efectivas) * 100).toFixed(2)}%</span>;
+                      }
+                      return <span className="font-bold">0%</span>;
+                    })()}
+                  </div>
+                  <div className="text-xs text-slate-600 text-center">
+                    {dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos?.toLocaleString() || 0} agendamientos
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            {agendaEnabled && (
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium">Costo por Agenda</CardTitle>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    className="h-4 w-4 text-emerald-400"
+                  >
+                    <line x1="12" x2="12" y1="2" y2="22"/>
+                    <path d="M17 5H7L12 2l5 3z"/>
+                    <path d="M17 19H7L12 22l5-3z"/>
+                    <rect width="18" height="18" x="3" y="4" rx="2" ry="2"/>
+                  </svg>
+                </CardHeader>
+                <CardContent className="flex flex-col items-center justify-center text-center">
+                  <div className="text-xl font-bold text-center">
+                    {(() => {
+                      const costo = dashboardData?.dashboard_data?.metricas_generales?.costo_total || 0;
+                      const agendas = dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos || 0;
+                      if (agendas > 0) {
+                        return <span className="font-bold">${(costo / agendas).toFixed(2)}</span>;
+                      }
+                      return <span className="font-bold">$0.00</span>;
+                    })()}
+                  </div>
+                  <div className="text-xs text-slate-600 text-center">
+                    {dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos?.toLocaleString() || 0} agendamientos
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
           
           {/* Gráfico de llamadas por día */}
           {/* Eliminar la Card y el contenido del gráfico de llamadas por día */}
           
           {/* Gráficos de distribución */}
-          <div className="grid gap-4 md:grid-cols-2 mb-8">
+          <div className={`grid gap-4 mb-8 ${
+            agendaEnabled 
+              ? 'md:grid-cols-2' 
+              : 'md:grid-cols-1'
+          }`}>
             {/* Gráfico de agendamientos por hora */}
-            {hourlyAgendasData && hourlyAgendasData.length > 0 && (
+            {agendaEnabled && hourlyAgendasData && hourlyAgendasData.length > 0 && (
               <Card className="mb-8 shadow-lg border border-slate-200">
                 <CardHeader>
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -943,7 +957,7 @@ export function Dashboard({
             )}
             
             {/* Gráfico de tipos de vivienda */}
-            {housingTypeData && housingTypeData.length > 0 && (
+            {agendaEnabled && housingTypeData && housingTypeData.length > 0 && (
               <Card className="mb-8 shadow-lg border border-slate-200">
                 <CardHeader>
                   <CardTitle className="text-base font-semibold text-slate-800">Tipos de Vivienda</CardTitle>
@@ -969,7 +983,11 @@ export function Dashboard({
           </div>
           
           {/* Gráficos adicionales */}
-          <div className="grid gap-4 md:grid-cols-2 mb-8">
+          <div className={`grid gap-4 mb-8 ${
+            agendaEnabled 
+              ? 'md:grid-cols-2' 
+              : 'md:grid-cols-1'
+          }`}>
             {/* Gráfico de llamadas efectivas por hora */}
             {effectiveCallsData && effectiveCallsData.length > 0 && (
               <Card className="mb-8 shadow-lg border border-slate-200">
@@ -1108,7 +1126,7 @@ export function Dashboard({
           )}
           
           {/* Resumen detallado de tipos de vivienda */}
-          {dashboardData?.dashboard_data?.tipos_vivienda && (
+          {agendaEnabled && dashboardData?.dashboard_data?.tipos_vivienda && (
             <Card className="mb-8">
               <CardHeader>
                 <CardTitle>Resumen Detallado de Tipos de Vivienda</CardTitle>
@@ -1263,7 +1281,7 @@ export function Dashboard({
           )}
           
           {/* Tabla detallada de tipos de vivienda */}
-          {dashboardData?.dashboard_data?.tipos_vivienda && (
+          {agendaEnabled && dashboardData?.dashboard_data?.tipos_vivienda && (
             <Card className="mb-8">
               <CardHeader>
                 <CardTitle>Análisis Detallado de Tipos de Vivienda</CardTitle>

@@ -41,7 +41,8 @@ function DashboardApp() {
     batchCallsLoaded,
     dashboardData,
     loadingDashboardData,
-    loadDashboardData
+    loadDashboardData,
+    agendaEnabled
   } = useCallsContext();
   
   // Cargar números de teléfono y batch calls una sola vez al iniciar la aplicación
@@ -54,6 +55,14 @@ function DashboardApp() {
       loadDashboardData();
     }
   }, [apiKey, loadPhoneNumbers, loadBatchCalls, loadDashboardData]);
+  
+  // Redirigir si se intenta acceder a agendas cuando está deshabilitada
+  React.useEffect(() => {
+    if (currentPage === 'agendas' && !agendaEnabled) {
+      console.log('Agenda deshabilitada, redirigiendo al dashboard');
+      setCurrentPage('dashboard');
+    }
+  }, [currentPage, agendaEnabled]);
   
   // Calculamos si la caché está activa
   const cacheStatus = lastUpdated 
@@ -1232,6 +1241,7 @@ function DashboardApp() {
             filteredCallsCount={filteredCalls.length}
             dashboardData={dashboardData}
             loadDashboardData={loadDashboardData}
+            agendaEnabled={agendaEnabled}
           />
         )}
         {currentPage === 'recordings' && (
@@ -1244,7 +1254,7 @@ function DashboardApp() {
             onNavigate={setCurrentPage as (page: 'dashboard' | 'recordings' | 'phones') => void}
           />
         )}
-        {currentPage === 'agendas' && (
+        {currentPage === 'agendas' && agendaEnabled && (
           <Agendas
             onNavigate={setCurrentPage as (page: string) => void}
           />

@@ -428,18 +428,20 @@ export async function deleteBatchCall(
 }
 
 // Función para obtener la API key del cliente
-export async function getClientApiKey(email: string): Promise<{ apiKey: string | null; clientId: string | null }> {
+export async function getClientApiKey(identifier: string): Promise<{ apiKey: string | null; clientId: string | null; config?: Record<string, any> }> {
   try {
-    console.log('Solicitando API key para el email:', email);
+    console.log('Solicitando API key para el identificador:', identifier);
+    
+    // Determinar si el identificador es un email o un client_id
+    const isEmail = identifier.includes('@');
+    const requestBody = isEmail ? { email: identifier } : { client_id: identifier };
     
     const response = await fetch(GET_CLIENT_WEBHOOK_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        email: email
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
@@ -459,7 +461,11 @@ export async function getClientApiKey(email: string): Promise<{ apiKey: string |
       });
       return {
         apiKey: clientData.api_key || null,
-        clientId: clientData.client_id || null
+        clientId: clientData.client_id || null,
+        config: clientData.config ?? {
+          agenda_enabled: clientData.agenda_enabled,
+          calls_enabled: clientData.calls_enabled,
+        }
       };
     }
     
@@ -467,7 +473,11 @@ export async function getClientApiKey(email: string): Promise<{ apiKey: string |
     if (data && typeof data === 'object') {
       return {
         apiKey: data.api_key || data.apiKey || null,
-        clientId: data.client_id || data.clientId || null
+        clientId: data.client_id || data.clientId || null,
+        config: data.config ?? {
+          agenda_enabled: data.agenda_enabled,
+          calls_enabled: data.calls_enabled,
+        }
       };
     }
     
@@ -794,6 +804,233 @@ export async function fetchAgendas(clientId: string): Promise<Agenda[]> {
     console.error('Error al obtener agendas del webhook:', error);
     // En caso de error, devolver array vacío en lugar de lanzar la excepción
     return [];
+  }
+}
+
+// Función para importar un número de teléfono
+export async function importPhoneNumber(
+  apiKey: string,
+  phoneData: {
+    phone_number: string;
+    termination_uri?: string;
+    sip_trunk_auth_username?: string;
+    sip_trunk_auth_password?: string;
+    nickname?: string;
+  }
+): Promise<any> {
+  try {
+    console.log('Importando número de teléfono:', phoneData.phone_number);
+    
+    const response = await fetch('https://api.retellai.com/import-phone-number', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(phoneData),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error en la respuesta:', response.status, response.statusText, errorText);
+      throw new Error(`Error al importar número de teléfono: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('Respuesta de importación:', data);
+    
+    return data;
+  } catch (error) {
+    console.error('Error al importar número de teléfono:', error);
+    throw error;
+  }
+}
+
+// Función para eliminar un número de teléfono
+export async function deletePhoneNumber(
+  apiKey: string,
+  phoneNumber: string
+): Promise<any> {
+  try {
+    console.log('Eliminando número de teléfono:', phoneNumber);
+    
+    const response = await fetch(`https://api.retellai.com/delete-phone-number/${phoneNumber}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error en la respuesta:', response.status, response.statusText, errorText);
+      throw new Error(`Error al eliminar número de teléfono: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    // Para DELETE, la respuesta puede estar vacía (204 No Content)
+    const data = response.status === 204 ? { success: true } : await response.json();
+    console.log('Respuesta de eliminación:', data);
+    
+    return data;
+  } catch (error) {
+    console.error('Error al eliminar número de teléfono:', error);
+    throw error;
+  }
+}
+
+// Función para listar llamadas usando el endpoint list-calls con BASE_URL
+export async function listCalls(
+  apiKey: string,
+  params: {
+    client_id: string;
+    from_number?: string;
+    to_number?: string;
+    status?: string;
+    fecha_inicio?: string;
+    fecha_fin?: string;
+    sort_order?: 'ASC' | 'DESC';
+    page?: number;
+    per_page?: number;
+  }
+): Promise<{
+  calls: RetellCall[];
+  total_pages?: number;
+  total_calls?: number;
+  current_page?: number;
+}> {
+  try {
+    if (!params?.client_id) {
+      throw new Error('client_id es obligatorio para list-calls');
+    }
+    console.log('Solicitando llamadas con parámetros:', params);
+    
+    // Usar siempre el endpoint de iacreatorhub
+    const url = `https://api.iacreatorhub.com/api/calls/list-calls`;
+    
+    console.log('URL de la petición:', url);
+    console.log('Body de la petición:', params);
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error en la respuesta:', response.status, response.statusText, errorText);
+      throw new Error(`Error al obtener llamadas: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('Respuesta del endpoint list-calls:', data);
+    
+    // Transformar las llamadas al formato RetellCall
+    const calls: RetellCall[] = (data.calls || data.llamadas || []).map((call: any) => ({
+      call_id: call.call_id || call.id || '',
+      duration: parseInt(call.duration) || 0,
+      start_time: call.created_at || call.start_time,
+      start_timestamp: new Date(call.created_at || call.start_time).getTime(),
+      end_timestamp: call.end_timestamp || (call.created_at && call.duration ? 
+        new Date(call.created_at).getTime() + (parseInt(call.duration) * 1000) : 
+        undefined),
+      disconnection_reason: call.end_reason || call.disconnection_reason,
+      status: call.status === 'fallida' ? 'failed' : (call.status || 'completed'),
+      call_status: call.status === 'fallida' ? 'failed' : (call.status || 'completed'),
+      transcript: call.transcript,
+      recording_url: call.recordings || call.recording_url,
+      to_number: call.phone_number || call.to_number,
+      from_number: call.from_number,
+      metadata: {
+        id: call.id,
+        client_id: call.client_id,
+        summary: call.summary,
+        interest: call.interest,
+        tipo_vivienda: call.tipo_vivienda,
+        created_at: call.created_at,
+        end_reason: call.end_reason
+      }
+    }));
+    
+    return {
+      calls,
+      total_pages: data.total_pages || data.total_paginas,
+      total_calls: data.total_calls || data.total_llamadas,
+      current_page: data.current_page || data.pagina_actual || params.page || 1
+    };
+    
+  } catch (error) {
+    console.error('Error al obtener llamadas con list-calls:', error);
+    throw error;
+  }
+}
+
+// Función para obtener todas las llamadas usando list-calls con paginación automática
+export async function fetchAllCallsWithListCalls(
+  apiKey: string,
+  params: {
+    client_id?: string;
+    from_number?: string;
+    to_number?: string;
+    status?: string;
+    fecha_inicio?: string;
+    fecha_fin?: string;
+    sort_order?: 'ASC' | 'DESC';
+  } = {}
+): Promise<RetellCall[]> {
+  try {
+    console.log('Obteniendo todas las llamadas con list-calls:', params);
+    
+    let allCalls: RetellCall[] = [];
+    let page = 1;
+    let hasMore = true;
+    let totalPages = 0;
+    
+    while (hasMore) {
+      const response = await listCalls(apiKey, {
+        ...params,
+        page,
+        per_page: 100 // Máximo por página
+      });
+      
+      allCalls = [...allCalls, ...response.calls];
+      
+      // Si es la primera página, obtener el total de páginas
+      if (page === 1 && response.total_pages) {
+        totalPages = response.total_pages;
+      }
+      
+      // Determinar si hay más páginas
+      if (totalPages > 0) {
+        hasMore = page < totalPages;
+      } else {
+        // Si no conocemos el total, usar la heurística
+        hasMore = response.calls.length === 100;
+      }
+      
+      if (hasMore) {
+        page++;
+        // Pequeña pausa para no sobrecargar el servidor
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Verificación de seguridad para evitar bucles infinitos
+        if (page > 100) {
+          console.warn('Límite de páginas alcanzado (100), deteniendo paginación');
+          break;
+        }
+      }
+    }
+    
+    console.log(`Total de llamadas obtenidas con list-calls: ${allCalls.length}`);
+    return allCalls;
+    
+  } catch (error) {
+    console.error('Error al obtener todas las llamadas con list-calls:', error);
+    throw error;
   }
 }
 

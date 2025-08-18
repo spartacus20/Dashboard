@@ -1,7 +1,8 @@
+
+
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { RetellCall, FilterCriteria, RetellPhoneNumber, RetellBatchCall } from '../types';
-import { fetchPhoneNumbers, fetchBatchCalls, fetchCalls, getClientApiKey, getDashboardData } from '../api';
-import { useAuth } from './AuthContext';
+import { fetchPhoneNumbers, fetchBatchCalls, listCalls, getClientApiKey, getDashboardData } from '../api';
 
 interface CallsContextType {
   allCalls: RetellCall[];
@@ -37,6 +38,9 @@ interface CallsContextType {
   loadingDashboardData: boolean;
   loadDashboardData: (fechaInicio?: string, fechaFin?: string) => Promise<void>;
   totalCallsFiltered: number | null;
+  agendaEnabled: boolean;
+  callsEnabled: boolean;
+  phoneFilter: string | null;
 }
 
 const CallsContext = createContext<CallsContextType | undefined>(undefined);
@@ -82,8 +86,14 @@ export function CallsProvider({ children }: CallsProviderProps) {
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [loadingDashboardData, setLoadingDashboardData] = useState(false);
   
-  // Obtener el usuario del contexto de autenticación
-  const { user } = useAuth();
+  // Estado para controlar la visibilidad de agenda
+  const [agendaEnabled, setAgendaEnabled] = useState(true);
+  
+  // Estado para controlar la visibilidad de llamadas
+  const [callsEnabled, setCallsEnabled] = useState(true);
+  
+  // Estado para filtrar por número de teléfono específico
+  const [phoneFilter, setPhoneFilter] = useState<string | null>(null);
   
   // Estado para los números de teléfono
   const [phoneNumbers, setPhoneNumbers] = useState<RetellPhoneNumber[]>([]);
@@ -103,30 +113,54 @@ export function CallsProvider({ children }: CallsProviderProps) {
   // Tiempo de caducidad de la caché en milisegundos (15 minutos)
   const CACHE_EXPIRY_TIME = 15 * 60 * 1000;
   
-  // Obtener la API key cuando el usuario se autentique
+  // Función para obtener parámetros necesarios de la URL (client_id y phone)
+  const getParamsFromUrl = useCallback(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const clientId = urlParams.get('client_id');
+    const phone = urlParams.get('phone');
+    return { clientId, phone };
+  }, []);
+  
+  // Obtener la API key y configuración cuando se monta el componente
   useEffect(() => {
     const fetchApiKey = async () => {
-      if (user?.email) {
-        console.log('Obteniendo API key para el usuario:', user.email);
-        const result = await getClientApiKey(user.email);
-        if (result.apiKey) {
-          console.log('API key obtenida exitosamente');
-          setApiKey(result.apiKey);
-          setClientId(result.clientId);
-        } else {
-          console.error('No se pudo obtener la API key del usuario');
-          setError('No se pudo obtener la configuración del usuario');
+      const { clientId: urlClientId } = getParamsFromUrl();
+
+      if (urlClientId) {
+        console.log('Client ID obtenido de la URL:', urlClientId);
+        setClientId(urlClientId);
+
+        try {
+          const result = await getClientApiKey(urlClientId);
+          if (result.apiKey) {
+            console.log('API key obtenida exitosamente para client_id:', urlClientId);
+            setApiKey(result.apiKey);
+          } else {
+            console.error('No se pudo obtener la API key para el client_id:', urlClientId);
+            setError('No se pudo obtener la configuración para el client_id proporcionado');
+          }
+          // Ya no mapeamos claves de configuración como agenda/calls desde get-client
+        } catch (err) {
+          console.error('Error al obtener API key/configuración:', err);
+          setError('Error al obtener la configuración del cliente');
         }
+      } else {
+        console.error('No se encontró client_id en los parámetros de la URL');
+        setError('Se requiere el parámetro client_id en la URL. Ejemplo: ?client_id=123');
       }
     };
 
     fetchApiKey();
-  }, [user]);
+  }, [getParamsFromUrl]);
 
   // Función para cargar una página específica de llamadas
   const loadCallsPage = useCallback(async (page: number, filterCriteria?: FilterCriteria): Promise<RetellCall[]> => {
     if (!apiKey) {
       console.log('Esperando API key para cargar llamadas...');
+      return [];
+    }
+    if (!clientId) {
+      console.log('Esperando client_id para cargar llamadas...');
       return [];
     }
     
@@ -148,20 +182,31 @@ export function CallsProvider({ children }: CallsProviderProps) {
       setLoadingAllCalls(true);
       console.log(`Cargando página ${page} de llamadas`);
       
-      const response = await fetchCalls(apiKey, undefined, filterCriteria, page, clientId || undefined);
+      // Usar list-calls con client_id obligatorio contra api.iacreatorhub.com
+      const params: any = {
+        client_id: clientId,
+        page,
+        per_page: 100,
+        sort_order: 'DESC'
+      };
+      if (filterCriteria?.date_range) {
+        if (filterCriteria.date_range.start) params.fecha_inicio = filterCriteria.date_range.start;
+        if (filterCriteria.date_range.end) params.fecha_fin = filterCriteria.date_range.end;
+      }
+      const response = await listCalls(apiKey, params);
       const newCalls = response.calls;
       
       // Si es la primera página, obtener información de paginación
-      if (page === 1 && response.totalPages) {
-        setTotalPages(response.totalPages);
-        setHasMorePages(response.totalPages > 1);
-        console.log(`Total de páginas disponibles: ${response.totalPages}`);
+      if (page === 1 && response.total_pages) {
+        setTotalPages(response.total_pages);
+        setHasMorePages(response.total_pages > 1);
+        console.log(`Total de páginas disponibles: ${response.total_pages}`);
       }
       
       // Extraer el total de llamadas filtrado si está disponible
-      if (response.totalCallsFiltered !== undefined && response.totalCallsFiltered !== null) {
-        setTotalCallsFiltered(response.totalCallsFiltered);
-        console.log(`Total de llamadas filtrado: ${response.totalCallsFiltered}`);
+      if (response.total_calls !== undefined && response.total_calls !== null) {
+        setTotalCallsFiltered(response.total_calls);
+        console.log(`Total de llamadas filtrado: ${response.total_calls}`);
       }
       
       console.log(`Página ${page}: ${newCalls.length} llamadas cargadas`);
@@ -418,6 +463,25 @@ export function CallsProvider({ children }: CallsProviderProps) {
     }
   }, [clientId, dashboardData, loadingDashboardData, loadDashboardData]);
 
+  // agendaEnabled y callsEnabled ahora vienen desde la configuración del cliente
+
+  // Actualizar el estado de phoneFilter basado en el parámetro de la URL
+  useEffect(() => {
+    const { phone } = getParamsFromUrl();
+    if (phone) {
+      // Normalizar el número de teléfono (añadir + si no lo tiene)
+      let normalizedPhone = phone.trim();
+      if (!normalizedPhone.startsWith('+')) {
+        normalizedPhone = '+' + normalizedPhone;
+      }
+      setPhoneFilter(normalizedPhone);
+      console.log('Filtro de teléfono activado:', normalizedPhone);
+    } else {
+      setPhoneFilter(null);
+      console.log('Sin filtro de teléfono');
+    }
+  }, [getParamsFromUrl]);
+
   const value = {
     allCalls,
     loadingAllCalls,
@@ -451,7 +515,10 @@ export function CallsProvider({ children }: CallsProviderProps) {
     dashboardData,
     loadingDashboardData,
     loadDashboardData,
-    totalCallsFiltered
+    totalCallsFiltered,
+    agendaEnabled,
+    callsEnabled,
+    phoneFilter
   };
 
   return (
