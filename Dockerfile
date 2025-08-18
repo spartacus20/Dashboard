@@ -10,7 +10,7 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Copiar el contenido de la carpeta 'build' al directorio web de Nginx
 # (Usa 'dist' si tu proyecto usa Vite)
-COPY build /usr/share/nginx/html
+COPY dist /usr/share/nginx/html
 
 # Exponer el puerto 80
 EXPOSE 80
