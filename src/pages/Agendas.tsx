@@ -21,6 +21,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
   const [filterType, setFilterType] = useState('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
   const [currentPage, setCurrentPage] = useState(1);
   const [activeTab, setActiveTab] = useState<'list' | 'calendar'>('list');
   const [selectedAgenda, setSelectedAgenda] = useState<Agenda | null>(null);
@@ -48,7 +49,8 @@ export function Agendas({ onNavigate }: AgendasProps) {
         undefined, // searchTerm
         undefined, // filterType
         dateFrom || undefined,
-        dateTo || undefined
+        dateTo || undefined,
+        sortOrder // sort_order
       );
       
       // Asegurar que siempre trabajamos con un array
@@ -68,10 +70,10 @@ export function Agendas({ onNavigate }: AgendasProps) {
     }
   };
 
-  // Cargar agendas al montar el componente o cuando cambien los filtros de fecha
+  // Cargar agendas al montar el componente o cuando cambien los filtros de fecha o ordenamiento
   useEffect(() => {
     loadAgendas();
-  }, [clientId, dateFrom, dateTo]);
+  }, [clientId, dateFrom, dateTo, sortOrder]);
 
   // Filtrar agendas (solo búsqueda y tipo, las fechas se filtran en la API)
   useEffect(() => {
@@ -167,7 +169,8 @@ export function Agendas({ onNavigate }: AgendasProps) {
         searchTerm || undefined,
         filterType !== 'all' ? filterType : undefined,
         dateFrom || undefined,
-        dateTo || undefined
+        dateTo || undefined,
+        sortOrder
       );
 
       if (allAgendas.length === 0) {
@@ -200,22 +203,21 @@ export function Agendas({ onNavigate }: AgendasProps) {
     }
   };
 
-  // Calcular estadísticas de agendas (usando filteredAgendas para que se actualicen con los filtros)
-  // Evitar duplicados: cada agenda solo cuenta para una card (priorizando paneles solares)
-  const panelesSolaresCount = filteredAgendas.filter(agenda => 
+  // Calcular estadísticas de agendas (usando todas las agendas, no las filtradas)
+  // Las agendas sin tipo_agenda se consideran paneles solares por defecto
+  const panelesSolaresCount = agendas.filter(agenda => 
+    !agenda.tipo_agenda || // Sin categoría = paneles solares por defecto
     agenda.tipo_agenda?.toLowerCase().includes('paneles solares') || 
     agenda.tipo_agenda?.toLowerCase().includes('placas solares')
   ).length;
 
-  const bateriasCount = filteredAgendas.filter(agenda => 
-    // Solo contar baterías si NO es paneles solares (evitar duplicados)
-    !(agenda.tipo_agenda?.toLowerCase().includes('paneles solares') || 
-      agenda.tipo_agenda?.toLowerCase().includes('placas solares')) &&
-    (
-      agenda.tipo_agenda?.toLowerCase().includes('baterías') || 
-      agenda.tipo_agenda?.toLowerCase().includes('baterias') ||
-      agenda.tipo_agenda?.toLowerCase().includes('bateria') ||
-      agenda.tipo_agenda?.toLowerCase().includes('batería')
+  const bateriasCount = agendas.filter(agenda => 
+    // Solo contar baterías si tiene tipo_agenda específico de baterías
+    agenda.tipo_agenda && (
+      agenda.tipo_agenda.toLowerCase().includes('baterías') || 
+      agenda.tipo_agenda.toLowerCase().includes('baterias') ||
+      agenda.tipo_agenda.toLowerCase().includes('bateria') ||
+      agenda.tipo_agenda.toLowerCase().includes('batería')
     )
   ).length;
 
@@ -253,7 +255,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
         </div>
 
         {/* Cards de estadísticas */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           {/* Card de Paneles Solares */}
           <div className="bg-white rounded-lg p-6 shadow-lg border border-slate-200 hover:shadow-xl transition-shadow">
             <div className="flex items-center justify-between">
@@ -299,6 +301,31 @@ export function Agendas({ onNavigate }: AgendasProps) {
                 </div>
                 <div className="text-xs text-slate-500">
                   {bateriasCount === 1 ? 'agenda' : 'agendas'}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Card de Total */}
+          <div className="bg-white rounded-lg p-6 shadow-lg border border-slate-200 hover:shadow-xl transition-shadow">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="p-3 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-lg">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-800">Total</h3>
+                  <p className="text-sm text-slate-600">Todas las agendas</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-indigo-600">
+                  {agendas.length}
+                </div>
+                <div className="text-xs text-slate-500">
+                  {agendas.length === 1 ? 'agenda' : 'agendas'}
                 </div>
               </div>
             </div>
@@ -375,7 +402,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
 
             {/* Filtros y búsqueda */}
             <div className="bg-white rounded-lg p-6 mb-6 shadow-lg border border-slate-200">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                 {/* Búsqueda */}
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
@@ -425,6 +452,19 @@ export function Agendas({ onNavigate }: AgendasProps) {
                     onChange={(e) => setDateTo(e.target.value)}
                     className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
+                </div>
+
+                {/* Ordenamiento */}
+                <div className="relative">
+                  <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
+                  <select
+                    value={sortOrder}
+                    onChange={(e) => setSortOrder(e.target.value as 'ASC' | 'DESC')}
+                    className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
+                  >
+                    <option value="DESC">Más recientes primero</option>
+                    <option value="ASC">Más antiguos primero</option>
+                  </select>
                 </div>
               </div>
 

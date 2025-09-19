@@ -14,6 +14,41 @@ import {
   Legend
 } from "recharts";
 
+// Helpers de zona horaria (Europa/Madrid)
+function getMadridYmdParts(date: Date = new Date()): { year: number; month: number; day: number } {
+  const fmt = new Intl.DateTimeFormat('es-ES', {
+    timeZone: 'Europe/Madrid',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  const parts = fmt.formatToParts(date);
+  const day = Number(parts.find(p => p.type === 'day')?.value || '1');
+  const month = Number(parts.find(p => p.type === 'month')?.value || '1');
+  const year = Number(parts.find(p => p.type === 'year')?.value || '1970');
+  return { year, month, day };
+}
+
+function getMadridMidnight(date: Date = new Date()): Date {
+  const { year, month, day } = getMadridYmdParts(date);
+  // Devuelve el instante UTC correspondiente a 00:00:00 en Madrid de ese día
+  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+}
+
+function addDaysUTC(base: Date, days: number): Date {
+  const d = new Date(base);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d;
+}
+
+function formatMadridDateYYYYMMDD(date: Date): string {
+  // Formatea a YYYY-MM-DD según la fecha de Madrid representada por "date"
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(date.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 // Componente para mostrar esqueletos de carga
 const DashboardSkeleton = () => {
   return (
@@ -265,8 +300,14 @@ export function Dashboard({
     );
   }
 
-  // Estados para filtros de período
-  const [timePeriod, setTimePeriod] = useState<string>('week');
+  // Estados para filtros de período (persistir para evitar "rebote" tras remount)
+  const [timePeriod, setTimePeriod] = useState<string>(() => {
+    try {
+      return localStorage.getItem('dashboard_time_period') || 'week';
+    } catch {
+      return 'week';
+    }
+  });
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
   
@@ -327,57 +368,59 @@ export function Dashboard({
     }
   }, [dashboardData]);
 
-  // Efecto para cargar datos la primera vez con la última semana
+  // Persistir selección de período para evitar que vuelva al anterior por remounts
+  React.useEffect(() => {
+    try {
+      localStorage.setItem('dashboard_time_period', timePeriod);
+    } catch {}
+  }, [timePeriod]);
+
+  // Efecto para cargar datos la primera vez con la última semana (zonificada a Madrid)
   React.useEffect(() => {
     if (!loadDashboardData) return;
     // Solo cargar en el primer render
     if (timePeriod === 'week') {
-      const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const weekStart = new Date(today);
-      weekStart.setDate(today.getDate() - 7);
-      const weekStartStr = weekStart.toISOString().split('T')[0];
-      const tomorrow = new Date(today);
-      tomorrow.setDate(today.getDate() + 1);
-      const tomorrowStr = tomorrow.toISOString().split('T')[0];
+      const todayMadrid = getMadridMidnight();
+      const weekStartMadrid = addDaysUTC(todayMadrid, -7);
+      const weekStartStr = formatMadridDateYYYYMMDD(weekStartMadrid);
+      const tomorrowMadrid = addDaysUTC(todayMadrid, 1);
+      const tomorrowStr = formatMadridDateYYYYMMDD(tomorrowMadrid);
       loadDashboardData(weekStartStr, tomorrowStr);
     }
   }, [loadDashboardData]);
 
-  // Función para calcular las fechas según el período seleccionado
+  // Función para calcular las fechas según el período seleccionado (zona horaria Madrid)
   const calculateDatesForPeriod = (period: string, customStart?: string, customEnd?: string) => {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayMadrid = getMadridMidnight();
     
     switch (period) {
       case 'today':
-        const todayStr = today.toISOString().split('T')[0];
-        const tomorrow = new Date(today);
-        tomorrow.setDate(today.getDate() + 1);
-        const tomorrowStr = tomorrow.toISOString().split('T')[0];
+        const todayStr = formatMadridDateYYYYMMDD(todayMadrid);
+        const tomorrow = addDaysUTC(todayMadrid, 1);
+        const tomorrowStr = formatMadridDateYYYYMMDD(tomorrow);
         return { fechaInicio: todayStr, fechaFin: tomorrowStr };
       
       case 'week':
-        const weekStart = new Date(today);
-        weekStart.setDate(today.getDate() - 7);
-        const weekStartStr = weekStart.toISOString().split('T')[0];
-        const tomorrowStr2 = new Date(today);
-        tomorrowStr2.setDate(today.getDate() + 1);
-        return { fechaInicio: weekStartStr, fechaFin: tomorrowStr2.toISOString().split('T')[0] };
+        const weekStart = addDaysUTC(todayMadrid, -7);
+        const weekStartStr = formatMadridDateYYYYMMDD(weekStart);
+        const tomorrowStr2 = addDaysUTC(todayMadrid, 1);
+        return { fechaInicio: weekStartStr, fechaFin: formatMadridDateYYYYMMDD(tomorrowStr2) };
       
       case 'month':
-        const monthStart = new Date(today);
-        monthStart.setMonth(today.getMonth() - 1);
-        const monthStartStr = monthStart.toISOString().split('T')[0];
-        const tomorrowStr3 = new Date(today);
-        tomorrowStr3.setDate(today.getDate() + 1);
-        return { fechaInicio: monthStartStr, fechaFin: tomorrowStr3.toISOString().split('T')[0] };
+        // Restar 30 días como aproximación a "último mes" respecto a Madrid
+        const monthStart = addDaysUTC(todayMadrid, -30);
+        const monthStartStr = formatMadridDateYYYYMMDD(monthStart);
+        const tomorrowStr3 = addDaysUTC(todayMadrid, 1);
+        return { fechaInicio: monthStartStr, fechaFin: formatMadridDateYYYYMMDD(tomorrowStr3) };
       
       case 'custom':
         if (customStart && customEnd) {
-          const endDate = new Date(customEnd);
-          endDate.setDate(endDate.getDate() + 1); // Añadir un día para incluir todo el día final
-          return { fechaInicio: customStart, fechaFin: endDate.toISOString().split('T')[0] };
+          // Interpretar fechas YYYY-MM-DD en zona Madrid y convertir a rango [start, end+1)
+          const [yS, mS, dS] = customStart.split('-').map(Number);
+          const [yE, mE, dE] = customEnd.split('-').map(Number);
+          const startMadrid = new Date(Date.UTC(yS, (mS || 1) - 1, dS || 1, 0, 0, 0, 0));
+          const endMadridPlusOne = addDaysUTC(new Date(Date.UTC(yE, (mE || 1) - 1, dE || 1, 0, 0, 0, 0)), 1);
+          return { fechaInicio: formatMadridDateYYYYMMDD(startMadrid), fechaFin: formatMadridDateYYYYMMDD(endMadridPlusOne) };
         }
         return null;
       
@@ -404,20 +447,24 @@ export function Dashboard({
     }
   }, [timePeriod, customStartDate, customEndDate, loadDashboardData]);
 
-  // Función para filtrar datos por período
+  // Función para filtrar datos por período (usando medianoche en Madrid)
   const filterDataByPeriod = (data: any[], dateField: string = 'fecha') => {
     if (!data || !Array.isArray(data)) return data;
     
     try {
-      const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const today = getMadridMidnight();
       
       switch (timePeriod) {
         case 'today':
+          const tomorrowForFilter = addDaysUTC(today, 1);
           return data.filter(item => {
             try {
               const itemDate = new Date(item[dateField]);
-              return !isNaN(itemDate.getTime()) && itemDate >= today;
+              return (
+                !isNaN(itemDate.getTime()) && 
+                itemDate >= today && 
+                itemDate < tomorrowForFilter
+              );
             } catch (error) {
               console.warn('Error procesando fecha:', item[dateField], error);
               return false;
@@ -425,8 +472,7 @@ export function Dashboard({
           });
         
         case 'week':
-          const weekStart = new Date(today);
-          weekStart.setDate(today.getDate() - 7);
+          const weekStart = addDaysUTC(today, -7);
           return data.filter(item => {
             try {
               const itemDate = new Date(item[dateField]);
@@ -438,8 +484,7 @@ export function Dashboard({
           });
         
         case 'month':
-          const monthStart = new Date(today);
-          monthStart.setMonth(today.getMonth() - 1);
+          const monthStart = addDaysUTC(today, -30);
           return data.filter(item => {
             try {
               const itemDate = new Date(item[dateField]);
@@ -453,13 +498,14 @@ export function Dashboard({
         case 'custom':
           if (customStartDate && customEndDate) {
             try {
-              const startDate = new Date(customStartDate);
-              const endDate = new Date(customEndDate);
-              endDate.setHours(23, 59, 59, 999); // Incluir todo el día final
+              const [yS, mS, dS] = customStartDate.split('-').map(Number);
+              const [yE, mE, dE] = customEndDate.split('-').map(Number);
+              const startDate = new Date(Date.UTC(yS, (mS || 1) - 1, dS || 1, 0, 0, 0, 0));
+              const endDateExclusive = addDaysUTC(new Date(Date.UTC(yE, (mE || 1) - 1, dE || 1, 0, 0, 0, 0)), 1);
               return data.filter(item => {
                 try {
                   const itemDate = new Date(item[dateField]);
-                  return !isNaN(itemDate.getTime()) && itemDate >= startDate && itemDate <= endDate;
+                  return !isNaN(itemDate.getTime()) && itemDate >= startDate && itemDate < endDateExclusive;
                 } catch (error) {
                   console.warn('Error procesando fecha:', item[dateField], error);
                   return false;
@@ -599,6 +645,7 @@ export function Dashboard({
           </div>
         )}
       </div>
+
 
       {/* Filtros de período */}
       {dashboardData && (

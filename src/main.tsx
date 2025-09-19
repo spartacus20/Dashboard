@@ -4,13 +4,16 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App.tsx'
 import './index.css'
 import { CallsProvider } from './context/CallsContext'
+import { AuthProvider } from './context/AuthContext'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter>
-      <CallsProvider>
-        <App />
-      </CallsProvider>
+      <AuthProvider>
+        <CallsProvider>
+          <App />
+        </CallsProvider>
+      </AuthProvider>
     </BrowserRouter>
   </React.StrictMode>,
 )

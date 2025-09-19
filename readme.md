@@ -139,5 +139,10 @@ Para realizar una llamada desde la interfaz:
 - **Indicadores visuales**: Retroalimentación clara durante operaciones
 - **Gestión de errores**: Mensajes informativos para facilitar la solución de problemas
 
+## Documentación Adicional
+
+- **[AUTHENTICATION.md](./AUTHENTICATION.md)** - Guía completa del sistema de autenticación con Supabase
+- **[INFRAESTRUCTURA.md](./INFRAESTRUCTURA.md)** - Documentación detallada de la infraestructura y arquitectura del proyecto
+
 ## Licencia
 Este proyecto está bajo la licencia MIT.

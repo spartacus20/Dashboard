@@ -6,6 +6,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Recordings } from './pages/Recordings';
 import { PhoneNumbers } from './pages/PhoneNumbers';
 import { Agendas } from './pages/Agendas';
+import { Callbacks } from './pages/Callbacks';
 import { useCallsContext } from './context/CallsContext';
 import { X, Upload, Phone, Info, Check, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 
@@ -1256,6 +1257,11 @@ function DashboardApp() {
         )}
         {currentPage === 'agendas' && agendaEnabled && (
           <Agendas
+            onNavigate={setCurrentPage as (page: string) => void}
+          />
+        )}
+        {currentPage === 'callbacks' && (
+          <Callbacks
             onNavigate={setCurrentPage as (page: string) => void}
           />
         )}

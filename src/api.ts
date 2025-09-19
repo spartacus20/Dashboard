@@ -1,4 +1,5 @@
-import { RetellCall, FilterCriteria, CallStats, RetellPhoneNumber, RetellAgent, RetellBatchCall, ClientData, Agenda } from './types';
+import { RetellCall, FilterCriteria, CallStats, RetellPhoneNumber, RetellAgent, RetellBatchCall, ClientData, Agenda, Callback, CallbackResponse, CallsByPhoneResponse } from './types';
+import { get_client_id } from './lib/supabase';
 
 // Obtener la URL base según el entorno
 const IS_PRODUCTION = import.meta.env.VITE_PRODUCTION_API === 'on';
@@ -8,6 +9,11 @@ const GET_CLIENT_WEBHOOK_URL = IS_PRODUCTION ? 'https://n8n.aiagencyusa.com/webh
 const GET_DASHBOARD_WEBHOOK_URL = `${BASE_URL}/api/dashboard/get-dashboard`;
 const GET_AGENDAS_WEBHOOK_URL =  `${BASE_URL}/api/agenda/get-agenda`;
 const API_URL = 'https://api.retellai.com/v2/list-calls';
+
+// Función helper para obtener el client_id del localStorage
+function getClientId(): string | null {
+  return localStorage.getItem(get_client_id);
+}
 
 async function fetchAllCalls(
   apiKey: string,
@@ -19,8 +25,11 @@ async function fetchAllCalls(
   let hasMore = true;
   let totalPages = 0;
   
+  // Usar el client_id proporcionado o el del localStorage
+  const actualClientId = clientId || getClientId();
+  
   while (hasMore) {
-    const response = await fetchCalls(apiKey, undefined, filterCriteria, page, clientId);
+    const response = await fetchCalls(apiKey, undefined, filterCriteria, page, actualClientId || undefined);
     allCalls = [...allCalls, ...response.calls];
     
     // Si es la primera página, obtener el total de páginas
@@ -58,25 +67,34 @@ export async function fetchCalls(
       page: page
     };
     
-    // Incluir client_id si está disponible
-    if (clientId) {
-      requestBody.client_id = clientId;
+    // Incluir client_id si está disponible (usar el proporcionado o el del localStorage)
+    const actualClientId = clientId || getClientId();
+    if (actualClientId) {
+      requestBody.client_id = actualClientId;
     }
     
     // Incluir filtros de fecha si están disponibles
     if (filterCriteria?.date_range) {
       if (filterCriteria.date_range.start) {
-        // Convertir a formato ISO si no lo está
-        const startDate = new Date(filterCriteria.date_range.start);
-        requestBody.fecha_inicio = startDate.toISOString().split('T')[0];
+        // Usar el formato ISO completo si ya está en formato ISO, sino convertir
+        if (filterCriteria.date_range.start.includes('T')) {
+          requestBody.fecha_inicio = filterCriteria.date_range.start;
+        } else {
+          const startDate = new Date(filterCriteria.date_range.start);
+          requestBody.fecha_inicio = startDate.toISOString();
+        }
       }
       
       if (filterCriteria.date_range.end) {
-        // Convertir a formato ISO si no lo está
-        const endDate = new Date(filterCriteria.date_range.end);
-        // Asegurar que incluya todo el día final
-        endDate.setHours(23, 59, 59, 999);
-        requestBody.fecha_fin = endDate.toISOString().split('T')[0];
+        // Usar el formato ISO completo si ya está en formato ISO, sino convertir
+        if (filterCriteria.date_range.end.includes('T')) {
+          requestBody.fecha_fin = filterCriteria.date_range.end;
+        } else {
+          const endDate = new Date(filterCriteria.date_range.end);
+          // Asegurar que incluya todo el día final
+          endDate.setHours(23, 59, 59, 999);
+          requestBody.fecha_fin = endDate.toISOString();
+        }
       }
     }
     
@@ -491,16 +509,23 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
 
 // Función para obtener datos del dashboard
 export async function getDashboardData(
-  clientId: string, 
+  clientId?: string, 
   fechaInicio?: string, 
   fechaFin?: string
 ): Promise<any> {
   try {
-    console.log('Solicitando datos del dashboard para client_id:', clientId);
+    // Usar el client_id proporcionado o el del localStorage
+    const actualClientId = clientId || getClientId();
+    
+    if (!actualClientId) {
+      throw new Error('No se encontró client_id. Por favor, inicia sesión nuevamente.');
+    }
+    
+    console.log('Solicitando datos del dashboard para client_id:', actualClientId);
     console.log('Fechas de filtro:', { fechaInicio, fechaFin });
     
     const requestBody: any = {
-      client_id: clientId
+      client_id: actualClientId
     };
     
     // Agregar fechas al body si se proporcionan
@@ -594,15 +619,23 @@ export async function getDashboardData(
 
 // Función para obtener todas las agendas con paginación
 export async function fetchAllAgendas(
-  clientId: string, 
+  clientId?: string, 
   searchTerm?: string, 
   filterType?: string, 
   dateFrom?: string, 
-  dateTo?: string
+  dateTo?: string,
+  sortOrder?: 'ASC' | 'DESC'
 ): Promise<Agenda[]> {
   try {
-    console.log('Solicitando TODAS las agendas para client_id:', clientId);
-    console.log('Filtros aplicados:', { searchTerm, filterType, dateFrom, dateTo });
+    // Usar el client_id proporcionado o el del localStorage
+    const actualClientId = clientId || getClientId();
+    
+    if (!actualClientId) {
+      throw new Error('No se encontró client_id. Por favor, inicia sesión nuevamente.');
+    }
+    
+    console.log('Solicitando TODAS las agendas para client_id:', actualClientId);
+    console.log('Filtros aplicados:', { searchTerm, filterType, dateFrom, dateTo, sortOrder });
     
     let allAgendas: Agenda[] = [];
     let page = 1;
@@ -610,7 +643,7 @@ export async function fetchAllAgendas(
     
     while (hasMore) {
       const requestBody: any = {
-        client_id: clientId,
+        client_id: actualClientId,
         page: page,
         per_page: 100 // Máximo por página
       };
@@ -630,6 +663,10 @@ export async function fetchAllAgendas(
       
       if (dateTo) {
         requestBody.fecha_fin = dateTo;
+      }
+      
+      if (sortOrder) {
+        requestBody.sort_order = sortOrder;
       }
       
       console.log(`Página ${page}:`, requestBody);
@@ -730,13 +767,20 @@ export async function fetchAllAgendas(
 }
 
 // Función para obtener agendas (versión original para la página)
-export async function fetchAgendas(clientId: string): Promise<Agenda[]> {
+export async function fetchAgendas(clientId?: string): Promise<Agenda[]> {
   try {
-    console.log('Solicitando agendas para client_id:', clientId);
+    // Usar el client_id proporcionado o el del localStorage
+    const actualClientId = clientId || getClientId();
+    
+    if (!actualClientId) {
+      throw new Error('No se encontró client_id. Por favor, inicia sesión nuevamente.');
+    }
+    
+    console.log('Solicitando agendas para client_id:', actualClientId);
     console.log('URL del endpoint:', GET_AGENDAS_WEBHOOK_URL);
     
     const requestBody = {
-      client_id: clientId
+      client_id: actualClientId
     };
     
     console.log('Body de la petición:', requestBody);
@@ -991,8 +1035,13 @@ export async function fetchAllCallsWithListCalls(
     let totalPages = 0;
     
     while (hasMore) {
+      if (!params.client_id) {
+        throw new Error('client_id es obligatorio para fetchAllCallsWithListCalls');
+      }
+      
       const response = await listCalls(apiKey, {
         ...params,
+        client_id: params.client_id, // Asegurar que client_id esté definido
         page,
         per_page: 100 // Máximo por página
       });
@@ -1034,4 +1083,143 @@ export async function fetchAllCallsWithListCalls(
   }
 }
 
+// Función para obtener callbacks
+export async function fetchCallbacks(
+  clientId?: string,
+  page: number = 1,
+  limit: number = 100
+): Promise<CallbackResponse> {
+  try {
+    // Usar el client_id proporcionado o el del localStorage
+    const actualClientId = clientId || getClientId();
+    
+    if (!actualClientId) {
+      throw new Error('No se encontró client_id. Por favor, inicia sesión nuevamente.');
+    }
+    
+    console.log('Solicitando callbacks para client_id:', actualClientId);
+    console.log('Página:', page, 'Límite:', limit);
+    
+    const requestBody = {
+      client_id: actualClientId,
+      page: page,
+      limit: limit
+    };
+    
+    const response = await fetch('https://api.iacreatorhub.com/api/calls/list-callback', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error en la respuesta:', response.status, response.statusText, errorText);
+      throw new Error(`Error al obtener callbacks: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data: CallbackResponse = await response.json();
+    console.log('Respuesta del endpoint list-callback:', data);
+    
+    return data;
+    
+  } catch (error) {
+    console.error('Error al obtener callbacks:', error);
+    throw error;
+  }
+}
+
+// Función para obtener todas las callbacks con paginación automática
+export async function fetchAllCallbacks(
+  clientId: string
+): Promise<Callback[]> {
+  try {
+    console.log('Obteniendo todas las callbacks para client_id:', clientId);
+    
+    let allCallbacks: Callback[] = [];
+    let page = 1;
+    let hasMore = true;
+    let totalPages = 0;
+    
+    while (hasMore) {
+      const response = await fetchCallbacks(clientId, page, 100);
+      
+      allCallbacks = [...allCallbacks, ...response.callbacks];
+      
+      // Si es la primera página, obtener el total de páginas
+      if (page === 1 && response.total_paginas) {
+        totalPages = response.total_paginas;
+      }
+      
+      // Determinar si hay más páginas
+      if (totalPages > 0) {
+        hasMore = page < totalPages;
+      } else {
+        // Si no conocemos el total, usar la heurística
+        hasMore = response.callbacks.length === 100;
+      }
+      
+      if (hasMore) {
+        page++;
+        // Pequeña pausa para no sobrecargar el servidor
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Verificación de seguridad para evitar bucles infinitos
+        if (page > 100) {
+          console.warn('Límite de páginas alcanzado (100), deteniendo paginación');
+          break;
+        }
+      }
+    }
+    
+    console.log(`Total de callbacks obtenidas: ${allCallbacks.length}`);
+    return allCallbacks;
+    
+  } catch (error) {
+    console.error('Error al obtener todas las callbacks:', error);
+    throw error;
+  }
+}
+
 export { fetchAllCalls };
+
+// Obtener llamadas por número de teléfono
+export async function getCallsByPhone(
+  params: {
+    phone_number: string;
+    per_page?: number;
+    page?: number;
+    sort_order?: 'ASC' | 'DESC' | 'asc' | 'desc' | 'ASCENDING' | 'DESCENDING';
+  }
+): Promise<CallsByPhoneResponse> {
+  try {
+    const url = `https://api.iacreatorhub.com/api/calls/get-calls-by-phone`;
+    const body = {
+      phone_number: params.phone_number,
+      per_page: params.per_page ?? 50,
+      page: params.page ?? 1,
+      sort_order: params.sort_order ?? 'DESC'
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error en get-calls-by-phone: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data: CallsByPhoneResponse = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error al obtener llamadas por teléfono:', error);
+    throw error;
+  }
+}

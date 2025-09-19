@@ -1,6 +1,7 @@
-import React from 'react';
-import { Agenda } from '../types';
-import { X, Play, Pause, Volume2, Calendar, Phone, MapPin, User, Clock } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Agenda, CallsByPhoneResponse } from '../types';
+import { X, Play, Pause, Volume2, Calendar, Phone, MapPin, User, Clock, RefreshCw, AlertCircle } from 'lucide-react';
+import { getCallsByPhone } from '../api';
 
 interface AgendaModalProps {
   agenda: Agenda | null;
@@ -9,6 +10,55 @@ interface AgendaModalProps {
 }
 
 export function AgendaModal({ agenda, isOpen, onClose }: AgendaModalProps) {
+  const [callsData, setCallsData] = useState<CallsByPhoneResponse | null>(null);
+  const [loadingCalls, setLoadingCalls] = useState(false);
+  const [errorCalls, setErrorCalls] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchCalls = async () => {
+      if (!isOpen || !agenda?.phone_number) return;
+      // Resetear datos al cambiar de agenda
+      setCallsData(null);
+      setLoadingCalls(true);
+      setErrorCalls(null);
+      try {
+        const currentPhone = agenda.phone_number;
+        let cancelled = false;
+
+        const promise = getCallsByPhone({
+          phone_number: agenda.phone_number,
+          per_page: 50,
+          page: 1,
+          sort_order: 'DESC'
+        });
+
+        const data = await promise;
+        if (cancelled) return;
+        // Evitar pintar datos de una agenda previa si cambió rápido
+        if (currentPhone !== agenda.phone_number) return;
+        setCallsData(data);
+      } catch (err: any) {
+        setErrorCalls(err?.message || 'Error al cargar llamadas');
+      } finally {
+        setLoadingCalls(false);
+      }
+    };
+    fetchCalls();
+    // Cleanup para evitar condiciones de carrera
+    return () => {
+      setLoadingCalls(false);
+    };
+  }, [isOpen, agenda?.phone_number]);
+
+  // Limpiar estado al cerrar el modal
+  useEffect(() => {
+    if (!isOpen) {
+      setCallsData(null);
+      setErrorCalls(null);
+      setLoadingCalls(false);
+    }
+  }, [isOpen]);
+
   if (!isOpen || !agenda) return null;
 
   // Formatear fecha
@@ -134,6 +184,60 @@ export function AgendaModal({ agenda, isOpen, onClose }: AgendaModalProps) {
               <p>No hay transcripción disponible para esta llamada.</p>
             </div>
           )}
+
+          {/* Llamadas asociadas al teléfono */}
+          <div className="mt-8">
+            <h3 className="text-lg font-semibold text-slate-800 mb-3 flex items-center">
+              <Phone className="w-5 h-5 mr-2 text-blue-600" />
+              Llamadas asociadas al número
+            </h3>
+
+            {loadingCalls && (
+              <div className="flex items-center justify-center py-6 text-slate-600">
+                <RefreshCw className="w-5 h-5 animate-spin mr-2 text-blue-600" />
+                Cargando llamadas...
+              </div>
+            )}
+
+            {errorCalls && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3 text-sm text-red-700 flex items-center">
+                <AlertCircle className="w-4 h-4 mr-2" />
+                {errorCalls}
+              </div>
+            )}
+
+            {callsData && (
+              <div className="space-y-3">
+                <div className="text-sm text-slate-600">
+                  Total: {callsData.total_llamadas} · Origen: {callsData.resumen?.llamadas_como_origen ?? 0} · Destino: {callsData.resumen?.llamadas_como_destino ?? 0}
+                </div>
+                {callsData.llamadas?.length ? (
+                  <div className="divide-y divide-slate-200 border border-slate-200 rounded-lg">
+                    {callsData.llamadas.map((c) => (
+                      <div key={c.id} className="p-3 text-sm flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="font-medium text-slate-800">
+                            {c.call_type ? c.call_type.toUpperCase() : (c.from_number === agenda.phone_number ? 'ORIGEN' : 'DESTINO')}
+                          </div>
+                          <div className="text-slate-600">
+                            {c.from_number || '—'} → {c.to_number || '—'}
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            {c.created_at ? new Date(c.created_at).toLocaleString('es-ES') : 'Sin fecha'} · {c.status || '—'} · {typeof c.duration === 'number' ? `${c.duration}s` : (c.duration || '—')}
+                          </div>
+                        </div>
+                        {c.recordings && (
+                          <audio controls src={c.recordings} className="ml-4 w-52" preload="metadata" />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-slate-500 text-sm">No hay llamadas registradas para este número.</div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Footer */}

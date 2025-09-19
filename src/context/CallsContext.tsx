@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { RetellCall, FilterCriteria, RetellPhoneNumber, RetellBatchCall } from '../types';
 import { fetchPhoneNumbers, fetchBatchCalls, listCalls, getClientApiKey, getDashboardData } from '../api';
+import { get_client_id, supabase, getClientId as fetchAndStoreClientId } from '../lib/supabase';
 
 interface CallsContextType {
   allCalls: RetellCall[];
@@ -113,10 +114,10 @@ export function CallsProvider({ children }: CallsProviderProps) {
   // Tiempo de caducidad de la caché en milisegundos (15 minutos)
   const CACHE_EXPIRY_TIME = 15 * 60 * 1000;
   
-  // Función para obtener parámetros necesarios de la URL (client_id y phone)
+  // Función para obtener parámetros necesarios (client_id del localStorage y phone de URL)
   const getParamsFromUrl = useCallback(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    const clientId = urlParams.get('client_id');
+    const clientId = localStorage.getItem(get_client_id); // Usar localStorage en lugar de URL
     const phone = urlParams.get('phone');
     return { clientId, phone };
   }, []);
@@ -124,19 +125,19 @@ export function CallsProvider({ children }: CallsProviderProps) {
   // Obtener la API key y configuración cuando se monta el componente
   useEffect(() => {
     const fetchApiKey = async () => {
-      const { clientId: urlClientId } = getParamsFromUrl();
+      const { clientId: storedClientId } = getParamsFromUrl();
 
-      if (urlClientId) {
-        console.log('Client ID obtenido de la URL:', urlClientId);
-        setClientId(urlClientId);
+      if (storedClientId) {
+        console.log('Client ID obtenido del localStorage:', storedClientId);
+        setClientId(storedClientId);
 
         try {
-          const result = await getClientApiKey(urlClientId);
+          const result = await getClientApiKey(storedClientId);
           if (result.apiKey) {
-            console.log('API key obtenida exitosamente para client_id:', urlClientId);
+            console.log('API key obtenida exitosamente para client_id:', storedClientId);
             setApiKey(result.apiKey);
           } else {
-            console.error('No se pudo obtener la API key para el client_id:', urlClientId);
+            console.error('No se pudo obtener la API key para el client_id:', storedClientId);
             setError('No se pudo obtener la configuración para el client_id proporcionado');
           }
           // Ya no mapeamos claves de configuración como agenda/calls desde get-client
@@ -145,8 +146,41 @@ export function CallsProvider({ children }: CallsProviderProps) {
           setError('Error al obtener la configuración del cliente');
         }
       } else {
-        console.error('No se encontró client_id en los parámetros de la URL');
-        setError('Se requiere el parámetro client_id en la URL. Ejemplo: ?client_id=123');
+        // Si no hay client_id en localStorage, intentar obtenerlo con el email del usuario
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          const email = user?.email;
+          if (email) {
+            console.log('Intentando obtener client_id con email porque no está en localStorage:', email);
+            const newClientId = await fetchAndStoreClientId(email);
+            if (newClientId) {
+              console.log('Client ID obtenido y guardado en localStorage:', newClientId);
+              setClientId(newClientId);
+              try {
+                const result = await getClientApiKey(newClientId);
+                if (result.apiKey) {
+                  console.log('API key obtenida exitosamente para client_id:', newClientId);
+                  setApiKey(result.apiKey);
+                } else {
+                  console.error('No se pudo obtener la API key para el client_id:', newClientId);
+                  setError('No se pudo obtener la configuración para el client_id proporcionado');
+                }
+              } catch (err) {
+                console.error('Error al obtener API key/configuración con el nuevo client_id:', err);
+                setError('Error al obtener la configuración del cliente');
+              }
+            } else {
+              console.error('No se pudo resolver el client_id a partir del email');
+              setError('No se encontró client_id. Por favor, inicia sesión nuevamente.');
+            }
+          } else {
+            console.error('No hay email disponible para buscar el client_id');
+            setError('Se requiere el client_id en localStorage. Por favor, inicia sesión nuevamente.');
+          }
+        } catch (e) {
+          console.error('Error intentando resolver client_id usando el email:', e);
+          setError('Error obteniendo client_id. Por favor, inicia sesión nuevamente.');
+        }
       }
     };
 
@@ -429,16 +463,11 @@ export function CallsProvider({ children }: CallsProviderProps) {
 
   // Función para cargar los datos del dashboard
   const loadDashboardData = useCallback(async (fechaInicio?: string, fechaFin?: string) => {
-    if (!clientId) {
-      console.log('Esperando client_id para cargar datos del dashboard...');
-      return;
-    }
-    
     setLoadingDashboardData(true);
     
     try {
       console.log('Cargando datos del dashboard con fechas:', { fechaInicio, fechaFin });
-      const data = await getDashboardData(clientId, fechaInicio, fechaFin);
+      const data = await getDashboardData(undefined, fechaInicio, fechaFin);
       setDashboardData(data);
       console.log('Datos del dashboard cargados:', data);
     } catch (err) {
@@ -447,7 +476,7 @@ export function CallsProvider({ children }: CallsProviderProps) {
     } finally {
       setLoadingDashboardData(false);
     }
-  }, [clientId]);
+  }, []);
 
   // Cargar datos cuando se monta el componente y tenemos la API key
   useEffect(() => {
