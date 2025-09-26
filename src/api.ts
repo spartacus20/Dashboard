@@ -507,7 +507,7 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
   }
 }
 
-// Función para obtener datos del dashboard
+// Función para obtener datos del dashboard (endpoint genérico con fechas)
 export async function getDashboardData(
   clientId?: string, 
   fechaInicio?: string, 
@@ -549,72 +549,175 @@ export async function getDashboardData(
     const data = await response.json();
     console.log('Respuesta completa del webhook dashboard:', data);
     
-    // La nueva API devuelve directamente el objeto con los datos
-    if (data && typeof data === 'object') {
-      console.log('Datos del dashboard recibidos:', data);
-      
-      // Transformar los datos al formato esperado por el frontend
-      const transformedData = {
-        dashboard_data: {
-          metricas_generales: {
-            total_llamadas: data.total_llamadas || 0,
-            llamadas_efectivas: data.llamadas_efectivas || 0,
-            llamadas_fallidas: data.llamadas_fallidas || 0,
-            costo_total: data.costo_total || 0,
-            total_agendamientos: data.total_agendamientos || 0,
-            costo_por_agenda: data.costo_por_agenda || 0
-          },
-          // Transformar costos_por_dia a llamadas_por_dia
-          llamadas_por_dia: data.costos_por_dia ? data.costos_por_dia.map((item: any) => ({
-            fecha: item.fecha,
-            dia_label: new Date(item.fecha).toLocaleDateString('es-ES', { 
-              weekday: 'short', 
-              month: 'short', 
-              day: 'numeric' 
-            }),
-            total_llamadas: Math.round(item.costo / 0.02), // Estimación basada en costo promedio por llamada
-            costo_dia: item.costo,
-            llamadas_efectivas: Math.round((item.costo / 0.02) * 0.2), // Estimación del 20% de efectividad
-            llamadas_fallidas: Math.round((item.costo / 0.02) * 0.8) // Estimación del 80% de fallidas
-          })) : [],
-          // Transformar distribucion_por_hora a llamadas_por_hora
-          llamadas_por_hora: data.distribucion_por_hora ? data.distribucion_por_hora.map((item: any) => ({
-            hora: item.hora,
-            hora_label: `${item.hora}:00`,
-            llamadas_mas_16_segundos: item.cantidad_agendas * 5, // Estimación: 5 llamadas por agenda
-            cantidad_agendas: item.cantidad_agendas
-          })) : [],
-          // Transformar razones_desconexion
-          razones_desconexion: data.razones_desconexion ? data.razones_desconexion.map((item: any) => ({
-            razon: item.razon,
-            total: item.cantidad,
-            porcentaje: ((item.cantidad / (data.total_llamadas || 1)) * 100).toFixed(2)
-          })) : [],
-          // Transformar tipos_vivienda
-          tipos_vivienda: data.tipos_vivienda ? data.tipos_vivienda.map((item: any) => ({
-            tipo: item.tipo,
-            cantidad: item.cantidad,
-            porcentaje: ((item.cantidad / (data.total_llamadas || 1)) * 100).toFixed(2)
-          })) : [],
-          // Transformar llamadas_efectivas_por_hora
-          llamadas_efectivas_por_hora: data.llamadas_efectivas_por_hora ? data.llamadas_efectivas_por_hora.map((item: any) => ({
-            hora: item.hora,
-            hora_label: `${item.hora.toString().padStart(2, '0')}:00`,
-            cantidad_llamadas: item.cantidad_llamadas || 0
-          })) : []
-        }
-      };
-      
-      console.log('Datos transformados:', transformedData);
-      return transformedData;
-    }
-    
-    console.warn('Formato inesperado de respuesta del dashboard:', data);
-    return data;
+    return transformDashboardData(data);
   } catch (error) {
     console.error('Error al obtener datos del dashboard:', error);
     throw error;
   }
+}
+
+// Función para obtener datos del dashboard de hoy
+export async function getDashboardToday(clientId?: string): Promise<any> {
+  try {
+    const actualClientId = clientId || getClientId();
+    
+    if (!actualClientId) {
+      throw new Error('No se encontró client_id. Por favor, inicia sesión nuevamente.');
+    }
+    
+    console.log('Solicitando datos del dashboard de HOY para client_id:', actualClientId);
+    
+    const response = await fetch(`${BASE_URL}/api/dashboard/get-dashboard-today`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ client_id: actualClientId }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Error al obtener datos del dashboard de hoy: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    console.log('Respuesta del dashboard de hoy:', data);
+    
+    return transformDashboardData(data);
+  } catch (error) {
+    console.error('Error al obtener datos del dashboard de hoy:', error);
+    throw error;
+  }
+}
+
+// Función para obtener datos del dashboard de la semana
+export async function getDashboardWeek(clientId?: string): Promise<any> {
+  try {
+    const actualClientId = clientId || getClientId();
+    
+    if (!actualClientId) {
+      throw new Error('No se encontró client_id. Por favor, inicia sesión nuevamente.');
+    }
+    
+    console.log('Solicitando datos del dashboard de la SEMANA para client_id:', actualClientId);
+    
+    const response = await fetch(`${BASE_URL}/api/dashboard/get-dashboard-week`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ client_id: actualClientId }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Error al obtener datos del dashboard de la semana: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    console.log('Respuesta del dashboard de la semana:', data);
+    
+    return transformDashboardData(data);
+  } catch (error) {
+    console.error('Error al obtener datos del dashboard de la semana:', error);
+    throw error;
+  }
+}
+
+// Función para obtener datos del dashboard del mes
+export async function getDashboardMonth(clientId?: string): Promise<any> {
+  try {
+    const actualClientId = clientId || getClientId();
+    
+    if (!actualClientId) {
+      throw new Error('No se encontró client_id. Por favor, inicia sesión nuevamente.');
+    }
+    
+    console.log('Solicitando datos del dashboard del MES para client_id:', actualClientId);
+    
+    const response = await fetch(`${BASE_URL}/api/dashboard/get-dashboard-month`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ client_id: actualClientId }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Error al obtener datos del dashboard del mes: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    console.log('Respuesta del dashboard del mes:', data);
+    
+    return transformDashboardData(data);
+  } catch (error) {
+    console.error('Error al obtener datos del dashboard del mes:', error);
+    throw error;
+  }
+}
+
+// Función auxiliar para transformar los datos del dashboard
+function transformDashboardData(data: any): any {
+  if (data && typeof data === 'object') {
+    console.log('Datos del dashboard recibidos:', data);
+    
+    // Transformar los datos al formato esperado por el frontend
+    const transformedData = {
+      dashboard_data: {
+        metricas_generales: {
+          total_llamadas: data.total_llamadas || 0,
+          llamadas_efectivas: data.llamadas_efectivas || 0,
+          llamadas_fallidas: data.llamadas_fallidas || 0,
+          costo_total: data.costo_total || 0,
+          total_agendamientos: data.total_agendamientos || 0,
+          costo_por_agenda: data.costo_por_agenda || 0
+        },
+        // Transformar costos_por_dia a llamadas_por_dia
+        llamadas_por_dia: data.costos_por_dia ? data.costos_por_dia.map((item: any) => ({
+          fecha: item.fecha,
+          dia_label: new Date(item.fecha).toLocaleDateString('es-ES', { 
+            weekday: 'short', 
+            month: 'short', 
+            day: 'numeric' 
+          }),
+          total_llamadas: Math.round(item.costo / 0.02), // Estimación basada en costo promedio por llamada
+          costo_dia: item.costo,
+          llamadas_efectivas: Math.round((item.costo / 0.02) * 0.2), // Estimación del 20% de efectividad
+          llamadas_fallidas: Math.round((item.costo / 0.02) * 0.8) // Estimación del 80% de fallidas
+        })) : [],
+        // Transformar distribucion_por_hora a llamadas_por_hora
+        llamadas_por_hora: data.distribucion_por_hora ? data.distribucion_por_hora.map((item: any) => ({
+          hora: item.hora,
+          hora_label: `${item.hora}:00`,
+          llamadas_mas_16_segundos: item.cantidad_agendas * 5, // Estimación: 5 llamadas por agenda
+          cantidad_agendas: item.cantidad_agendas
+        })) : [],
+        // Transformar razones_desconexion
+        razones_desconexion: data.razones_desconexion ? data.razones_desconexion.map((item: any) => ({
+          razon: item.razon,
+          total: item.cantidad,
+          porcentaje: ((item.cantidad / (data.total_llamadas || 1)) * 100).toFixed(2)
+        })) : [],
+        // Transformar tipos_vivienda
+        tipos_vivienda: data.tipos_vivienda ? data.tipos_vivienda.map((item: any) => ({
+          tipo: item.tipo,
+          cantidad: item.cantidad,
+          porcentaje: ((item.cantidad / (data.total_llamadas || 1)) * 100).toFixed(2)
+        })) : [],
+        // Transformar llamadas_efectivas_por_hora
+        llamadas_efectivas_por_hora: data.llamadas_efectivas_por_hora ? data.llamadas_efectivas_por_hora.map((item: any) => ({
+          hora: item.hora,
+          hora_label: `${item.hora.toString().padStart(2, '0')}:00`,
+          cantidad_llamadas: item.cantidad_llamadas || 0
+        })) : []
+      }
+    };
+    
+    console.log('Datos transformados:', transformedData);
+    return transformedData;
+  }
+  
+  console.warn('Formato inesperado de respuesta del dashboard:', data);
+  return data;
 }
 
 // Función para obtener todas las agendas con paginación

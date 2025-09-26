@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { RetellCall, FilterCriteria, RetellPhoneNumber, RetellBatchCall } from '../types';
-import { fetchPhoneNumbers, fetchBatchCalls, listCalls, getClientApiKey, getDashboardData } from '../api';
+import { fetchPhoneNumbers, fetchBatchCalls, listCalls, getClientApiKey, getDashboardData, getDashboardToday, getDashboardWeek, getDashboardMonth } from '../api';
 import { get_client_id, supabase, getClientId as fetchAndStoreClientId } from '../lib/supabase';
 
 interface CallsContextType {
@@ -37,7 +37,7 @@ interface CallsContextType {
   filterCriteria: FilterCriteria;
   dashboardData: any;
   loadingDashboardData: boolean;
-  loadDashboardData: (fechaInicio?: string, fechaFin?: string) => Promise<void>;
+  loadDashboardData: (fechaInicio?: string, fechaFin?: string, timePeriod?: string) => Promise<void>;
   totalCallsFiltered: number | null;
   agendaEnabled: boolean;
   callsEnabled: boolean;
@@ -462,12 +462,26 @@ export function CallsProvider({ children }: CallsProviderProps) {
   }, [apiKey, phoneNumbersLoaded, phoneNumbersUpdated, loadingPhoneNumbers, noPhoneNumbersAvailable]);
 
   // Función para cargar los datos del dashboard
-  const loadDashboardData = useCallback(async (fechaInicio?: string, fechaFin?: string) => {
+  const loadDashboardData = useCallback(async (fechaInicio?: string, fechaFin?: string, timePeriod?: string) => {
     setLoadingDashboardData(true);
     
     try {
-      console.log('Cargando datos del dashboard con fechas:', { fechaInicio, fechaFin });
-      const data = await getDashboardData(undefined, fechaInicio, fechaFin);
+      console.log('Cargando datos del dashboard con período:', { timePeriod, fechaInicio, fechaFin });
+      
+      let data;
+      
+      // Determinar qué endpoint usar según el período
+      if (timePeriod === 'today') {
+        data = await getDashboardToday();
+      } else if (timePeriod === 'week') {
+        data = await getDashboardWeek();
+      } else if (timePeriod === 'month') {
+        data = await getDashboardMonth();
+      } else {
+        // Usar el endpoint genérico con fechas
+        data = await getDashboardData(undefined, fechaInicio, fechaFin);
+      }
+      
       setDashboardData(data);
       console.log('Datos del dashboard cargados:', data);
     } catch (err) {
@@ -485,10 +499,10 @@ export function CallsProvider({ children }: CallsProviderProps) {
     }
   }, [loadAllCalls, allCalls.length, loadingAllCalls, apiKey]);
 
-  // Cargar datos del dashboard cuando tenemos clientId
+  // Cargar datos del dashboard cuando tenemos clientId (por defecto cargar datos de hoy)
   useEffect(() => {
     if (clientId && !dashboardData && !loadingDashboardData) {
-      loadDashboardData();
+      loadDashboardData(undefined, undefined, 'today');
     }
   }, [clientId, dashboardData, loadingDashboardData, loadDashboardData]);
 

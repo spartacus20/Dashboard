@@ -246,7 +246,7 @@ interface DashboardProps {
   totalCalls: number;
   filteredCallsCount: number;
   dashboardData?: any;
-  loadDashboardData?: (fechaInicio?: string, fechaFin?: string) => void;
+  loadDashboardData?: (fechaInicio?: string, fechaFin?: string, timePeriod?: string) => void;
   agendaEnabled?: boolean;
 }
 
@@ -303,9 +303,9 @@ export function Dashboard({
   // Estados para filtros de período (persistir para evitar "rebote" tras remount)
   const [timePeriod, setTimePeriod] = useState<string>(() => {
     try {
-      return localStorage.getItem('dashboard_time_period') || 'week';
+      return localStorage.getItem('dashboard_time_period') || 'today';
     } catch {
-      return 'week';
+      return 'today';
     }
   });
   const [customStartDate, setCustomStartDate] = useState<string>('');
@@ -375,17 +375,13 @@ export function Dashboard({
     } catch {}
   }, [timePeriod]);
 
-  // Efecto para cargar datos la primera vez con la última semana (zonificada a Madrid)
+  // Efecto para cargar datos la primera vez con el período seleccionado
   React.useEffect(() => {
     if (!loadDashboardData) return;
     // Solo cargar en el primer render
-    if (timePeriod === 'week') {
-      const todayMadrid = getMadridMidnight();
-      const weekStartMadrid = addDaysUTC(todayMadrid, -7);
-      const weekStartStr = formatMadridDateYYYYMMDD(weekStartMadrid);
-      const tomorrowMadrid = addDaysUTC(todayMadrid, 1);
-      const tomorrowStr = formatMadridDateYYYYMMDD(tomorrowMadrid);
-      loadDashboardData(weekStartStr, tomorrowStr);
+    if (timePeriod === 'today') {
+      // Para 'today', usar el endpoint específico sin fechas
+      loadDashboardData(undefined, undefined, 'today');
     }
   }, [loadDashboardData]);
 
@@ -434,16 +430,20 @@ export function Dashboard({
     if (!loadDashboardData) return;
     
     if (timePeriod === 'all') {
-      // Para "all", cargar sin fechas
+      // Para "all", cargar sin fechas usando el endpoint genérico
       console.log('Recargando datos del dashboard sin filtros de fecha');
-      loadDashboardData(undefined, undefined);
-    } else {
-      // Para otros períodos, calcular fechas
+      loadDashboardData(undefined, undefined, 'all');
+    } else if (timePeriod === 'custom' && customStartDate && customEndDate) {
+      // Para período personalizado, usar fechas específicas
       const dates = calculateDatesForPeriod(timePeriod, customStartDate, customEndDate);
       if (dates) {
-        console.log('Recargando datos del dashboard con nuevas fechas:', dates);
-        loadDashboardData(dates.fechaInicio, dates.fechaFin);
+        console.log('Recargando datos del dashboard con fechas personalizadas:', dates);
+        loadDashboardData(dates.fechaInicio, dates.fechaFin, 'custom');
       }
+    } else {
+      // Para otros períodos (today, week, month), usar endpoints específicos
+      console.log('Recargando datos del dashboard para período:', timePeriod);
+      loadDashboardData(undefined, undefined, timePeriod);
     }
   }, [timePeriod, customStartDate, customEndDate, loadDashboardData]);
 
@@ -718,7 +718,7 @@ export function Dashboard({
         <div className="p-8 bg-yellow-50 rounded-xl border border-yellow-200">
           <p className="text-yellow-700 text-lg mb-4">⚠️ No se han cargado los datos del dashboard desde el servidor.</p>
           {loadDashboardData && (
-            <Button onClick={() => loadDashboardData && loadDashboardData()} variant="default">
+            <Button onClick={() => loadDashboardData && loadDashboardData(undefined, undefined, timePeriod)} variant="default">
               Cargar datos del servidor
             </Button>
           )}

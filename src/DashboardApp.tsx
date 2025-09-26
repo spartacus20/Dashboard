@@ -53,7 +53,8 @@ function DashboardApp() {
       console.log('API key disponible, cargando números de teléfono y batch calls');
       loadPhoneNumbers();
       loadBatchCalls();
-      loadDashboardData();
+      // Cargar datos de hoy por defecto para una carga más rápida
+      loadDashboardData(undefined, undefined, 'today');
     }
   }, [apiKey, loadPhoneNumbers, loadBatchCalls, loadDashboardData]);
   
