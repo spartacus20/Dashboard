@@ -14,6 +14,41 @@ import {
   Legend
 } from "recharts";
 
+// Helpers de zona horaria (Europa/Madrid)
+function getMadridYmdParts(date: Date = new Date()): { year: number; month: number; day: number } {
+  const fmt = new Intl.DateTimeFormat('es-ES', {
+    timeZone: 'Europe/Madrid',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  const parts = fmt.formatToParts(date);
+  const day = Number(parts.find(p => p.type === 'day')?.value || '1');
+  const month = Number(parts.find(p => p.type === 'month')?.value || '1');
+  const year = Number(parts.find(p => p.type === 'year')?.value || '1970');
+  return { year, month, day };
+}
+
+function getMadridMidnight(date: Date = new Date()): Date {
+  const { year, month, day } = getMadridYmdParts(date);
+  // Devuelve el instante UTC correspondiente a 00:00:00 en Madrid de ese día
+  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+}
+
+function addDaysUTC(base: Date, days: number): Date {
+  const d = new Date(base);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d;
+}
+
+function formatMadridDateYYYYMMDD(date: Date): string {
+  // Formatea a YYYY-MM-DD según la fecha de Madrid representada por "date"
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(date.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 // Componente para mostrar esqueletos de carga
 const DashboardSkeleton = () => {
   return (
@@ -211,7 +246,8 @@ interface DashboardProps {
   totalCalls: number;
   filteredCallsCount: number;
   dashboardData?: any;
-  loadDashboardData?: (fechaInicio?: string, fechaFin?: string) => void;
+  loadDashboardData?: (fechaInicio?: string, fechaFin?: string, timePeriod?: string) => void;
+  agendaEnabled?: boolean;
 }
 
 export function Dashboard({
@@ -225,7 +261,8 @@ export function Dashboard({
   totalCalls,
   filteredCallsCount,
   dashboardData,
-  loadDashboardData
+  loadDashboardData,
+  agendaEnabled = true
 }: DashboardProps) {
   // Error boundary simple
   const [hasError, setHasError] = React.useState(false);
@@ -263,8 +300,14 @@ export function Dashboard({
     );
   }
 
-  // Estados para filtros de período
-  const [timePeriod, setTimePeriod] = useState<string>('week');
+  // Estados para filtros de período (persistir para evitar "rebote" tras remount)
+  const [timePeriod, setTimePeriod] = useState<string>(() => {
+    try {
+      return localStorage.getItem('dashboard_time_period') || 'today';
+    } catch {
+      return 'today';
+    }
+  });
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
   
@@ -325,57 +368,55 @@ export function Dashboard({
     }
   }, [dashboardData]);
 
-  // Efecto para cargar datos la primera vez con la última semana
+  // Persistir selección de período para evitar que vuelva al anterior por remounts
+  React.useEffect(() => {
+    try {
+      localStorage.setItem('dashboard_time_period', timePeriod);
+    } catch {}
+  }, [timePeriod]);
+
+  // Efecto para cargar datos la primera vez con el período seleccionado
   React.useEffect(() => {
     if (!loadDashboardData) return;
     // Solo cargar en el primer render
-    if (timePeriod === 'week') {
-      const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const weekStart = new Date(today);
-      weekStart.setDate(today.getDate() - 7);
-      const weekStartStr = weekStart.toISOString().split('T')[0];
-      const tomorrow = new Date(today);
-      tomorrow.setDate(today.getDate() + 1);
-      const tomorrowStr = tomorrow.toISOString().split('T')[0];
-      loadDashboardData(weekStartStr, tomorrowStr);
+    if (timePeriod === 'today') {
+      // Para 'today', usar el endpoint específico sin fechas
+      loadDashboardData(undefined, undefined, 'today');
     }
   }, [loadDashboardData]);
 
-  // Función para calcular las fechas según el período seleccionado
+  // Función para calcular las fechas según el período seleccionado (zona horaria Madrid)
   const calculateDatesForPeriod = (period: string, customStart?: string, customEnd?: string) => {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayMadrid = getMadridMidnight();
     
     switch (period) {
       case 'today':
-        const todayStr = today.toISOString().split('T')[0];
-        const tomorrow = new Date(today);
-        tomorrow.setDate(today.getDate() + 1);
-        const tomorrowStr = tomorrow.toISOString().split('T')[0];
+        const todayStr = formatMadridDateYYYYMMDD(todayMadrid);
+        const tomorrow = addDaysUTC(todayMadrid, 1);
+        const tomorrowStr = formatMadridDateYYYYMMDD(tomorrow);
         return { fechaInicio: todayStr, fechaFin: tomorrowStr };
       
       case 'week':
-        const weekStart = new Date(today);
-        weekStart.setDate(today.getDate() - 7);
-        const weekStartStr = weekStart.toISOString().split('T')[0];
-        const tomorrowStr2 = new Date(today);
-        tomorrowStr2.setDate(today.getDate() + 1);
-        return { fechaInicio: weekStartStr, fechaFin: tomorrowStr2.toISOString().split('T')[0] };
+        const weekStart = addDaysUTC(todayMadrid, -7);
+        const weekStartStr = formatMadridDateYYYYMMDD(weekStart);
+        const tomorrowStr2 = addDaysUTC(todayMadrid, 1);
+        return { fechaInicio: weekStartStr, fechaFin: formatMadridDateYYYYMMDD(tomorrowStr2) };
       
       case 'month':
-        const monthStart = new Date(today);
-        monthStart.setMonth(today.getMonth() - 1);
-        const monthStartStr = monthStart.toISOString().split('T')[0];
-        const tomorrowStr3 = new Date(today);
-        tomorrowStr3.setDate(today.getDate() + 1);
-        return { fechaInicio: monthStartStr, fechaFin: tomorrowStr3.toISOString().split('T')[0] };
+        // Restar 30 días como aproximación a "último mes" respecto a Madrid
+        const monthStart = addDaysUTC(todayMadrid, -30);
+        const monthStartStr = formatMadridDateYYYYMMDD(monthStart);
+        const tomorrowStr3 = addDaysUTC(todayMadrid, 1);
+        return { fechaInicio: monthStartStr, fechaFin: formatMadridDateYYYYMMDD(tomorrowStr3) };
       
       case 'custom':
         if (customStart && customEnd) {
-          const endDate = new Date(customEnd);
-          endDate.setDate(endDate.getDate() + 1); // Añadir un día para incluir todo el día final
-          return { fechaInicio: customStart, fechaFin: endDate.toISOString().split('T')[0] };
+          // Interpretar fechas YYYY-MM-DD en zona Madrid y convertir a rango [start, end+1)
+          const [yS, mS, dS] = customStart.split('-').map(Number);
+          const [yE, mE, dE] = customEnd.split('-').map(Number);
+          const startMadrid = new Date(Date.UTC(yS, (mS || 1) - 1, dS || 1, 0, 0, 0, 0));
+          const endMadridPlusOne = addDaysUTC(new Date(Date.UTC(yE, (mE || 1) - 1, dE || 1, 0, 0, 0, 0)), 1);
+          return { fechaInicio: formatMadridDateYYYYMMDD(startMadrid), fechaFin: formatMadridDateYYYYMMDD(endMadridPlusOne) };
         }
         return null;
       
@@ -389,33 +430,41 @@ export function Dashboard({
     if (!loadDashboardData) return;
     
     if (timePeriod === 'all') {
-      // Para "all", cargar sin fechas
+      // Para "all", cargar sin fechas usando el endpoint genérico
       console.log('Recargando datos del dashboard sin filtros de fecha');
-      loadDashboardData(undefined, undefined);
-    } else {
-      // Para otros períodos, calcular fechas
+      loadDashboardData(undefined, undefined, 'all');
+    } else if (timePeriod === 'custom' && customStartDate && customEndDate) {
+      // Para período personalizado, usar fechas específicas
       const dates = calculateDatesForPeriod(timePeriod, customStartDate, customEndDate);
       if (dates) {
-        console.log('Recargando datos del dashboard con nuevas fechas:', dates);
-        loadDashboardData(dates.fechaInicio, dates.fechaFin);
+        console.log('Recargando datos del dashboard con fechas personalizadas:', dates);
+        loadDashboardData(dates.fechaInicio, dates.fechaFin, 'custom');
       }
+    } else {
+      // Para otros períodos (today, week, month), usar endpoints específicos
+      console.log('Recargando datos del dashboard para período:', timePeriod);
+      loadDashboardData(undefined, undefined, timePeriod);
     }
   }, [timePeriod, customStartDate, customEndDate, loadDashboardData]);
 
-  // Función para filtrar datos por período
+  // Función para filtrar datos por período (usando medianoche en Madrid)
   const filterDataByPeriod = (data: any[], dateField: string = 'fecha') => {
     if (!data || !Array.isArray(data)) return data;
     
     try {
-      const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const today = getMadridMidnight();
       
       switch (timePeriod) {
         case 'today':
+          const tomorrowForFilter = addDaysUTC(today, 1);
           return data.filter(item => {
             try {
               const itemDate = new Date(item[dateField]);
-              return !isNaN(itemDate.getTime()) && itemDate >= today;
+              return (
+                !isNaN(itemDate.getTime()) && 
+                itemDate >= today && 
+                itemDate < tomorrowForFilter
+              );
             } catch (error) {
               console.warn('Error procesando fecha:', item[dateField], error);
               return false;
@@ -423,8 +472,7 @@ export function Dashboard({
           });
         
         case 'week':
-          const weekStart = new Date(today);
-          weekStart.setDate(today.getDate() - 7);
+          const weekStart = addDaysUTC(today, -7);
           return data.filter(item => {
             try {
               const itemDate = new Date(item[dateField]);
@@ -436,8 +484,7 @@ export function Dashboard({
           });
         
         case 'month':
-          const monthStart = new Date(today);
-          monthStart.setMonth(today.getMonth() - 1);
+          const monthStart = addDaysUTC(today, -30);
           return data.filter(item => {
             try {
               const itemDate = new Date(item[dateField]);
@@ -451,13 +498,14 @@ export function Dashboard({
         case 'custom':
           if (customStartDate && customEndDate) {
             try {
-              const startDate = new Date(customStartDate);
-              const endDate = new Date(customEndDate);
-              endDate.setHours(23, 59, 59, 999); // Incluir todo el día final
+              const [yS, mS, dS] = customStartDate.split('-').map(Number);
+              const [yE, mE, dE] = customEndDate.split('-').map(Number);
+              const startDate = new Date(Date.UTC(yS, (mS || 1) - 1, dS || 1, 0, 0, 0, 0));
+              const endDateExclusive = addDaysUTC(new Date(Date.UTC(yE, (mE || 1) - 1, dE || 1, 0, 0, 0, 0)), 1);
               return data.filter(item => {
                 try {
                   const itemDate = new Date(item[dateField]);
-                  return !isNaN(itemDate.getTime()) && itemDate >= startDate && itemDate <= endDate;
+                  return !isNaN(itemDate.getTime()) && itemDate >= startDate && itemDate < endDateExclusive;
                 } catch (error) {
                   console.warn('Error procesando fecha:', item[dateField], error);
                   return false;
@@ -598,6 +646,7 @@ export function Dashboard({
         )}
       </div>
 
+
       {/* Filtros de período */}
       {dashboardData && (
         <div className="mb-6 flex flex-wrap gap-4 items-center p-4 bg-slate-100 rounded-lg border border-slate-200">
@@ -669,7 +718,7 @@ export function Dashboard({
         <div className="p-8 bg-yellow-50 rounded-xl border border-yellow-200">
           <p className="text-yellow-700 text-lg mb-4">⚠️ No se han cargado los datos del dashboard desde el servidor.</p>
           {loadDashboardData && (
-            <Button onClick={() => loadDashboardData && loadDashboardData()} variant="default">
+            <Button onClick={() => loadDashboardData && loadDashboardData(undefined, undefined, timePeriod)} variant="default">
               Cargar datos del servidor
             </Button>
           )}
@@ -677,7 +726,11 @@ export function Dashboard({
       ) : (
         <>
           {/* Sección de estadísticas del servidor */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6 mb-8">
+          <div className={`grid gap-4 mb-8 ${
+            agendaEnabled 
+              ? 'md:grid-cols-2 lg:grid-cols-6' 
+              : 'md:grid-cols-2 lg:grid-cols-4'
+          }`}>
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-sm font-medium">Llamadas Lanzadas</CardTitle>
@@ -791,85 +844,93 @@ export function Dashboard({
                 </div>
               </CardContent>
             </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Total Agendamientos</CardTitle>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  className="h-4 w-4 text-blue-400"
-                >
-                  <rect width="18" height="18" x="3" y="4" rx="2" ry="2"/>
-                  <line x1="16" x2="16" y1="2" y2="6"/>
-                  <line x1="8" x2="8" y1="2" y2="6"/>
-                  <line x1="3" x2="21" y1="10" y2="10"/>
-                </svg>
-              </CardHeader>
-              <CardContent className="flex flex-col items-center justify-center text-center">
-                <div className="text-xl font-bold text-center">
-                  {(() => {
-                    const efectivas = dashboardData?.dashboard_data?.metricas_generales?.llamadas_efectivas || 0;
-                    const agendas = dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos || 0;
-                    if (efectivas > 0) {
-                      return <span className="font-bold">{((agendas / efectivas) * 100).toFixed(2)}%</span>;
-                    }
-                    return <span className="font-bold">0%</span>;
-                  })()}
-                </div>
-                <div className="text-xs text-slate-600 text-center">
-                  {dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos?.toLocaleString() || 0} agendamientos
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Costo por Agenda</CardTitle>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  className="h-4 w-4 text-emerald-400"
-                >
-                  <line x1="12" x2="12" y1="2" y2="22"/>
-                  <path d="M17 5H7L12 2l5 3z"/>
-                  <path d="M17 19H7L12 22l5-3z"/>
-                  <rect width="18" height="18" x="3" y="4" rx="2" ry="2"/>
-                </svg>
-              </CardHeader>
-              <CardContent className="flex flex-col items-center justify-center text-center">
-                <div className="text-xl font-bold text-center">
-                  {(() => {
-                    const costo = dashboardData?.dashboard_data?.metricas_generales?.costo_total || 0;
-                    const agendas = dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos || 0;
-                    if (agendas > 0) {
-                      return <span className="font-bold">${(costo / agendas).toFixed(2)}</span>;
-                    }
-                    return <span className="font-bold">$0.00</span>;
-                  })()}
-                </div>
-                <div className="text-xs text-slate-600 text-center">
-                  {dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos?.toLocaleString() || 0} agendamientos
-                </div>
-              </CardContent>
-            </Card>
+            {agendaEnabled && (
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium">Total Agendamientos</CardTitle>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    className="h-4 w-4 text-blue-400"
+                  >
+                    <rect width="18" height="18" x="3" y="4" rx="2" ry="2"/>
+                    <line x1="16" x2="16" y1="2" y2="6"/>
+                    <line x1="8" x2="8" y1="2" y2="6"/>
+                    <line x1="3" x2="21" y1="10" y2="10"/>
+                  </svg>
+                </CardHeader>
+                <CardContent className="flex flex-col items-center justify-center text-center">
+                  <div className="text-xl font-bold text-center">
+                    {(() => {
+                      const efectivas = dashboardData?.dashboard_data?.metricas_generales?.llamadas_efectivas || 0;
+                      const agendas = dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos || 0;
+                      if (efectivas > 0) {
+                        return <span className="font-bold">{((agendas / efectivas) * 100).toFixed(2)}%</span>;
+                      }
+                      return <span className="font-bold">0%</span>;
+                    })()}
+                  </div>
+                  <div className="text-xs text-slate-600 text-center">
+                    {dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos?.toLocaleString() || 0} agendamientos
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            {agendaEnabled && (
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium">Costo por Agenda</CardTitle>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    className="h-4 w-4 text-emerald-400"
+                  >
+                    <line x1="12" x2="12" y1="2" y2="22"/>
+                    <path d="M17 5H7L12 2l5 3z"/>
+                    <path d="M17 19H7L12 22l5-3z"/>
+                    <rect width="18" height="18" x="3" y="4" rx="2" ry="2"/>
+                  </svg>
+                </CardHeader>
+                <CardContent className="flex flex-col items-center justify-center text-center">
+                  <div className="text-xl font-bold text-center">
+                    {(() => {
+                      const costo = dashboardData?.dashboard_data?.metricas_generales?.costo_total || 0;
+                      const agendas = dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos || 0;
+                      if (agendas > 0) {
+                        return <span className="font-bold">${(costo / agendas).toFixed(2)}</span>;
+                      }
+                      return <span className="font-bold">$0.00</span>;
+                    })()}
+                  </div>
+                  <div className="text-xs text-slate-600 text-center">
+                    {dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos?.toLocaleString() || 0} agendamientos
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
           
           {/* Gráfico de llamadas por día */}
           {/* Eliminar la Card y el contenido del gráfico de llamadas por día */}
           
           {/* Gráficos de distribución */}
-          <div className="grid gap-4 md:grid-cols-2 mb-8">
+          <div className={`grid gap-4 mb-8 ${
+            agendaEnabled 
+              ? 'md:grid-cols-2' 
+              : 'md:grid-cols-1'
+          }`}>
             {/* Gráfico de agendamientos por hora */}
-            {hourlyAgendasData && hourlyAgendasData.length > 0 && (
+            {agendaEnabled && hourlyAgendasData && hourlyAgendasData.length > 0 && (
               <Card className="mb-8 shadow-lg border border-slate-200">
                 <CardHeader>
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -943,7 +1004,7 @@ export function Dashboard({
             )}
             
             {/* Gráfico de tipos de vivienda */}
-            {housingTypeData && housingTypeData.length > 0 && (
+            {agendaEnabled && housingTypeData && housingTypeData.length > 0 && (
               <Card className="mb-8 shadow-lg border border-slate-200">
                 <CardHeader>
                   <CardTitle className="text-base font-semibold text-slate-800">Tipos de Vivienda</CardTitle>
@@ -969,7 +1030,11 @@ export function Dashboard({
           </div>
           
           {/* Gráficos adicionales */}
-          <div className="grid gap-4 md:grid-cols-2 mb-8">
+          <div className={`grid gap-4 mb-8 ${
+            agendaEnabled 
+              ? 'md:grid-cols-2' 
+              : 'md:grid-cols-1'
+          }`}>
             {/* Gráfico de llamadas efectivas por hora */}
             {effectiveCallsData && effectiveCallsData.length > 0 && (
               <Card className="mb-8 shadow-lg border border-slate-200">
@@ -1108,7 +1173,7 @@ export function Dashboard({
           )}
           
           {/* Resumen detallado de tipos de vivienda */}
-          {dashboardData?.dashboard_data?.tipos_vivienda && (
+          {agendaEnabled && dashboardData?.dashboard_data?.tipos_vivienda && (
             <Card className="mb-8">
               <CardHeader>
                 <CardTitle>Resumen Detallado de Tipos de Vivienda</CardTitle>
@@ -1263,7 +1328,7 @@ export function Dashboard({
           )}
           
           {/* Tabla detallada de tipos de vivienda */}
-          {dashboardData?.dashboard_data?.tipos_vivienda && (
+          {agendaEnabled && dashboardData?.dashboard_data?.tipos_vivienda && (
             <Card className="mb-8">
               <CardHeader>
                 <CardTitle>Análisis Detallado de Tipos de Vivienda</CardTitle>

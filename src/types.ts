@@ -199,6 +199,12 @@ export interface ClientData {
   full_name?: string;
   created_at?: string;
   updated_at?: string;
+  // Campos opcionales de configuración que pueden venir desde get-client
+  agenda_enabled?: boolean;
+  calls_enabled?: boolean;
+  phone_filter?: string;
+  // Objeto de configuración genérico por si el backend devuelve un blob
+  config?: Record<string, any>;
 }
 
 export interface Agenda {
@@ -217,4 +223,67 @@ export interface Agenda {
   tipo_agenda: string;
   recordings?: string;
   transcript?: string;
+}
+
+export interface Callback {
+  id: number;
+  created_at: string;
+  phone_number: string;
+  client_id: string;
+  call_id: string;
+  nombre: string;
+  direccion: string;
+  local: string;
+  ciudad: string;
+  region: string;
+  codigo_postal: string;
+  date_to_call: string;
+  tipo_agenda: string;
+  last_name: string;
+  Llamado: boolean;
+}
+
+export interface CallbackResponse {
+  pagina_actual: number;
+  limit: number;
+  total_callbacks: number;
+  total_paginas: number;
+  callbacks: Callback[];
+}
+
+// Respuesta del endpoint get-calls-by-phone
+export interface CallsByPhoneSummary {
+  total_llamadas: number;
+  llamadas_como_origen: number;
+  llamadas_como_destino: number;
+}
+
+export interface CallsByPhonePhoneInfo {
+  original: string;
+  normalizado: string;
+}
+
+export interface CallsByPhoneResponse {
+  pagina_actual: number;
+  limit: number;
+  total_llamadas: number;
+  total_paginas: number;
+  phone_number: CallsByPhonePhoneInfo;
+  resumen: CallsByPhoneSummary;
+  llamadas: Array<{
+    id: string;
+    call_id?: string;
+    from_number?: string;
+    to_number?: string;
+    status?: string;
+    duration?: number | string;
+    created_at?: string;
+    transcript?: string;
+    recordings?: string;
+    call_type?: string; // origen/destino u otros
+  }>;
+  llamadas_por_tipo?: {
+    como_origen?: any[];
+    como_destino?: any[];
+  };
 }

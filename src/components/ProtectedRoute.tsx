@@ -1,29 +1,28 @@
 import React from 'react'
-import { Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { Loader2 } from 'lucide-react'
+import { Login } from './Login'
 
 interface ProtectedRouteProps {
   children: React.ReactNode
 }
 
-export function ProtectedRoute({ children }: ProtectedRouteProps) {
+export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   const { user, loading } = useAuth()
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 text-purple-600 animate-spin mx-auto mb-4" />
-          <p className="text-gray-600">Cargando...</p>
+        <div className="flex items-center space-x-2">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+          <span className="text-gray-600">Cargando...</span>
         </div>
       </div>
     )
   }
 
   if (!user) {
-    return <Navigate to="/login" replace />
+    return <Login />
   }
 
   return <>{children}</>
-} 
+}

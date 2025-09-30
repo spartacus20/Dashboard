@@ -6,6 +6,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Recordings } from './pages/Recordings';
 import { PhoneNumbers } from './pages/PhoneNumbers';
 import { Agendas } from './pages/Agendas';
+import { Callbacks } from './pages/Callbacks';
 import { useCallsContext } from './context/CallsContext';
 import { X, Upload, Phone, Info, Check, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 
@@ -41,7 +42,8 @@ function DashboardApp() {
     batchCallsLoaded,
     dashboardData,
     loadingDashboardData,
-    loadDashboardData
+    loadDashboardData,
+    agendaEnabled
   } = useCallsContext();
   
   // Cargar números de teléfono y batch calls una sola vez al iniciar la aplicación
@@ -51,9 +53,18 @@ function DashboardApp() {
       console.log('API key disponible, cargando números de teléfono y batch calls');
       loadPhoneNumbers();
       loadBatchCalls();
-      loadDashboardData();
+      // Cargar datos de hoy por defecto para una carga más rápida
+      loadDashboardData(undefined, undefined, 'today');
     }
   }, [apiKey, loadPhoneNumbers, loadBatchCalls, loadDashboardData]);
+  
+  // Redirigir si se intenta acceder a agendas cuando está deshabilitada
+  React.useEffect(() => {
+    if (currentPage === 'agendas' && !agendaEnabled) {
+      console.log('Agenda deshabilitada, redirigiendo al dashboard');
+      setCurrentPage('dashboard');
+    }
+  }, [currentPage, agendaEnabled]);
   
   // Calculamos si la caché está activa
   const cacheStatus = lastUpdated 
@@ -1232,6 +1243,7 @@ function DashboardApp() {
             filteredCallsCount={filteredCalls.length}
             dashboardData={dashboardData}
             loadDashboardData={loadDashboardData}
+            agendaEnabled={agendaEnabled}
           />
         )}
         {currentPage === 'recordings' && (
@@ -1244,8 +1256,13 @@ function DashboardApp() {
             onNavigate={setCurrentPage as (page: 'dashboard' | 'recordings' | 'phones') => void}
           />
         )}
-        {currentPage === 'agendas' && (
+        {currentPage === 'agendas' && agendaEnabled && (
           <Agendas
+            onNavigate={setCurrentPage as (page: string) => void}
+          />
+        )}
+        {currentPage === 'callbacks' && (
+          <Callbacks
             onNavigate={setCurrentPage as (page: string) => void}
           />
         )}

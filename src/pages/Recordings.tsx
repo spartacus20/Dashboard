@@ -1,19 +1,20 @@
-import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
-import { Play, Pause, Download, Clock, ChevronDown, ChevronUp, Search, X, Info, Phone, ChevronLeft, ChevronRight, ListFilter, Timer, PhoneOff, RefreshCw } from 'lucide-react';
+import React from 'react';
+import { Play, Pause, Download, Clock, ChevronDown, ChevronUp, Search, X, Phone, ChevronLeft, ChevronRight, ListFilter, PhoneOff, RefreshCw } from 'lucide-react';
 import type { DetailedRetellCall, FilterCriteria } from '../types';
 import { useCallsContext } from '../context/CallsContext';
 import { Button } from "../components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { listCalls } from '../api';
 
 // Componentes UI simplificados
-const Input = ({ className = "", ...props }) => (
+const Input = ({ className = "", ...props }: { className?: string; [key: string]: any }) => (
   <input 
     className={`flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 ${className}`}
     {...props} 
   />
 );
 
-const Badge = ({ children, variant = "default", className = "" }) => {
+const Badge = ({ children, variant = "default", className = "" }: { children: React.ReactNode; variant?: "default" | "secondary" | "outline"; className?: string }) => {
   const variantClasses = {
     default: "bg-gradient-to-r from-blue-600 to-indigo-700 text-white",
     secondary: "bg-slate-200 text-slate-700",
@@ -31,19 +32,6 @@ const Skeleton = ({ className = "", ...props }) => (
   <div className={`animate-pulse rounded-md bg-slate-200 ${className}`} {...props} />
 );
 
-// Componente de diálogo simplificado para el modal
-const Dialog = ({ children, isOpen, onClose }: { children: React.ReactNode; isOpen: boolean; onClose: () => void }) => {
-  if (!isOpen) return null;
-  
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="fixed inset-0 bg-black/80" onClick={onClose}></div>
-      <div className="z-50 p-6 bg-white rounded-lg border border-slate-200 shadow-xl max-w-4xl w-full max-h-[90vh] overflow-auto">
-        {children}
-      </div>
-    </div>
-  );
-};
 
 // Componente Select simplificado
 const Select = ({ children, value, onValueChange, className = "" }: { children: React.ReactNode; value: string; onValueChange?: (value: string) => void; className?: string }) => {
@@ -105,12 +93,6 @@ interface RecordingsProps {
   onNavigate: (page: 'dashboard' | 'recordings') => void;
 }
 
-function formatDuration(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-}
 
 // Nueva función para obtener la duración de una llamada de forma robusta
 function getDuration(call: DetailedRetellCall): string {
@@ -144,317 +126,9 @@ function getDuration(call: DetailedRetellCall): string {
   return 'En curso';
 }
 
-// Función auxiliar para obtener la duración en segundos (para filtros)
-function getDurationInSeconds(call: DetailedRetellCall): number {
-  // Opción 1: Usar el campo duration directamente del webhook (en milisegundos)
-  if (call.duration && call.duration > 0) {
-    return Math.floor(call.duration / 1000);
-  }
-  
-  // Opción 2: Calcular usando timestamps como respaldo
-  if (call.end_timestamp && call.start_timestamp) {
-    return (call.end_timestamp - call.start_timestamp) / 1000;
-  }
-  
-  // Opción 3: Buscar en metadata como último recurso (asumiendo segundos en metadata)
-  if (call.metadata?.duration) {
-    const duration = parseInt(call.metadata.duration);
-    if (duration > 0) {
-      return duration;
-    }
-  }
-  
-  return 0;
-}
 
 function formatCost(cost: number): string {
   return `$${(cost / 100).toFixed(2)}`;
-}
-
-// Componente del Modal
-interface CallModalProps {
-  call: DetailedRetellCall | null;
-  onClose: () => void;
-  isPlaying: boolean;
-  onPlayPause: () => void;
-}
-
-function CallModal({ call, onClose, isPlaying, onPlayPause }: CallModalProps) {
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  useEffect(() => {
-    // Actualizar la referencia al audio
-    if (call?.recording_url) {
-      if (!audioRef.current) {
-        audioRef.current = document.querySelector('audio') as HTMLAudioElement;
-      }
-      
-      const updateProgress = () => {
-        if (audioRef.current) {
-          setCurrentTime(audioRef.current.currentTime);
-          setDuration(audioRef.current.duration);
-        }
-      };
-      
-      const handleTimeUpdate = () => {
-        updateProgress();
-      };
-      
-      const handleLoadedMetadata = () => {
-        updateProgress();
-      };
-      
-      if (audioRef.current) {
-        audioRef.current.addEventListener('timeupdate', handleTimeUpdate);
-        audioRef.current.addEventListener('loadedmetadata', handleLoadedMetadata);
-        
-        return () => {
-          if (audioRef.current) {
-            audioRef.current.removeEventListener('timeupdate', handleTimeUpdate);
-            audioRef.current.removeEventListener('loadedmetadata', handleLoadedMetadata);
-          }
-        };
-      }
-    }
-  }, [call?.recording_url]);
-  
-  // Función para formatear segundos a formato MM:SS
-  const formatTime = (time: number) => {
-    if (isNaN(time)) return "00:00";
-    const minutes = Math.floor(time / 60);
-    const seconds = Math.floor(time % 60);
-    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-  };
-  
-  // Función para controlar el cambio en la barra de progreso
-  const handleProgressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newTime = parseFloat(e.target.value);
-    if (audioRef.current) {
-      audioRef.current.currentTime = newTime;
-      setCurrentTime(newTime);
-    }
-  };
-
-  if (!call) return null;
-
-  const callDuration = getDuration(call);
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-      <Card className="w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-        <CardHeader className="border-b border-gray-800 flex justify-between items-center sticky top-0 bg-gray-900 p-4">
-          <div className="flex items-center">
-            <Phone className="w-5 h-5 text-purple-500 mr-2" />
-            <h2 className="text-xl font-bold text-white">{call.call_id}</h2>
-          </div>
-          <button 
-            onClick={onClose}
-            className="p-1 hover:bg-gray-800 rounded-full"
-          >
-            <X className="w-6 h-6 text-gray-400 hover:text-white" />
-          </button>
-        </CardHeader>
-        
-        <div className="overflow-y-auto p-6 flex-grow">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            <Card>
-              <CardContent className="p-4">
-                <h3 className="text-lg font-semibold text-white mb-4">Información Básica</h3>
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-sm text-gray-400">ID del Agente</p>
-                    <p className="text-white">{call.agent_id}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-400">Estado de la Llamada</p>
-                    <p className="text-white">{call.call_status}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-400">Tipo de Llamada</p>
-                    <p className="text-white">{call.call_type}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-400">Fecha y Hora</p>
-                    <p className="text-white">{new Date(call.start_timestamp || 0).toLocaleString()}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-400">Duración</p>
-                    <p className="text-white flex items-center gap-2">
-                      <Clock className="w-4 h-4" />
-                      {callDuration}
-                    </p>
-                  </div>
-                  {/* Metadatos adicionales si están disponibles */}
-                  {call.from_number && (
-                    <div>
-                      <p className="text-sm text-gray-400">Número de Origen</p>
-                      <p className="text-white">{call.from_number}</p>
-                    </div>
-                  )}
-                  {call.to_number && (
-                    <div>
-                      <p className="text-sm text-gray-400">Número de Destino</p>
-                      <p className="text-white">{call.to_number}</p>
-                    </div>
-                  )}
-                  {call.metadata?.direction && (
-                    <div>
-                      <p className="text-sm text-gray-400">Dirección</p>
-                      <p className="text-white capitalize">{call.metadata.direction}</p>
-                    </div>
-                  )}
-                  {call.call_cost && (
-                    <div>
-                      <p className="text-sm text-gray-400">Costo Total</p>
-                      <p className="text-white">{formatCost(call.call_cost.total_cost || 0)}</p>
-                    </div>
-                  )}
-                  {call.disconnection_reason && (
-                    <div>
-                      <p className="text-sm text-gray-400">Razón de Desconexión</p>
-                      <p className="text-white">{call.disconnection_reason}</p>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-            
-            <div className="space-y-6">
-              {call.recording_url && (
-                <Card>
-                  <CardContent className="p-4">
-                    <h3 className="text-lg font-semibold text-white mb-4">Grabación</h3>
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-4">
-                        <button
-                          onClick={onPlayPause}
-                          className="p-3 bg-purple-600 rounded-full hover:bg-purple-700 transition-colors"
-                        >
-                          {isPlaying ? (
-                            <Pause className="w-6 h-6 text-white" />
-                          ) : (
-                            <Play className="w-6 h-6 text-white" />
-                          )}
-                        </button>
-                        
-                        <a
-                          href={call.recording_url}
-                          download
-                          className="p-3 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors"
-                        >
-                          <Download className="w-6 h-6 text-white" />
-                        </a>
-                      </div>
-                      
-                      {/* Reproductor con barra de progreso */}
-                      <div className="space-y-2">
-                        <div className="flex items-center">
-                          <input
-                            type="range"
-                            min="0"
-                            max={duration || 100}
-                            value={currentTime}
-                            onChange={handleProgressChange}
-                            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-600"
-                            style={{
-                              background: `linear-gradient(to right, #9333ea 0%, #9333ea ${(currentTime / (duration || 1)) * 100}%, #374151 ${(currentTime / (duration || 1)) * 100}%, #374151 100%)`
-                            }}
-                          />
-                        </div>
-                        
-                        <div className="flex justify-between text-xs text-gray-400">
-                          <span>{formatTime(currentTime)}</span>
-                          <span>{formatTime(duration)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-              
-              {call.call_analysis && (
-                <Card>
-                  <CardContent className="p-4">
-                    <h3 className="text-lg font-semibold text-white mb-4">Análisis de la Llamada</h3>
-                    <div className="space-y-3">
-                      {call.call_analysis.sentiment && (
-                        <div>
-                          <p className="text-sm text-gray-400">Sentimiento</p>
-                          <p className="text-white">{call.call_analysis.sentiment}</p>
-                        </div>
-                      )}
-                      {call.call_analysis.topics && call.call_analysis.topics.length > 0 && (
-                        <div>
-                          <p className="text-sm text-gray-400">Temas</p>
-                          <div className="flex flex-wrap gap-2 mt-1">
-                            {call.call_analysis.topics.map((topic, index) => (
-                              <Badge key={index} variant="secondary">{topic}</Badge>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {/* Datos de análisis personalizados (si existen) */}
-                      {call.call_analysis?.custom_analysis_data && Object.keys(call.call_analysis.custom_analysis_data).length > 0 && (
-                        <div>
-                          <p className="text-sm text-gray-400">Datos de Análisis Personalizados</p>
-                          <div className="bg-gray-800 p-3 rounded-lg">
-                            {Object.entries(call.call_analysis.custom_analysis_data).map(([key, value]) => (
-                              <div key={key} className="flex justify-between border-b border-gray-700 py-2 last:border-0">
-                                <span className="text-gray-300 font-medium capitalize">{key}:</span>
-                                <span className="text-white">{String(value)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          </div>
-          
-          {/* Sección de la transcripción con formato mejorado */}
-          {call.transcript && (
-            <Card className="mb-6">
-              <CardHeader className="pb-2">
-                <h3 className="text-lg font-semibold text-white">Transcripción</h3>
-              </CardHeader>
-              <CardContent className="p-4">
-                {formatTranscript(call.transcript)}
-              </CardContent>
-            </Card>
-          )}
-          
-          {/* Metadata */}
-          {call.metadata && Object.keys(call.metadata).length > 0 && (
-            <Card className="mb-6">
-              <CardHeader className="pb-2">
-                <h3 className="text-lg font-semibold text-white">Metadata</h3>
-              </CardHeader>
-              <CardContent className="p-4">
-                {renderJson(call.metadata)}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Variables dinámicas */}
-          {call.metadata?.retell_llm_dynamic_variables && Object.keys(call.metadata.retell_llm_dynamic_variables).length > 0 && (
-            <Card className="mb-6">
-              <CardHeader className="pb-2">
-                <h3 className="text-lg font-semibold text-white">Variables Dinámicas</h3>
-              </CardHeader>
-              <CardContent className="p-4">
-                {renderJson(call.metadata.retell_llm_dynamic_variables)}
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      </Card>
-    </div>
-  );
 }
 
 // Componente de skeleton para las grabaciones
@@ -495,49 +169,6 @@ const RecordingsSkeleton = () => {
 };
 
 export function Recordings({ onNavigate }: RecordingsProps) {
-  // Funciones utilidad para renderizar JSON y formatear transcripciones
-  const renderJson = (data: any) => {
-    return (
-      <pre className="bg-gray-950 p-4 rounded-lg text-gray-300 text-xs overflow-auto max-h-96">
-        {JSON.stringify(data, null, 2)}
-      </pre>
-    );
-  };
-
-  // Formatear la transcripción para mejor legibilidad
-  const formatTranscript = (transcript: string) => {
-    if (!transcript) return null;
-    
-    // Dividir por líneas y añadir formato
-    const lines = transcript.split('\n');
-    return (
-      <div className="space-y-3">
-        {lines.map((line, index) => {
-          // Intentar detectar si es usuario o asistente
-          const isAssistant = line.toLowerCase().startsWith('asistente:') || 
-                             line.toLowerCase().startsWith('agente:') || 
-                             line.toLowerCase().startsWith('ai:') ||
-                             line.toLowerCase().startsWith('agent:');
-          const isUser = line.toLowerCase().startsWith('usuario:') || 
-                        line.toLowerCase().startsWith('cliente:') ||
-                        line.toLowerCase().startsWith('user:');
-          
-          let speakerClass = '';
-          if (isAssistant) speakerClass = 'bg-gray-800';
-          else if (isUser) speakerClass = 'bg-gray-900 border border-gray-800';
-          
-          return (
-            <div 
-              key={index} 
-              className={`p-3 rounded-lg ${speakerClass || 'bg-gray-900'}`}
-            >
-              <p className="text-gray-200">{line}</p>
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
 
   const [selectedCallModal, setSelectedCallModal] = React.useState<DetailedRetellCall | null>(null);
   const [selectedCall, setSelectedCall] = React.useState<string | null>(null);
@@ -559,11 +190,11 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     disconnectionReasons: contextDisconnectionReasons,
     allCallsLoaded,
     apiKey,
+    clientId, // Agregar clientId del contexto
     currentPage: contextCurrentPage,
     totalPages: contextTotalPages,
     hasMorePages,
     setFilterCriteria: contextSetFilterCriteria,
-    filterCriteria: contextFilterCriteria,
     dashboardData,
     totalCallsFiltered // Agregar totalCallsFiltered del contexto
   } = useCallsContext();
@@ -588,8 +219,13 @@ export function Recordings({ onNavigate }: RecordingsProps) {
 
   // Estados locales para paginación y filtrado
   const [calls, setCalls] = React.useState<DetailedRetellCall[]>([]);
-  const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  
+  // Estados para llamadas filtradas
+  const [filteredCallsData, setFilteredCallsData] = React.useState<DetailedRetellCall[]>([]);
+  const [loadingFilters, setLoadingFilters] = React.useState(false);
+  const [totalFilteredCalls, setTotalFilteredCalls] = React.useState<number>(0);
+  const [totalFilteredPages, setTotalFilteredPages] = React.useState<number>(0);
   
   // Estados para la paginación - usar estado local para la página actual
   const [currentPage, setCurrentPage] = React.useState(1);
@@ -598,12 +234,12 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   
   // Estados para los dropdowns
   const [showItemsPerPageDropdown, setShowItemsPerPageDropdown] = React.useState(false);
-  const [showDisconnectionReasonDropdown, setShowDisconnectionReasonDropdown] = React.useState(false);
-  const [showDurationFilterDropdown, setShowDurationFilterDropdown] = React.useState(false);
   
   // Estados para los filtros
   const [disconnectionReasonFilter, setDisconnectionReasonFilter] = React.useState<string | null>(null);
   const [durationFilter, setDurationFilter] = React.useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = React.useState<string | null>(null);
+  const [sortOrderFilter, setSortOrderFilter] = React.useState<'ASC' | 'DESC'>('DESC');
   
   // Estado para la personalización de columnas
   const [showColumnCustomizer, setShowColumnCustomizer] = React.useState(false);
@@ -619,21 +255,18 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     toNumber: true // Cambiado a true para que sea visible por defecto
   });
   
-  // Opciones de filtrado de duración
-  const durationFilterOptions = [
-    { label: 'Todas las duraciones', value: null },
-    { label: 'Menos de 1 minuto', value: 'lt-60' },
-    { label: '1-3 minutos', value: '60-180' },
-    { label: '3-5 minutos', value: '180-300' },
-    { label: 'Más de 5 minutos', value: 'gt-300' }
-  ];
-  
-  const [disconnectionReasons, setDisconnectionReasons] = React.useState<string[]>([]);
   const [startDate, setStartDate] = React.useState('');
   const [endDate, setEndDate] = React.useState('');
 
   // Flag para evitar cargas automáticas cuando se están aplicando filtros manualmente
   const isApplyingFilters = React.useRef(false);
+
+  // Estados para el modal de filtros
+  const [showFiltersModal, setShowFiltersModal] = React.useState(false);
+  const [tempStartDate, setTempStartDate] = React.useState('');
+  const [tempEndDate, setTempEndDate] = React.useState('');
+  const [tempStartTime, setTempStartTime] = React.useState('');
+  const [tempEndTime, setTempEndTime] = React.useState('');
 
   // Cargar página cuando cambia currentPage
   React.useEffect(() => {
@@ -665,69 +298,30 @@ export function Recordings({ onNavigate }: RecordingsProps) {
 
   // Filtrar las llamadas según todos los criterios aplicados
   const filteredCalls = React.useMemo(() => {
-    return allCalls.filter(call => {
-      // Filtrar por término de búsqueda
-      const matchesSearch = !searchTerm || 
-        (call?.call_id?.toLowerCase()?.includes(searchTerm.toLowerCase()) || false) ||
-        (call?.transcript?.toLowerCase()?.includes(searchTerm.toLowerCase()) || false);
-      
-      // Filtrar por disconnection_reason
-      const matchesDisconnectionReason = !disconnectionReasonFilter || 
-        call.disconnection_reason === disconnectionReasonFilter;
-      
-      // Filtrar por duración
-      let matchesDuration = true;
-      if (durationFilter) {
-        const durationSeconds = getDurationInSeconds(call);
-        
-        switch(durationFilter) {
-          case 'lt-60': // Menos de 1 minuto
-            matchesDuration = durationSeconds < 60;
-            break;
-          case '60-180': // 1-3 minutos
-            matchesDuration = durationSeconds >= 60 && durationSeconds <= 180;
-            break;
-          case '180-300': // 3-5 minutos
-            matchesDuration = durationSeconds > 180 && durationSeconds <= 300;
-            break;
-          case 'gt-300': // Más de 5 minutos
-            matchesDuration = durationSeconds > 300;
-            break;
-        }
+    // Si hay datos filtrados de la API, aplicarlos primero
+    let baseCalls: DetailedRetellCall[] = [];
+    if (filteredCallsData.length > 0) {
+      baseCalls = filteredCallsData;
+    } else {
+      // Si no hay filtros activos, usar las llamadas originales
+      const hasActiveFilters = searchTerm || statusFilter || durationFilter || startDate || endDate || sortOrderFilter !== 'DESC';
+      if (!hasActiveFilters) {
+        baseCalls = allCalls;
+      } else {
+        // Si hay filtros pero aún no se han aplicado, mostrar array vacío
+        baseCalls = [];
       }
-      
-      // Filtrar por fechas (si están establecidas)
-      let matchesDates = true;
-      if (startDate || endDate) {
-        const callTimestamp = (call as any).start_timestamp;
-        
-        if (callTimestamp) {
-          const callDate = new Date(callTimestamp);
-          
-          if (startDate) {
-            const startFilterDate = new Date(startDate);
-            startFilterDate.setHours(0, 0, 0, 0);
-            if (callDate < startFilterDate) {
-              matchesDates = false;
-            }
-          }
-          
-          if (endDate && matchesDates) {
-            const endFilterDate = new Date(endDate);
-            endFilterDate.setHours(23, 59, 59, 999);
-            if (callDate > endFilterDate) {
-              matchesDates = false;
-            }
-          }
-        } else {
-          // Si no hay timestamp, no coincide con filtros de fecha
-          matchesDates = false;
-        }
-      }
-      
-      return matchesSearch && matchesDisconnectionReason && matchesDuration && matchesDates;
-    });
-  }, [allCalls, searchTerm, disconnectionReasonFilter, durationFilter, startDate, endDate]);
+    }
+    
+    // Aplicar filtro de razones de desconexión solo a nivel de frontend
+    if (disconnectionReasonFilter && baseCalls.length > 0) {
+      baseCalls = baseCalls.filter(call => 
+        call.disconnection_reason === disconnectionReasonFilter
+      );
+    }
+    
+    return baseCalls;
+  }, [filteredCallsData, allCalls, searchTerm, statusFilter, durationFilter, startDate, endDate, sortOrderFilter, disconnectionReasonFilter]);
 
   // Calcular llamadas para la página actual basándose en filteredCalls
   const currentPageCalls = React.useMemo(() => {
@@ -738,8 +332,13 @@ export function Recordings({ onNavigate }: RecordingsProps) {
 
   // Calcular número total de páginas basado en las llamadas filtradas
   const totalPages = React.useMemo(() => {
-    // Si tenemos filtros aplicados, calcular basado en las llamadas filtradas
-    if (searchTerm || disconnectionReasonFilter || durationFilter || startDate || endDate) {
+    // Si tenemos datos filtrados de la API, usar esos
+    if (filteredCallsData.length > 0) {
+      return totalFilteredPages || Math.ceil(filteredCallsData.length / itemsPerPage);
+    }
+    
+    // Si tenemos filtros aplicados pero aún no hay datos filtrados, calcular basado en las llamadas filtradas
+    if (searchTerm || statusFilter || durationFilter || startDate || endDate || sortOrderFilter !== 'DESC') {
       return Math.ceil(filteredCalls.length / itemsPerPage);
     }
     
@@ -753,7 +352,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     
     // Fallback: calcular basado en las llamadas cargadas
     return Math.ceil(allCalls.length / itemsPerPage);
-  }, [filteredCalls.length, itemsPerPage, searchTerm, disconnectionReasonFilter, durationFilter, startDate, endDate, contextTotalPages, allCalls.length]);
+  }, [filteredCallsData.length, totalFilteredPages, itemsPerPage, filteredCalls.length, searchTerm, statusFilter, durationFilter, startDate, endDate, sortOrderFilter, contextTotalPages, allCalls.length]);
 
   // Iniciar la carga de datos la primera vez que se monta el componente
   React.useEffect(() => {
@@ -763,9 +362,8 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     }
     
     // Sincronizamos los estados locales con el contexto
-    setDisconnectionReasons(contextDisconnectionReasons);
     setError(contextError);
-  }, [allCalls.length, loadingAllCalls, contextDisconnectionReasons, contextError]); // Removido loadAllCalls de las dependencias
+  }, [allCalls.length, loadingAllCalls, contextError]); // Removido loadAllCalls de las dependencias
 
   // Actualizar las llamadas mostradas cuando cambia la página
   React.useEffect(() => {
@@ -796,12 +394,6 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       const target = event.target as HTMLElement;
       if (!target.closest('.items-per-page-dropdown')) {
         setShowItemsPerPageDropdown(false);
-      }
-      if (!target.closest('.disconnection-reason-dropdown')) {
-        setShowDisconnectionReasonDropdown(false);
-      }
-      if (!target.closest('.duration-filter-dropdown')) {
-        setShowDurationFilterDropdown(false);
       }
       if (!target.closest('.column-customizer-dropdown') && !target.closest('.column-customizer-button')) {
         setShowColumnCustomizer(false);
@@ -981,13 +573,11 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   const handleDisconnectionReasonFilter = (reason: string | null) => {
     setDisconnectionReasonFilter(reason);
     setCurrentPage(1); // Reset to first page when filter changes
-    setShowDisconnectionReasonDropdown(false);
   };
 
   const handleDurationFilter = (durationValue: string | null) => {
     setDurationFilter(durationValue);
     setCurrentPage(1); // Reset to first page when filter changes
-    setShowDurationFilterDropdown(false);
   };
 
   // Función para exportar datos a Excel (CSV)
@@ -1094,9 +684,16 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     setSearchTerm('');
     setStartDate('');
     setEndDate('');
+    setStatusFilter(null);
     setDisconnectionReasonFilter(null);
     setDurationFilter(null);
+    setSortOrderFilter('DESC'); // Resetear a descendente por defecto
     setCurrentPage(1);
+    
+    // Limpiar datos filtrados
+    setFilteredCallsData([]);
+    setTotalFilteredCalls(0);
+    setTotalFilteredPages(0);
     
     // Limpiar filtros en el contexto
     contextSetFilterCriteria({});
@@ -1112,10 +709,12 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     let count = 0;
     if (searchTerm) count++;
     if (startDate || endDate) count++;
+    if (statusFilter) count++;
     if (disconnectionReasonFilter) count++;
     if (durationFilter) count++;
+    if (sortOrderFilter !== 'DESC') count++; // Contar solo si no es el valor por defecto
     return count;
-  }, [searchTerm, startDate, endDate, disconnectionReasonFilter, durationFilter]);
+  }, [searchTerm, startDate, endDate, statusFilter, disconnectionReasonFilter, durationFilter, sortOrderFilter]);
 
   // Custom audio player para el modal
   const AudioPlayer = () => {
@@ -1172,6 +771,190 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         </CardContent>
       </Card>
     );
+  };
+
+  // Función para aplicar filtros usando la API list-calls
+  const applyFilters = React.useCallback(async () => {
+    if (!apiKey) return;
+    
+    // Verificar si hay algún filtro activo (excluyendo disconnection_reason que se aplica solo en frontend)
+    // Ahora también incluimos sortOrderFilter como filtro activo
+    const hasActiveFilters = searchTerm || statusFilter || durationFilter || startDate || endDate || sortOrderFilter !== 'DESC';
+    
+    if (!hasActiveFilters) {
+      // Si no hay filtros, usar las llamadas originales
+      setFilteredCallsData([]);
+      setTotalFilteredCalls(0);
+      setTotalFilteredPages(0);
+      return;
+    }
+    
+    setLoadingFilters(true);
+    setError(null);
+    
+    try {
+      // Construir parámetros para la API (excluyendo disconnection_reason)
+      const params: any = {
+        page: 1,
+        per_page: 100,
+        sort_order: sortOrderFilter // Usar el filtro de ordenamiento
+      };
+      
+      // Usar el client_id del contexto
+      if (clientId) {
+        params.client_id = clientId;
+        console.log('Usando client_id para filtros:', clientId);
+      } else {
+        console.warn('No se encontró client_id en el contexto');
+        setError('Error: No se pudo identificar el cliente');
+        return;
+      }
+      
+      // Agregar filtros de estado
+      if (statusFilter) {
+        params.status = statusFilter;
+      }
+      
+      // Agregar filtros de fecha (ya en formato ISO)
+      if (startDate) {
+        params.fecha_inicio = startDate;
+      }
+      if (endDate) {
+        params.fecha_fin = endDate;
+      }
+      
+      // Agregar filtros de número (si se implementan en el futuro)
+      // if (fromNumber) params.from_number = fromNumber;
+      // if (toNumber) params.to_number = toNumber;
+      
+      console.log('Aplicando filtros con parámetros:', params);
+      
+      // Hacer la petición a la API
+      const response = await listCalls(apiKey, params);
+      
+      console.log('Respuesta de list-calls:', response);
+      
+      // Actualizar estados con los resultados
+      setFilteredCallsData(response.calls);
+      setTotalFilteredCalls(response.total_calls || response.calls.length);
+      setTotalFilteredPages(response.total_pages || 1);
+      
+      // Resetear a la primera página
+      setCurrentPage(1);
+      
+    } catch (error) {
+      console.error('Error al aplicar filtros:', error);
+      setError(error instanceof Error ? error.message : 'Error al aplicar filtros');
+      setFilteredCallsData([]);
+      setTotalFilteredCalls(0);
+      setTotalFilteredPages(0);
+    } finally {
+      setLoadingFilters(false);
+    }
+  }, [apiKey, clientId, searchTerm, statusFilter, durationFilter, startDate, endDate, sortOrderFilter]);
+
+  // Aplicar filtros automáticamente cuando cambien los criterios
+  React.useEffect(() => {
+    // Solo aplicar filtros si hay algún filtro activo
+    const hasActiveFilters = searchTerm || statusFilter || durationFilter || startDate || endDate || sortOrderFilter !== 'DESC';
+    
+    if (hasActiveFilters) {
+      applyFilters();
+    } else {
+      // Si no hay filtros, limpiar los datos filtrados
+      setFilteredCallsData([]);
+      setTotalFilteredCalls(0);
+      setTotalFilteredPages(0);
+    }
+  }, [searchTerm, statusFilter, durationFilter, startDate, endDate, sortOrderFilter, applyFilters]);
+
+  // Función para abrir el modal de filtros
+  const openFiltersModal = () => {
+    // Extraer solo la parte de la fecha (sin la hora) de las fechas existentes
+    if (startDate && startDate.includes('T')) {
+      setTempStartDate(startDate.split('T')[0]);
+    } else {
+      setTempStartDate(startDate);
+    }
+    
+    if (endDate && endDate.includes('T')) {
+      setTempEndDate(endDate.split('T')[0]);
+    } else {
+      setTempEndDate(endDate);
+    }
+    
+    // Extraer la hora de las fechas existentes si están en formato ISO
+    if (startDate && startDate.includes('T')) {
+      const startDateTime = new Date(startDate);
+      setTempStartTime(startDateTime.toTimeString().slice(0, 5));
+    } else {
+      setTempStartTime('');
+    }
+    if (endDate && endDate.includes('T')) {
+      const endDateTime = new Date(endDate);
+      setTempEndTime(endDateTime.toTimeString().slice(0, 5));
+    } else {
+      setTempEndTime('');
+    }
+    setShowFiltersModal(true);
+  };
+
+  // Función para cerrar el modal de filtros
+  const closeFiltersModal = () => {
+    setShowFiltersModal(false);
+  };
+
+  // Función para aplicar filtros desde el modal
+  const applyFiltersFromModal = async () => {
+    // Combinar fecha y hora en formato ISO
+    let startDateTime = tempStartDate;
+    let endDateTime = tempEndDate;
+    
+    if (tempStartDate && tempStartTime) {
+      startDateTime = `${tempStartDate}T${tempStartTime}:00`;
+    } else if (tempStartDate) {
+      startDateTime = `${tempStartDate}T00:00:00`;
+    }
+    
+    if (tempEndDate && tempEndTime) {
+      endDateTime = `${tempEndDate}T${tempEndTime}:00`;
+    } else if (tempEndDate) {
+      endDateTime = `${tempEndDate}T23:59:59`;
+    }
+    
+    setStartDate(startDateTime);
+    setEndDate(endDateTime);
+    setShowFiltersModal(false);
+    
+    // Marcar que estamos aplicando filtros manualmente
+    isApplyingFilters.current = true;
+    
+    try {
+      // Crear el criterio de filtro
+      const criteria: FilterCriteria = {};
+      if (startDateTime || endDateTime) {
+        criteria.date_range = {};
+        if (startDateTime) criteria.date_range.start = startDateTime;
+        if (endDateTime) criteria.date_range.end = endDateTime;
+      }
+      
+      // Actualizar los filtros en el contexto para futuras referencias
+      contextSetFilterCriteria(criteria);
+      
+      // Recargar los datos pasando los criterios directamente
+      await loadAllCalls(true);
+    } finally {
+      // Quitar el flag después de completar la operación
+      isApplyingFilters.current = false;
+    }
+  };
+
+  // Función para limpiar filtros desde el modal
+  const clearFiltersFromModal = () => {
+    setTempStartDate('');
+    setTempEndDate('');
+    setTempStartTime('');
+    setTempEndTime('');
   };
 
   return (
@@ -1295,11 +1078,11 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                           <input
                             type="checkbox"
                             id={`column-${key}`}
-                            checked={visibleColumns[key]}
+                            checked={visibleColumns[key as keyof typeof visibleColumns]}
                             onChange={() => {
                               setVisibleColumns({
                                 ...visibleColumns,
-                                [key]: !visibleColumns[key]
+                                [key]: !visibleColumns[key as keyof typeof visibleColumns]
                               });
                             }}
                             className="rounded bg-white border-slate-300 text-blue-600 focus:ring-blue-500"
@@ -1382,58 +1165,78 @@ export function Recordings({ onNavigate }: RecordingsProps) {
               </div>
             </div>
           )}
+          
+          {/* Mostrar progreso de filtros si está cargando filtros */}
+          {loadingFilters && (
+            <div className="mt-4">
+              <div className="flex justify-between items-center text-xs text-slate-700 mb-1">
+                <span className="font-medium">Aplicando filtros...</span>
+              </div>
+              <div className="w-full bg-slate-200 rounded-full h-3 mb-1 overflow-hidden border border-slate-300">
+                <div 
+                  className="bg-gradient-to-r from-green-600 to-emerald-600 h-3 rounded-full transition-all duration-500 ease-in-out"
+                  style={{ 
+                    width: '100%',
+                    animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite"
+                  }}
+                ></div>
+              </div>
+              <div className="flex justify-between items-center text-xs text-slate-600">
+                <p className="flex items-center">
+                  <svg className="animate-spin mr-1 h-3 w-3 text-green-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Consultando API...
+                </p>
+                <p className="text-green-600 font-medium">
+                  Filtros en progreso
+                </p>
+              </div>
+            </div>
+          )}
         </CardHeader>
         <CardContent className="pt-6 bg-white">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4 mb-6">
-            {/* Filtro de fechas */}
-            <div className="lg:col-span-5 flex gap-2 items-center">
-              <Input
-                type="date"
-                value={startDate}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setStartDate(e.target.value)}
-                className="w-full"
-                placeholder="Fecha inicial"
-              />
-              <Input
-                type="date"
-                value={endDate}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEndDate(e.target.value)}
-                className="w-full"
-                placeholder="Fecha final"
-              />
+            {/* Botón para abrir modal de filtros de fechas */}
+            <div className="lg:col-span-3">
               <Button 
-                onClick={async () => {
-                  // Marcar que estamos aplicando filtros manualmente
-                  isApplyingFilters.current = true;
-                  
-                  try {
-                    // Crear el criterio de filtro
-                    const criteria: FilterCriteria = {};
-                    if (startDate || endDate) {
-                      criteria.date_range = {};
-                      if (startDate) criteria.date_range.start = startDate;
-                      if (endDate) criteria.date_range.end = endDate;
-                    }
-                    
-                    // Actualizar los filtros en el contexto para futuras referencias
-                    contextSetFilterCriteria(criteria);
-                    
-                    // Recargar los datos pasando los criterios directamente
-                    await loadAllCalls(true, criteria);
-                  } finally {
-                    // Quitar el flag después de completar la operación
-                    isApplyingFilters.current = false;
-                  }
-                }}
-                variant="default"
-                size="sm"
+                onClick={openFiltersModal}
+                variant="outline"
+                className="w-full h-10 flex items-center justify-center gap-2"
               >
-                Aplicar
+                <ListFilter className="w-4 h-4" />
+                {startDate || endDate ? (
+                  <span className="text-sm">
+                    {startDate && endDate ? 
+                      `${new Date(startDate).toLocaleDateString()} ${new Date(startDate).toLocaleTimeString().slice(0, 5)} - ${new Date(endDate).toLocaleDateString()} ${new Date(endDate).toLocaleTimeString().slice(0, 5)}` : 
+                     startDate ? `Desde ${new Date(startDate).toLocaleDateString()} ${new Date(startDate).toLocaleTimeString().slice(0, 5)}` : 
+                     `Hasta ${new Date(endDate).toLocaleDateString()} ${new Date(endDate).toLocaleTimeString().slice(0, 5)}`}
+                  </span>
+                ) : (
+                  <span>Filtrar por fechas</span>
+                )}
               </Button>
             </div>
 
+            {/* Filtro de estado */}
+            <div className="lg:col-span-2">
+              <Select
+                value={statusFilter || "all"}
+                onValueChange={(value) => {
+                  setStatusFilter(value === "all" ? null : value);
+                  setCurrentPage(1);
+                }}
+                className="w-full"
+              >
+                <SelectItem value="all">Todos los estados</SelectItem>
+                <SelectItem value="efectiva">Efectiva</SelectItem>
+                <SelectItem value="fallida">Fallida</SelectItem>
+              </Select>
+            </div>
+
             {/* Filtro de duración */}
-            <div className="lg:col-span-3">
+            <div className="lg:col-span-2">
               <Select
                 value={durationFilter || "all"}
                 onValueChange={(value) => handleDurationFilter(value === "all" ? null : value)}
@@ -1447,8 +1250,23 @@ export function Recordings({ onNavigate }: RecordingsProps) {
               </Select>
             </div>
             
-            {/* Filtro de disconnection_reason */}
-            <div className="lg:col-span-3">
+            {/* Filtro de ordenamiento */}
+            <div className="lg:col-span-2">
+              <Select
+                value={sortOrderFilter}
+                onValueChange={(value) => {
+                  setSortOrderFilter(value as 'ASC' | 'DESC');
+                  setCurrentPage(1);
+                }}
+                className="w-full"
+              >
+                <SelectItem value="DESC">Más recientes primero</SelectItem>
+                <SelectItem value="ASC">Más antiguos primero</SelectItem>
+              </Select>
+            </div>
+            
+            {/* Filtro de disconnection_reason (solo frontend) */}
+            <div className="lg:col-span-2">
               <Select
                 value={disconnectionReasonFilter || "all"}
                 onValueChange={(value) => handleDisconnectionReasonFilter(value === "all" ? null : value)}
@@ -1491,7 +1309,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
           </div>
 
           {/* Contenido principal */}
-          {loadingAllCalls ? (
+          {loadingAllCalls || loadingFilters ? (
             <RecordingsSkeleton />
           ) : error ? (
             <div className="py-10 text-center">
@@ -1505,7 +1323,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
               <PhoneOff className="mx-auto h-12 w-12 text-slate-400 mb-4" />
               <h3 className="text-xl font-medium text-slate-800 mb-2">No se encontraron grabaciones</h3>
               <p className="text-slate-600 max-w-md mx-auto mb-6">
-                {searchTerm || startDate || endDate || disconnectionReasonFilter || durationFilter
+                {searchTerm || startDate || endDate || statusFilter || disconnectionReasonFilter || durationFilter
                   ? "No hay grabaciones que coincidan con tus filtros. Intenta ajustar los criterios de búsqueda."
                   : "Aún no hay grabaciones disponibles en tu cuenta."}
               </p>
@@ -1627,7 +1445,12 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                 <div className="flex justify-between items-center py-4 border-t border-slate-200">
                   <div className="flex items-center text-sm text-slate-600">
                     {/* Mostrar información correcta según si hay filtros o no */}
-                    {searchTerm || disconnectionReasonFilter || durationFilter || startDate || endDate ? (
+                    {filteredCallsData.length > 0 ? (
+                      <>
+                        Mostrando {(currentPage - 1) * itemsPerPage + 1}-
+                        {Math.min(currentPage * itemsPerPage, filteredCalls.length)} de {totalFilteredCalls} grabaciones filtradas
+                      </>
+                    ) : searchTerm || statusFilter || durationFilter || startDate || endDate || sortOrderFilter !== 'DESC' ? (
                       <>
                         Mostrando {(currentPage - 1) * itemsPerPage + 1}-
                         {Math.min(currentPage * itemsPerPage, filteredCalls.length)} de {filteredCalls.length} grabaciones filtradas
@@ -1849,7 +1672,30 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                     <h3 className="text-lg font-semibold text-slate-800">Transcripción</h3>
                   </CardHeader>
                   <CardContent className="p-4">
-                    {formatTranscript(selectedCallModal.transcript)}
+                    <div className="space-y-3">
+                      {selectedCallModal.transcript.split('\n').map((line, index) => {
+                        const isAssistant = line.toLowerCase().startsWith('asistente:') || 
+                                           line.toLowerCase().startsWith('agente:') || 
+                                           line.toLowerCase().startsWith('ai:') ||
+                                           line.toLowerCase().startsWith('agent:');
+                        const isUser = line.toLowerCase().startsWith('usuario:') || 
+                                      line.toLowerCase().startsWith('cliente:') ||
+                                      line.toLowerCase().startsWith('user:');
+                        
+                        let speakerClass = '';
+                        if (isAssistant) speakerClass = 'bg-slate-100';
+                        else if (isUser) speakerClass = 'bg-slate-200 border border-slate-300';
+                        
+                        return (
+                          <div 
+                            key={index} 
+                            className={`p-3 rounded-lg ${speakerClass || 'bg-slate-50'}`}
+                          >
+                            <p className="text-slate-800">{line}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </CardContent>
                 </Card>
               )}
@@ -1861,7 +1707,9 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                     <h3 className="text-lg font-semibold text-slate-800">Metadata</h3>
                   </CardHeader>
                   <CardContent className="p-4">
-                    {renderJson(selectedCallModal.metadata)}
+                    <pre className="bg-slate-50 p-4 rounded-lg text-slate-800 text-xs overflow-auto max-h-96">
+                      {JSON.stringify(selectedCallModal.metadata, null, 2)}
+                    </pre>
                   </CardContent>
                 </Card>
               )}
@@ -1873,12 +1721,98 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                     <h3 className="text-lg font-semibold text-slate-800">Variables Dinámicas</h3>
                   </CardHeader>
                   <CardContent className="p-4">
-                    {renderJson(selectedCallModal.metadata.retell_llm_dynamic_variables)}
+                    <pre className="bg-slate-50 p-4 rounded-lg text-slate-800 text-xs overflow-auto max-h-96">
+                      {JSON.stringify(selectedCallModal.metadata.retell_llm_dynamic_variables, null, 2)}
+                    </pre>
                   </CardContent>
                 </Card>
               )}
             </div>
           </Card>
+        </div>
+      )}
+
+      {/* Modal de filtros de fechas */}
+      {showFiltersModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Filtrar por fechas</h3>
+              <button
+                onClick={closeFiltersModal}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Fecha inicial
+                </label>
+                <Input
+                  type="date"
+                  value={tempStartDate}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTempStartDate(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Hora inicial
+                </label>
+                <Input
+                  type="time"
+                  value={tempStartTime}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTempStartTime(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Fecha final
+                </label>
+                <Input
+                  type="date"
+                  value={tempEndDate}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTempEndDate(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Hora final
+                </label>
+                <Input
+                  type="time"
+                  value={tempEndTime}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTempEndTime(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+            </div>
+            
+            <div className="flex gap-3 mt-6">
+              <Button
+                onClick={clearFiltersFromModal}
+                variant="outline"
+                className="flex-1"
+              >
+                Limpiar
+              </Button>
+              <Button
+                onClick={applyFiltersFromModal}
+                className="flex-1"
+                disabled={loadingFilters}
+              >
+                {loadingFilters ? 'Aplicando...' : 'Aplicar filtros'}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>

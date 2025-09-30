@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { BarChart3, Mic, Menu, X, Key, Phone, PhoneOutgoing, Calendar } from 'lucide-react';
+import { BarChart3, Mic, Menu, X, Key, Phone, PhoneOutgoing, Calendar, PhoneCall, LogOut } from 'lucide-react';
 import { useCallsContext } from '../../context/CallsContext';
+import { useAuth } from '../../context/AuthContext';
 
 interface SidebarProps {
   currentPage: string;
@@ -10,7 +11,8 @@ interface SidebarProps {
 }
 
 export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: SidebarProps) {
-  const { loadingProgress, totalCalls, loadingAllCalls, apiKey } = useCallsContext();
+  const { loadingProgress, totalCalls, loadingAllCalls, apiKey, agendaEnabled } = useCallsContext();
+  const { user, signOut } = useAuth();
   const progressPercentage = totalCalls > 0 ? Math.min(100, Math.round((loadingProgress / totalCalls) * 100)) : 0;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [showBatchCall, setShowBatchCall] = useState(false);
@@ -53,6 +55,14 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
   
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Error al cerrar sesión:', error);
+    }
   };
   
   return (
@@ -141,19 +151,21 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
             <BarChart3 className="w-5 h-5" />
             Dashboard
           </button>
-          <button
-            onClick={() => {
-              navigateWithParams('agendas');
-            }}
-            className={`flex w-full items-center gap-2 px-4 py-2 ${
-              currentPage === 'agendas'
-                ? 'text-white bg-[#0a2a5a] border border-[#1e4a8a]'
-                : 'text-gray-300 hover:bg-[#0a2a5a]'
-            } rounded-lg`}
-          >
-            <Calendar className="w-5 h-5" />
-            Agendas
-          </button>
+          {agendaEnabled && (
+            <button
+              onClick={() => {
+                navigateWithParams('agendas');
+              }}
+              className={`flex w-full items-center gap-2 px-4 py-2 ${
+                currentPage === 'agendas'
+                  ? 'text-white bg-[#0a2a5a] border border-[#1e4a8a]'
+                  : 'text-gray-300 hover:bg-[#0a2a5a]'
+              } rounded-lg`}
+            >
+              <Calendar className="w-5 h-5" />
+              Agendas
+            </button>
+          )}
           <button
             onClick={() => {
               navigateWithParams('recordings');
@@ -180,6 +192,19 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
             <Phone className="w-5 h-5" />
             Números de Teléfono
           </button>
+          <button
+            onClick={() => {
+              navigateWithParams('callbacks');
+            }}
+            className={`flex w-full items-center gap-2 px-4 py-2 ${
+              currentPage === 'callbacks'
+                ? 'text-white bg-[#0a2a5a] border border-[#1e4a8a]'
+                : 'text-gray-300 hover:bg-[#0a2a5a]'
+            } rounded-lg`}
+          >
+            <PhoneCall className="w-5 h-5" />
+            Callbacks
+          </button>
           {showBatchCall && (
             <button
               onClick={() => {
@@ -196,6 +221,24 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
             </button>
           )}
         </nav>
+        
+        {/* Información del usuario y botón de logout */}
+        <div className="mt-auto pt-4 border-t border-[#0a2a5a]">
+          <div className="mb-3 px-3 py-2 bg-[#0a2a5a] rounded-md">
+            <div className="text-xs text-gray-400 mb-1">Usuario</div>
+            <div className="text-sm text-white truncate">
+              {user?.email || 'Usuario'}
+            </div>
+          </div>
+          
+          <button
+            onClick={handleSignOut}
+            className="flex w-full items-center gap-2 px-4 py-2 text-gray-300 hover:bg-red-600 hover:text-white rounded-lg transition-colors"
+          >
+            <LogOut className="w-5 h-5" />
+            Cerrar Sesión
+          </button>
+        </div>
       </div>
     </>
   );
