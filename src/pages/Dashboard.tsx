@@ -918,6 +918,43 @@ export function Dashboard({
                 </CardContent>
               </Card>
             )}
+            {agendaEnabled && (
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium">Promedio de Agenda</CardTitle>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    className="h-4 w-4 text-indigo-400"
+                  >
+                    <path d="M9 12l2 2 4-4"/>
+                    <path d="M21 12c.552 0 1-.448 1-1V5c0-.552-.448-1-1-1H3c-.552 0-1 .448-1 1v6c0 .552.448 1 1 1h18z"/>
+                    <path d="M3 12h18"/>
+                  </svg>
+                </CardHeader>
+                <CardContent className="flex flex-col items-center justify-center text-center">
+                  <div className="text-xl font-bold text-center">
+                    {(() => {
+                      const efectivas = dashboardData?.dashboard_data?.metricas_generales?.llamadas_efectivas || 0;
+                      const agendas = dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos || 0;
+                      if (agendas > 0) {
+                        const promedio = efectivas / agendas;
+                        return <span className="font-bold">{promedio.toFixed(1)}</span>;
+                      }
+                      return <span className="font-bold">0.0</span>;
+                    })()}
+                  </div>
+                  <div className="text-xs text-slate-600 text-center">
+                    llamadas por agenda
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
           
           {/* Gráfico de llamadas por día */}
