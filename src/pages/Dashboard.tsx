@@ -726,14 +726,14 @@ export function Dashboard({
       ) : (
         <>
           {/* Sección de estadísticas del servidor */}
-          <div className={`grid gap-4 mb-8 ${
+          <div className={`grid gap-4 mb-4 ${
             agendaEnabled 
-              ? 'md:grid-cols-2 lg:grid-cols-6' 
+              ? 'md:grid-cols-2 lg:grid-cols-4' 
               : 'md:grid-cols-2 lg:grid-cols-4'
           }`}>
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Llamadas Lanzadas</CardTitle>
+              <CardHeader className="flex flex-row items-center justify-center gap-2 pb-2">
+                <CardTitle className="text-sm font-medium text-center">Llamadas Lanzadas</CardTitle>
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   viewBox="0 0 24 24"
@@ -755,8 +755,8 @@ export function Dashboard({
               </CardContent>
             </Card>
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Costo Total</CardTitle>
+              <CardHeader className="flex flex-row items-center justify-center gap-2 pb-2">
+                <CardTitle className="text-sm font-medium text-center">Costo Total</CardTitle>
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   viewBox="0 0 24 24"
@@ -778,8 +778,8 @@ export function Dashboard({
               </CardContent>
             </Card>
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Llamadas Contestadas</CardTitle>
+              <CardHeader className="flex flex-row items-center justify-center gap-2 pb-2">
+                <CardTitle className="text-sm font-medium text-center">Llamadas Contestadas</CardTitle>
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   viewBox="0 0 24 24"
@@ -811,8 +811,8 @@ export function Dashboard({
               </CardContent>
             </Card>
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Llamadas Fallidas</CardTitle>
+              <CardHeader className="flex flex-row items-center justify-center gap-2 pb-2">
+                <CardTitle className="text-sm font-medium text-center">Llamadas Fallidas</CardTitle>
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   viewBox="0 0 24 24"
@@ -844,10 +844,12 @@ export function Dashboard({
                 </div>
               </CardContent>
             </Card>
+          </div>
+          <div className="grid gap-4 mb-8 md:grid-cols-2 lg:grid-cols-3 w-full lg:w-auto mx-auto">
             {agendaEnabled && (
               <Card>
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium">Total Agendamientos</CardTitle>
+                <CardHeader className="flex flex-row items-center justify-center gap-2 pb-2">
+                  <CardTitle className="text-sm font-medium text-center">Total Agendamientos</CardTitle>
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     viewBox="0 0 24 24"
@@ -883,8 +885,8 @@ export function Dashboard({
             )}
             {agendaEnabled && (
               <Card>
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium">Costo por Agenda</CardTitle>
+                <CardHeader className="flex flex-row items-center justify-center gap-2 pb-2">
+                  <CardTitle className="text-sm font-medium text-center">Costo por Agenda</CardTitle>
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     viewBox="0 0 24 24"
@@ -920,8 +922,8 @@ export function Dashboard({
             )}
             {agendaEnabled && (
               <Card>
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium">Promedio de Agenda</CardTitle>
+                <CardHeader className="flex flex-row items-center justify-center gap-2 pb-2">
+                  <CardTitle className="text-sm font-medium text-center">Promedio de Agenda</CardTitle>
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     viewBox="0 0 24 24"

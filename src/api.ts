@@ -1053,7 +1053,7 @@ export async function listCalls(
     console.log('Solicitando llamadas con parámetros:', params);
     
     // Usar siempre el endpoint de iacreatorhub
-    const url = `https://api.iacreatorhub.com/api/calls/list-calls`;
+    const url = `${BASE_URL}/api/calls/list-calls`;
     
     console.log('URL de la petición:', url);
     console.log('Body de la petición:', params);
@@ -1112,6 +1112,68 @@ export async function listCalls(
     
   } catch (error) {
     console.error('Error al obtener llamadas con list-calls:', error);
+    throw error;
+  }
+}
+
+// Nuevo: listar TODAS las llamadas (sin paginación) para exportación usando backend propio
+export async function listAllCalls(
+  apiKey: string,
+  params: {
+    client_id: string;
+    from_number?: string;
+    to_number?: string;
+    status?: string;
+    fecha_inicio?: string; // Debe venir en ISO UTC o con sufijo 'Z'
+    fecha_fin?: string;    // Debe venir en ISO UTC o con sufijo 'Z'
+    sort_order?: 'ASC' | 'DESC';
+  }
+): Promise<{ calls: RetellCall[]; total_calls: number }>{
+  try {
+    if (!params?.client_id) throw new Error('client_id es obligatorio para listAllCalls');
+    const url = `${BASE_URL}/api/calls/list-calls-all`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error en listAllCalls: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+    const data = await response.json();
+    // Transformar a RetellCall[]
+    const calls: RetellCall[] = (data.llamadas || data.calls || []).map((call: any) => ({
+      call_id: call.call_id || call.id || '',
+      duration: parseInt(call.duration) || 0,
+      start_time: call.created_at || call.start_time,
+      start_timestamp: new Date(call.created_at || call.start_time).getTime(),
+      end_timestamp: call.end_timestamp || (call.created_at && call.duration ? 
+        new Date(call.created_at).getTime() + (parseInt(call.duration) * 1000) : 
+        undefined),
+      disconnection_reason: call.end_reason || call.disconnection_reason,
+      status: call.status === 'fallida' ? 'failed' : (call.status || 'completed'),
+      call_status: call.status === 'fallida' ? 'failed' : (call.status || 'completed'),
+      transcript: call.transcript,
+      recording_url: call.recordings || call.recording_url,
+      to_number: call.phone_number || call.to_number,
+      from_number: call.from_number,
+      metadata: {
+        id: call.id,
+        client_id: call.client_id,
+        summary: call.summary,
+        interest: call.interest,
+        tipo_vivienda: call.tipo_vivienda,
+        created_at: call.created_at,
+        end_reason: call.end_reason
+      }
+    }));
+    return { calls, total_calls: data.total_llamadas || calls.length };
+  } catch (error) {
+    console.error('Error en listAllCalls:', error);
     throw error;
   }
 }
@@ -1298,7 +1360,7 @@ export async function getCallsByPhone(
   }
 ): Promise<CallsByPhoneResponse> {
   try {
-    const url = `https://api.iacreatorhub.com/api/calls/get-calls-by-phone`;
+    const url = `${BASE_URL}/api/calls/get-calls-by-phone`;
     const body = {
       phone_number: params.phone_number,
       per_page: params.per_page ?? 50,

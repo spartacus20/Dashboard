@@ -4,7 +4,7 @@ import type { DetailedRetellCall, FilterCriteria } from '../types';
 import { useCallsContext } from '../context/CallsContext';
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { listCalls } from '../api';
+import { listCalls, fetchAllCallsWithListCalls, listAllCalls } from '../api';
 
 // Componentes UI simplificados
 const Input = ({ className = "", ...props }: { className?: string; [key: string]: any }) => (
@@ -239,6 +239,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   const [disconnectionReasonFilter, setDisconnectionReasonFilter] = React.useState<string | null>(null);
   const [durationFilter, setDurationFilter] = React.useState<string | null>(null);
   const [statusFilter, setStatusFilter] = React.useState<string | null>(null);
+  const [phoneNumberFilter, setPhoneNumberFilter] = React.useState<string>('');
   const [sortOrderFilter, setSortOrderFilter] = React.useState<'ASC' | 'DESC'>('DESC');
   
   // Estado para la personalización de columnas
@@ -267,6 +268,15 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   const [tempEndDate, setTempEndDate] = React.useState('');
   const [tempStartTime, setTempStartTime] = React.useState('');
   const [tempEndTime, setTempEndTime] = React.useState('');
+
+  // Estados para exportación completa
+  const [showExportModal, setShowExportModal] = React.useState(false);
+  const [exportStartDate, setExportStartDate] = React.useState('');
+  const [exportEndDate, setExportEndDate] = React.useState('');
+  const [exportStartTime, setExportStartTime] = React.useState('');
+  const [exportEndTime, setExportEndTime] = React.useState('');
+  const [exportLoading, setExportLoading] = React.useState(false);
+  const [exportError, setExportError] = React.useState<string | null>(null);
 
   // Cargar página cuando cambia currentPage
   React.useEffect(() => {
@@ -304,7 +314,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       baseCalls = filteredCallsData;
     } else {
       // Si no hay filtros activos, usar las llamadas originales
-      const hasActiveFilters = searchTerm || statusFilter || durationFilter || startDate || endDate || sortOrderFilter !== 'DESC';
+      const hasActiveFilters = searchTerm || statusFilter || durationFilter || startDate || endDate || phoneNumberFilter || sortOrderFilter !== 'DESC';
       if (!hasActiveFilters) {
         baseCalls = allCalls;
       } else {
@@ -321,7 +331,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     }
     
     return baseCalls;
-  }, [filteredCallsData, allCalls, searchTerm, statusFilter, durationFilter, startDate, endDate, sortOrderFilter, disconnectionReasonFilter]);
+  }, [filteredCallsData, allCalls, searchTerm, statusFilter, durationFilter, startDate, endDate, phoneNumberFilter, sortOrderFilter, disconnectionReasonFilter]);
 
   // Calcular llamadas para la página actual basándose en filteredCalls
   const currentPageCalls = React.useMemo(() => {
@@ -338,7 +348,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     }
     
     // Si tenemos filtros aplicados pero aún no hay datos filtrados, calcular basado en las llamadas filtradas
-    if (searchTerm || statusFilter || durationFilter || startDate || endDate || sortOrderFilter !== 'DESC') {
+    if (searchTerm || statusFilter || durationFilter || startDate || endDate || phoneNumberFilter || sortOrderFilter !== 'DESC') {
       return Math.ceil(filteredCalls.length / itemsPerPage);
     }
     
@@ -352,7 +362,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     
     // Fallback: calcular basado en las llamadas cargadas
     return Math.ceil(allCalls.length / itemsPerPage);
-  }, [filteredCallsData.length, totalFilteredPages, itemsPerPage, filteredCalls.length, searchTerm, statusFilter, durationFilter, startDate, endDate, sortOrderFilter, contextTotalPages, allCalls.length]);
+  }, [filteredCallsData.length, totalFilteredPages, itemsPerPage, filteredCalls.length, searchTerm, statusFilter, durationFilter, startDate, endDate, phoneNumberFilter, sortOrderFilter, contextTotalPages, allCalls.length]);
 
   // Iniciar la carga de datos la primera vez que se monta el componente
   React.useEffect(() => {
@@ -581,9 +591,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   };
 
   // Función para exportar datos a Excel (CSV)
-  const exportToExcel = () => {
-    // Solo exportamos las llamadas filtradas actualmente
-    const dataToExport = filteredCalls;
+  const buildCsvAndDownload = (dataToExport: DetailedRetellCall[]) => {
     
     // Definimos los encabezados basados en las columnas visibles
     const headers: string[] = [];
@@ -634,6 +642,22 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       columns.push('to_number');
     }
     
+    // Helper para formatear timestamp EXACTO como en DB (UTC, sin convertir a zona local)
+    const formatTimestampUTC = (ts: number | string | undefined): string => {
+      if (!ts) return '';
+      // Preferir string crudo si viene del backend (created_at / start_time)
+      if (typeof ts === 'string') {
+        // Mostrar en formato español pero fijando timeZone UTC para no desplazar hora
+        const d = new Date(ts);
+        if (isNaN(d.getTime())) return ts; // si no parsea, devolver tal cual
+        return d.toLocaleString('es-ES', { timeZone: 'UTC' });
+      }
+      // Si es numérico (ms), tratarlo como instante UTC y formatear en UTC
+      const d = new Date(ts);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleString('es-ES', { timeZone: 'UTC' });
+    };
+
     // Crear las filas de datos
     const rows = dataToExport.map(call => {
       const row: any = {};
@@ -642,7 +666,9 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         if (column === 'duration') {
           row[column] = getDuration(call);
         } else if (column === 'start_timestamp') {
-          row[column] = call[column] ? new Date(call[column]).toLocaleString() : '';
+          // Usar el valor exacto del backend sin desplazamientos: preferir call.start_time si existe
+          const raw = (call as any).start_time || (call as any).created_at || (call as any).metadata?.created_at || call[column];
+          row[column] = formatTimestampUTC(raw);
         } else {
           // @ts-ignore - Ignoramos los errores de tipo aquí ya que from_number y to_number no están en el tipo
           row[column] = call[column] || '';
@@ -676,6 +702,95 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     document.body.removeChild(link);
   };
 
+  // Abrir modal de exportación
+  const openExportModal = () => {
+    // Prefill con rango actual si existe
+    if (startDate) {
+      const d = new Date(startDate);
+      setExportStartDate(startDate.split('T')[0] || '');
+      setExportStartTime(`${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`);
+    } else {
+      setExportStartDate('');
+      setExportStartTime('');
+    }
+    if (endDate) {
+      const d = new Date(endDate);
+      setExportEndDate(endDate.split('T')[0] || '');
+      setExportEndTime(`${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`);
+    } else {
+      setExportEndDate('');
+      setExportEndTime('');
+    }
+    setExportError(null);
+    setShowExportModal(true);
+  };
+
+  // Confirmar exportación: traer todas las llamadas sin paginación y exportar CSV
+  const confirmExport = async () => {
+    if (!apiKey || !clientId) {
+      setExportError('Falta autenticación o cliente.');
+      return;
+    }
+    // Validación de fechas
+    if (!exportStartDate && !exportEndDate) {
+      setExportError('Selecciona al menos una fecha (inicio o fin).');
+      return;
+    }
+    setExportLoading(true);
+    setExportError(null);
+    try {
+      // Construir fechas UTC sin convertir husos: agregar 'Z' explícito
+      let startISO: string | undefined;
+      let endISO: string | undefined;
+      if (exportStartDate) {
+        const hhmm = exportStartTime ? exportStartTime : '00:00';
+        startISO = `${exportStartDate}T${hhmm}:00Z`;
+      }
+      if (exportEndDate) {
+        const hhmm = exportEndTime ? exportEndTime : '23:59';
+        endISO = `${exportEndDate}T${hhmm}:59Z`;
+      }
+
+      // Construir filtros para list-calls completo
+      const params: any = {
+        client_id: clientId,
+        sort_order: sortOrderFilter
+      };
+      if (statusFilter) params.status = statusFilter;
+      if (phoneNumberFilter) params.to_number_norm = phoneNumberFilter;
+      if (startISO) params.fecha_inicio = startISO;
+      if (endISO) params.fecha_fin = endISO;
+
+      // Usar endpoint sin paginación del backend para exportar todo
+      const allResp = await listAllCalls(apiKey, params);
+      const allForExport = allResp.calls;
+
+      // Aplicar filtro de disconnection_reason solo a nivel frontend si está seleccionado
+      const finalData = disconnectionReasonFilter
+        ? allForExport.filter(c => c.disconnection_reason === disconnectionReasonFilter)
+        : allForExport;
+
+      if (!finalData.length) {
+        setExportError('No hay grabaciones en el rango seleccionado.');
+        setExportLoading(false);
+        return;
+      }
+
+      buildCsvAndDownload(finalData as any);
+      setShowExportModal(false);
+    } catch (err: any) {
+      setExportError(err?.message || 'Error al exportar.');
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  // Exportación rápida actual (solo lo visible) por compatibilidad si se necesita
+  const exportToExcel = () => {
+    const dataToExport = filteredCalls;
+    buildCsvAndDownload(dataToExport);
+  };
+
   // Reset all filters
   const resetAllFilters = () => {
     // Marcar que estamos aplicando filtros manualmente
@@ -687,6 +802,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     setStatusFilter(null);
     setDisconnectionReasonFilter(null);
     setDurationFilter(null);
+    setPhoneNumberFilter('');
     setSortOrderFilter('DESC'); // Resetear a descendente por defecto
     setCurrentPage(1);
     
@@ -712,9 +828,10 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     if (statusFilter) count++;
     if (disconnectionReasonFilter) count++;
     if (durationFilter) count++;
+    if (phoneNumberFilter) count++;
     if (sortOrderFilter !== 'DESC') count++; // Contar solo si no es el valor por defecto
     return count;
-  }, [searchTerm, startDate, endDate, statusFilter, disconnectionReasonFilter, durationFilter, sortOrderFilter]);
+  }, [searchTerm, startDate, endDate, statusFilter, disconnectionReasonFilter, durationFilter, phoneNumberFilter, sortOrderFilter]);
 
   // Custom audio player para el modal
   const AudioPlayer = () => {
@@ -779,7 +896,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     
     // Verificar si hay algún filtro activo (excluyendo disconnection_reason que se aplica solo en frontend)
     // Ahora también incluimos sortOrderFilter como filtro activo
-    const hasActiveFilters = searchTerm || statusFilter || durationFilter || startDate || endDate || sortOrderFilter !== 'DESC';
+    const hasActiveFilters = searchTerm || statusFilter || durationFilter || startDate || endDate || phoneNumberFilter || sortOrderFilter !== 'DESC';
     
     if (!hasActiveFilters) {
       // Si no hay filtros, usar las llamadas originales
@@ -813,6 +930,11 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       // Agregar filtros de estado
       if (statusFilter) {
         params.status = statusFilter;
+      }
+      
+      // Agregar filtro de número de teléfono
+      if (phoneNumberFilter) {
+        params.to_number_norm = phoneNumberFilter;
       }
       
       // Agregar filtros de fecha (ya en formato ISO)
@@ -851,12 +973,12 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     } finally {
       setLoadingFilters(false);
     }
-  }, [apiKey, clientId, searchTerm, statusFilter, durationFilter, startDate, endDate, sortOrderFilter]);
+  }, [apiKey, clientId, searchTerm, statusFilter, durationFilter, startDate, endDate, phoneNumberFilter, sortOrderFilter]);
 
   // Aplicar filtros automáticamente cuando cambien los criterios
   React.useEffect(() => {
     // Solo aplicar filtros si hay algún filtro activo
-    const hasActiveFilters = searchTerm || statusFilter || durationFilter || startDate || endDate || sortOrderFilter !== 'DESC';
+    const hasActiveFilters = searchTerm || statusFilter || durationFilter || startDate || endDate || phoneNumberFilter || sortOrderFilter !== 'DESC';
     
     if (hasActiveFilters) {
       applyFilters();
@@ -866,7 +988,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       setTotalFilteredCalls(0);
       setTotalFilteredPages(0);
     }
-  }, [searchTerm, statusFilter, durationFilter, startDate, endDate, sortOrderFilter, applyFilters]);
+  }, [searchTerm, statusFilter, durationFilter, startDate, endDate, phoneNumberFilter, sortOrderFilter, applyFilters]);
 
   // Función para abrir el modal de filtros
   const openFiltersModal = () => {
@@ -1034,11 +1156,11 @@ export function Recordings({ onNavigate }: RecordingsProps) {
               
               {/* Botón para exportar a Excel */}
               <Button 
-                onClick={exportToExcel} 
+                onClick={openExportModal} 
                 variant="outline" 
                 size="sm"
                 className="text-gray-400"
-                disabled={loadingAllCalls || filteredCalls.length === 0}
+                disabled={loadingAllCalls}
               >
                 <Download className="h-4 w-4 mr-2" />
                 Exportar CSV
@@ -1197,24 +1319,24 @@ export function Recordings({ onNavigate }: RecordingsProps) {
           )}
         </CardHeader>
         <CardContent className="pt-6 bg-white">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-3 mb-6">
             {/* Botón para abrir modal de filtros de fechas */}
-            <div className="lg:col-span-3">
+            <div className="lg:col-span-2">
               <Button 
                 onClick={openFiltersModal}
                 variant="outline"
-                className="w-full h-10 flex items-center justify-center gap-2"
+                className="w-full h-10 flex items-center justify-center gap-2 text-xs"
               >
                 <ListFilter className="w-4 h-4" />
                 {startDate || endDate ? (
-                  <span className="text-sm">
+                  <span className="text-xs truncate">
                     {startDate && endDate ? 
-                      `${new Date(startDate).toLocaleDateString()} ${new Date(startDate).toLocaleTimeString().slice(0, 5)} - ${new Date(endDate).toLocaleDateString()} ${new Date(endDate).toLocaleTimeString().slice(0, 5)}` : 
-                     startDate ? `Desde ${new Date(startDate).toLocaleDateString()} ${new Date(startDate).toLocaleTimeString().slice(0, 5)}` : 
-                     `Hasta ${new Date(endDate).toLocaleDateString()} ${new Date(endDate).toLocaleTimeString().slice(0, 5)}`}
+                      `${new Date(startDate).toLocaleDateString('es-ES')} - ${new Date(endDate).toLocaleDateString('es-ES')}` : 
+                     startDate ? `Desde ${new Date(startDate).toLocaleDateString('es-ES')}` : 
+                     `Hasta ${new Date(endDate).toLocaleDateString('es-ES')}`}
                   </span>
                 ) : (
-                  <span>Filtrar por fechas</span>
+                  <span className="text-xs">Fechas</span>
                 )}
               </Button>
             </div>
@@ -1229,7 +1351,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                 }}
                 className="w-full"
               >
-                <SelectItem value="all">Todos los estados</SelectItem>
+                <SelectItem value="all">Todos</SelectItem>
                 <SelectItem value="efectiva">Efectiva</SelectItem>
                 <SelectItem value="fallida">Fallida</SelectItem>
               </Select>
@@ -1242,11 +1364,11 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                 onValueChange={(value) => handleDurationFilter(value === "all" ? null : value)}
                 className="w-full"
               >
-                <SelectItem value="all">Todas las duraciones</SelectItem>
-                <SelectItem value="lt-60">Menos de 1 minuto</SelectItem>
-                <SelectItem value="60-180">1-3 minutos</SelectItem>
-                <SelectItem value="180-300">3-5 minutos</SelectItem>
-                <SelectItem value="gt-300">Más de 5 minutos</SelectItem>
+                <SelectItem value="all">Todas</SelectItem>
+                <SelectItem value="lt-60">{'<'} 1 min</SelectItem>
+                <SelectItem value="60-180">1-3 min</SelectItem>
+                <SelectItem value="180-300">3-5 min</SelectItem>
+                <SelectItem value="gt-300">{'>'} 5 min</SelectItem>
               </Select>
             </div>
             
@@ -1260,9 +1382,37 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                 }}
                 className="w-full"
               >
-                <SelectItem value="DESC">Más recientes primero</SelectItem>
-                <SelectItem value="ASC">Más antiguos primero</SelectItem>
+                <SelectItem value="DESC">Más recientes</SelectItem>
+                <SelectItem value="ASC">Más antiguos</SelectItem>
               </Select>
+            </div>
+            
+            {/* Filtro por número de teléfono */}
+            <div className="lg:col-span-2">
+              <div className="relative">
+                <Phone className="w-5 h-5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Input
+                  type="text"
+                  placeholder="Número..."
+                  value={phoneNumberFilter}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                    setPhoneNumberFilter(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="pl-10"
+                />
+                {phoneNumberFilter && (
+                  <button
+                    onClick={() => {
+                      setPhoneNumberFilter('');
+                      setCurrentPage(1);
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </div>
             
             {/* Filtro de disconnection_reason (solo frontend) */}
@@ -1272,7 +1422,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                 onValueChange={(value) => handleDisconnectionReasonFilter(value === "all" ? null : value)}
                 className="w-full"
               >
-                <SelectItem value="all">Todas las razones</SelectItem>
+                <SelectItem value="all">Todas</SelectItem>
                 {contextDisconnectionReasons.map(reason => (
                   <SelectItem key={reason} value={reason}>{reason}</SelectItem>
                 ))}
@@ -1323,7 +1473,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
               <PhoneOff className="mx-auto h-12 w-12 text-slate-400 mb-4" />
               <h3 className="text-xl font-medium text-slate-800 mb-2">No se encontraron grabaciones</h3>
               <p className="text-slate-600 max-w-md mx-auto mb-6">
-                {searchTerm || startDate || endDate || statusFilter || disconnectionReasonFilter || durationFilter
+                {searchTerm || startDate || endDate || statusFilter || disconnectionReasonFilter || durationFilter || phoneNumberFilter
                   ? "No hay grabaciones que coincidan con tus filtros. Intenta ajustar los criterios de búsqueda."
                   : "Aún no hay grabaciones disponibles en tu cuenta."}
               </p>
@@ -1354,7 +1504,11 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                             )}
                             {visibleColumns.timestamp && (
                               <span className="text-sm text-slate-600">
-                                {new Date(call.start_timestamp || 0).toLocaleString()}
+                                {(() => {
+                                  const raw = (call as any).start_time || (call as any).created_at || (call as any).metadata?.created_at || call.start_timestamp;
+                                  const d = new Date(raw);
+                                  return isNaN(d.getTime()) ? '' : d.toLocaleString('es-ES', { timeZone: 'UTC' });
+                                })()}
                               </span>
                             )}
                           </div>
@@ -1450,7 +1604,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                         Mostrando {(currentPage - 1) * itemsPerPage + 1}-
                         {Math.min(currentPage * itemsPerPage, filteredCalls.length)} de {totalFilteredCalls} grabaciones filtradas
                       </>
-                    ) : searchTerm || statusFilter || durationFilter || startDate || endDate || sortOrderFilter !== 'DESC' ? (
+                    ) : searchTerm || statusFilter || durationFilter || startDate || endDate || phoneNumberFilter || sortOrderFilter !== 'DESC' ? (
                       <>
                         Mostrando {(currentPage - 1) * itemsPerPage + 1}-
                         {Math.min(currentPage * itemsPerPage, filteredCalls.length)} de {filteredCalls.length} grabaciones filtradas
@@ -1575,7 +1729,11 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                       </div>
                       <div>
                         <p className="text-sm text-slate-600">Fecha y Hora</p>
-                        <p className="text-slate-800">{new Date(selectedCallModal.start_timestamp || 0).toLocaleString()}</p>
+                        <p className="text-slate-800">{(() => {
+                          const raw = (selectedCallModal as any).start_time || (selectedCallModal as any).created_at || (selectedCallModal as any).metadata?.created_at || selectedCallModal.start_timestamp;
+                          const d = new Date(raw);
+                          return isNaN(d.getTime()) ? '' : d.toLocaleString('es-ES', { timeZone: 'UTC' });
+                        })()}</p>
                       </div>
                       <div>
                         <p className="text-sm text-slate-600">Duración</p>
@@ -1735,7 +1893,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       {/* Modal de filtros de fechas */}
       {showFiltersModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+          <div className="relative bg-white rounded-lg p-6 w-full max-w-md mx-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">Filtrar por fechas</h3>
               <button
@@ -1796,6 +1954,16 @@ export function Recordings({ onNavigate }: RecordingsProps) {
               </div>
             </div>
             
+            {exportLoading && (
+              <div className="mt-4 flex items-center gap-2 text-slate-600">
+                <svg className="animate-spin -ml-1 mr-1 h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span className="text-sm">Exportando CSV...</span>
+              </div>
+            )}
+
             <div className="flex gap-3 mt-6">
               <Button
                 onClick={clearFiltersFromModal}
@@ -1810,6 +1978,109 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                 disabled={loadingFilters}
               >
                 {loadingFilters ? 'Aplicando...' : 'Aplicar filtros'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de exportación CSV (selección de rango) */}
+      {showExportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Exportar CSV - Rango de fechas</h3>
+              <button
+                onClick={() => setShowExportModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+                disabled={exportLoading}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Fecha inicial</label>
+                  <Input
+                    type="date"
+                    value={exportStartDate}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setExportStartDate(e.target.value)}
+                    className="w-full"
+                    disabled={exportLoading}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Hora inicial</label>
+                  <Input
+                    type="time"
+                    value={exportStartTime}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setExportStartTime(e.target.value)}
+                    className="w-full"
+                    disabled={exportLoading}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Fecha final</label>
+                  <Input
+                    type="date"
+                    value={exportEndDate}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setExportEndDate(e.target.value)}
+                    className="w-full"
+                    disabled={exportLoading}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Hora final</label>
+                  <Input
+                    type="time"
+                    value={exportEndTime}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setExportEndTime(e.target.value)}
+                    className="w-full"
+                    disabled={exportLoading}
+                  />
+                </div>
+              </div>
+
+              {exportError && (
+                <div className="text-red-600 text-sm">{exportError}</div>
+              )}
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <Button
+                onClick={() => {
+                  setExportStartDate('');
+                  setExportEndDate('');
+                  setExportStartTime('');
+                  setExportEndTime('');
+                  setExportError(null);
+                }}
+                variant="outline"
+                className="flex-1"
+                disabled={exportLoading}
+              >
+                Limpiar
+              </Button>
+              <Button
+                onClick={confirmExport}
+                className="flex-1"
+                disabled={exportLoading}
+              >
+                {exportLoading ? (
+                  <span className="inline-flex items-center gap-2">
+                    <svg className="animate-spin -ml-1 mr-1 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Exportando...
+                  </span>
+                ) : (
+                  'Exportar'
+                )}
               </Button>
             </div>
           </div>
