@@ -94,6 +94,21 @@ interface RecordingsProps {
 }
 
 
+// Función para normalizar números de teléfono
+function normalizePhoneNumber(phoneNumber: string): string {
+  let normalized = phoneNumber.toString().trim();
+  
+  // Remover el + si existe
+  if (normalized.startsWith('+')) {
+    normalized = normalized.substring(1);
+  }
+  
+  // Remover espacios, guiones y paréntesis
+  normalized = normalized.replace(/[\s\-\(\)]/g, '');
+  
+  return normalized;
+}
+
 // Nueva función para obtener la duración de una llamada de forma robusta
 function getDuration(call: DetailedRetellCall): string {
   // Opción 1: Usar el campo duration directamente del webhook (en milisegundos)
@@ -757,7 +772,15 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         sort_order: sortOrderFilter
       };
       if (statusFilter) params.status = statusFilter;
-      if (phoneNumberFilter) params.to_number_norm = phoneNumberFilter;
+      
+      // Agregar filtro de número de teléfono (normalizar el número)
+      if (phoneNumberFilter) {
+        const normalizedPhone = normalizePhoneNumber(phoneNumberFilter);
+        console.log('Exportación - Número original:', phoneNumberFilter);
+        console.log('Exportación - Número normalizado:', normalizedPhone);
+        params.to_number_norm = normalizedPhone;
+      }
+      
       if (startISO) params.fecha_inicio = startISO;
       if (endISO) params.fecha_fin = endISO;
 
@@ -932,9 +955,12 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         params.status = statusFilter;
       }
       
-      // Agregar filtro de número de teléfono
+      // Agregar filtro de número de teléfono (normalizar el número)
       if (phoneNumberFilter) {
-        params.to_number_norm = phoneNumberFilter;
+        const normalizedPhone = normalizePhoneNumber(phoneNumberFilter);
+        console.log('Número original:', phoneNumberFilter);
+        console.log('Número normalizado:', normalizedPhone);
+        params.to_number_norm = normalizedPhone;
       }
       
       // Agregar filtros de fecha (ya en formato ISO)

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { fetchAllCallbacks } from '../api';
+import { fetchCallbacksWithLimit, loadMoreCallbacks, exportAllCallbacks } from '../api';
 import { Callback } from '../types';
 import { useCallsContext } from '../context/CallsContext';
 import { 
@@ -13,7 +13,8 @@ import {
   AlertCircle, 
   Clock,
   CheckCircle,
-  Download
+  Download,
+  X
 } from 'lucide-react';
 
 interface CallbacksProps {
@@ -25,13 +26,25 @@ export function Callbacks({}: CallbacksProps) {
   const [callbacks, setCallbacks] = useState<Callback[]>([]);
   const [filteredCallbacks, setFilteredCallbacks] = useState<Callback[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
+  const [hasMoreCallbacks, setHasMoreCallbacks] = useState(false);
+  const [totalCallbacks, setTotalCallbacks] = useState(0);
   const itemsPerPage = 25;
 
-  // Cargar callbacks
+  // Estados para exportación con filtros de fecha
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportStartDate, setExportStartDate] = useState('');
+  const [exportEndDate, setExportEndDate] = useState('');
+  const [exportStartTime, setExportStartTime] = useState('');
+  const [exportEndTime, setExportEndTime] = useState('');
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  // Cargar callbacks iniciales (solo 500)
   const loadCallbacks = async () => {
     if (!clientId) {
       setError('Client ID no disponible');
@@ -42,24 +55,58 @@ export function Callbacks({}: CallbacksProps) {
     setError(null);
 
     try {
-      console.log('Cargando callbacks para client_id:', clientId);
+      console.log('Cargando primeros 500 callbacks para client_id:', clientId);
       
-      const callbacksData = await fetchAllCallbacks(clientId);
+      const result = await fetchCallbacksWithLimit(clientId, 500);
       
-      // Asegurar que siempre trabajamos con un array
-      const validCallbacks = Array.isArray(callbacksData) ? callbacksData : [];
-      console.log('Callbacks válidos recibidos:', validCallbacks);
+      console.log('Callbacks iniciales recibidos:', result.callbacks.length);
+      console.log('Total de callbacks disponibles:', result.totalCallbacks);
+      console.log('Hay más callbacks:', result.hasMore);
       
-      setCallbacks(validCallbacks);
-      setFilteredCallbacks(validCallbacks);
+      setCallbacks(result.callbacks);
+      setFilteredCallbacks(result.callbacks);
+      setHasMoreCallbacks(result.hasMore);
+      setTotalCallbacks(result.totalCallbacks);
     } catch (err) {
       console.error('Error al cargar callbacks:', err);
       setError(err instanceof Error ? err.message : 'Error al cargar callbacks');
       // En caso de error, asegurar que tenemos arrays vacíos
       setCallbacks([]);
       setFilteredCallbacks([]);
+      setHasMoreCallbacks(false);
+      setTotalCallbacks(0);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Cargar más callbacks
+  const loadMoreCallbacksData = async () => {
+    if (!clientId || !hasMoreCallbacks || loadingMore) {
+      return;
+    }
+
+    setLoadingMore(true);
+    setError(null);
+
+    try {
+      console.log('Cargando más callbacks...');
+      
+      const result = await loadMoreCallbacks(clientId, callbacks, 500);
+      
+      console.log('Callbacks adicionales cargados:', result.callbacks.length - callbacks.length);
+      console.log('Total de callbacks ahora:', result.callbacks.length);
+      console.log('Hay más callbacks:', result.hasMore);
+      
+      setCallbacks(result.callbacks);
+      setFilteredCallbacks(result.callbacks);
+      setHasMoreCallbacks(result.hasMore);
+      setTotalCallbacks(result.totalCallbacks);
+    } catch (err) {
+      console.error('Error al cargar más callbacks:', err);
+      setError(err instanceof Error ? err.message : 'Error al cargar más callbacks');
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -164,13 +211,9 @@ export function Callbacks({}: CallbacksProps) {
     return isPending;
   };
 
-  // Exportar callbacks a CSV
-  const handleExportCSV = () => {
-    if (filteredCallbacks.length === 0) {
-      setError('No hay callbacks para exportar');
-      return;
-    }
 
+  // Función para construir y descargar CSV
+  const buildCsvAndDownload = (dataToExport: Callback[]) => {
     // Crear headers
     const headers = [
       'ID',
@@ -189,7 +232,7 @@ export function Callbacks({}: CallbacksProps) {
     ];
 
     // Crear filas de datos
-    const rows = filteredCallbacks.map(callback => [
+    const rows = dataToExport.map(callback => [
       callback.id,
       callback.nombre || '',
       callback.last_name || '',
@@ -228,6 +271,77 @@ export function Callbacks({}: CallbacksProps) {
     document.body.removeChild(link);
   };
 
+  // Abrir modal de exportación
+  const openExportModal = () => {
+    setExportStartDate('');
+    setExportEndDate('');
+    setExportStartTime('');
+    setExportEndTime('');
+    setExportError(null);
+    setShowExportModal(true);
+  };
+
+  // Confirmar exportación: traer todos los callbacks con filtros de fecha y exportar CSV
+  const confirmExport = async () => {
+    if (!clientId) {
+      setExportError('No se encontró client_id.');
+      return;
+    }
+    
+    // Validación de fechas
+    if (!exportStartDate && !exportEndDate) {
+      setExportError('Selecciona al menos una fecha (inicio o fin).');
+      return;
+    }
+    
+    setExportLoading(true);
+    setExportError(null);
+    
+    try {
+      // Construir fechas UTC sin convertir husos: agregar 'Z' explícito
+      let startISO: string | undefined;
+      let endISO: string | undefined;
+      
+      if (exportStartDate) {
+        const hhmm = exportStartTime ? exportStartTime : '00:00';
+        startISO = `${exportStartDate}T${hhmm}:00Z`;
+      }
+      
+      if (exportEndDate) {
+        const hhmm = exportEndTime ? exportEndTime : '23:59';
+        endISO = `${exportEndDate}T${hhmm}:59Z`;
+      }
+
+      // Construir parámetros para la exportación
+      const params: any = {
+        sort_order: 'DESC',
+        sort_by: 'created_at'
+      };
+      
+      if (startISO) params.fecha_inicio = startISO;
+      if (endISO) params.fecha_fin = endISO;
+
+      console.log('Exportando callbacks con parámetros:', params);
+
+      // Usar endpoint sin paginación del backend para exportar todo
+      const allResp = await exportAllCallbacks(clientId, params);
+      const allForExport = allResp.callbacks;
+
+      if (!allForExport.length) {
+        setExportError('No hay callbacks en el rango seleccionado.');
+        setExportLoading(false);
+        return;
+      }
+
+      buildCsvAndDownload(allForExport);
+      setShowExportModal(false);
+    } catch (err: any) {
+      setExportError(err?.message || 'Error al exportar.');
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
   // Mostrar todos los callbacks con sus fechas para análisis
   console.log('=== TODOS LOS CALLBACKS ===');
   callbacks.forEach(callback => {
@@ -247,8 +361,8 @@ export function Callbacks({}: CallbacksProps) {
           </div>
           <div className="flex items-center gap-3">
             <button
-              onClick={handleExportCSV}
-              disabled={loading || filteredCallbacks.length === 0}
+              onClick={openExportModal}
+              disabled={loading}
               className="flex items-center gap-2 bg-gradient-to-r from-green-600 to-emerald-700 hover:from-emerald-600 hover:to-teal-700 disabled:from-slate-400 disabled:to-slate-500 px-4 py-2 rounded-lg transition-all duration-200 text-white shadow-lg hover:shadow-xl"
             >
               <Download className="w-4 h-4" />
@@ -269,7 +383,12 @@ export function Callbacks({}: CallbacksProps) {
         {/* Información de la lista */}
         <div className="mb-6">
           <p className="text-slate-600">
-            {filteredCallbacks.length} de {callbacks.length} callbacks
+            {filteredCallbacks.length} de {callbacks.length} callbacks cargados
+            {totalCallbacks > 0 && (
+              <span className="text-slate-500 ml-1">
+                (de {totalCallbacks} total disponibles)
+              </span>
+            )}
             {(searchTerm || statusFilter !== 'all') && (
               <span className="text-blue-600 ml-2 font-medium">(filtrados)</span>
             )}
@@ -446,6 +565,20 @@ export function Callbacks({}: CallbacksProps) {
               </div>
             )}
 
+            {/* Botón Cargar más callbacks */}
+            {hasMoreCallbacks && (
+              <div className="flex justify-center mt-8">
+                <button
+                  onClick={loadMoreCallbacksData}
+                  disabled={loadingMore}
+                  className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-700 hover:from-purple-600 hover:to-pink-700 disabled:from-slate-400 disabled:to-slate-500 px-6 py-3 rounded-lg transition-all duration-200 text-white shadow-lg hover:shadow-xl"
+                >
+                  <RefreshCw className={`w-4 h-4 ${loadingMore ? 'animate-spin' : ''}`} />
+                  {loadingMore ? 'Cargando más callbacks...' : 'Cargar más callbacks'}
+                </button>
+              </div>
+            )}
+
             {/* Paginación */}
             {totalPages > 1 && (
               <div className="flex items-center justify-between mt-8">
@@ -501,6 +634,105 @@ export function Callbacks({}: CallbacksProps) {
           </div>
         )}
       </div>
+
+      {/* Modal de exportación CSV (selección de rango de fechas) */}
+      {showExportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Exportar CSV - Rango de fechas</h3>
+              <button
+                onClick={() => setShowExportModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+                disabled={exportLoading}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Fecha inicial</label>
+                  <input
+                    type="date"
+                    value={exportStartDate}
+                    onChange={(e) => setExportStartDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled={exportLoading}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Hora inicial</label>
+                  <input
+                    type="time"
+                    value={exportStartTime}
+                    onChange={(e) => setExportStartTime(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled={exportLoading}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Fecha final</label>
+                  <input
+                    type="date"
+                    value={exportEndDate}
+                    onChange={(e) => setExportEndDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled={exportLoading}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Hora final</label>
+                  <input
+                    type="time"
+                    value={exportEndTime}
+                    onChange={(e) => setExportEndTime(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled={exportLoading}
+                  />
+                </div>
+              </div>
+
+              {exportError && (
+                <div className="text-red-600 text-sm">{exportError}</div>
+              )}
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setExportStartDate('');
+                  setExportEndDate('');
+                  setExportStartTime('');
+                  setExportEndTime('');
+                  setExportError(null);
+                }}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+                disabled={exportLoading}
+              >
+                Limpiar
+              </button>
+              <button
+                onClick={confirmExport}
+                className="flex-1 px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-700 text-white rounded-md hover:from-emerald-600 hover:to-teal-700 transition-colors disabled:opacity-50"
+                disabled={exportLoading}
+              >
+                {exportLoading ? (
+                  <span className="inline-flex items-center gap-2">
+                    <RefreshCw className="animate-spin w-4 h-4" />
+                    Exportando...
+                  </span>
+                ) : (
+                  'Exportar'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

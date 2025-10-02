@@ -1348,6 +1348,163 @@ export async function fetchAllCallbacks(
   }
 }
 
+// Función para obtener callbacks con límite inicial (optimizada para carga rápida)
+export async function fetchCallbacksWithLimit(
+  clientId: string,
+  limit: number = 500
+): Promise<{ callbacks: Callback[]; hasMore: boolean; totalCallbacks: number }> {
+  try {
+    console.log(`Obteniendo primeros ${limit} callbacks para client_id:`, clientId);
+    
+    let allCallbacks: Callback[] = [];
+    let page = 1;
+    let hasMore = true;
+    let totalCallbacks = 0;
+    
+    while (hasMore && allCallbacks.length < limit) {
+      const response = await fetchCallbacks(clientId, page, 100);
+      
+      // Si es la primera página, obtener el total de callbacks
+      if (page === 1) {
+        totalCallbacks = response.total_callbacks || 0;
+      }
+      
+      // Agregar callbacks hasta alcanzar el límite
+      const remainingSlots = limit - allCallbacks.length;
+      const callbacksToAdd = response.callbacks.slice(0, remainingSlots);
+      allCallbacks = [...allCallbacks, ...callbacksToAdd];
+      
+      // Si obtuvimos menos de 100 callbacks, no hay más páginas
+      hasMore = response.callbacks.length === 100 && allCallbacks.length < limit;
+      
+      if (hasMore) {
+        page++;
+        // Pequeña pausa para no sobrecargar el servidor
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+    }
+    
+    const hasMoreCallbacks = allCallbacks.length < totalCallbacks;
+    
+    console.log(`Callbacks obtenidos: ${allCallbacks.length}/${totalCallbacks}, Hay más: ${hasMoreCallbacks}`);
+    return {
+      callbacks: allCallbacks,
+      hasMore: hasMoreCallbacks,
+      totalCallbacks
+    };
+    
+  } catch (error) {
+    console.error('Error al obtener callbacks con límite:', error);
+    throw error;
+  }
+}
+
+// Función para cargar más callbacks (continuación de la paginación)
+export async function loadMoreCallbacks(
+  clientId: string,
+  currentCallbacks: Callback[],
+  additionalLimit: number = 500
+): Promise<{ callbacks: Callback[]; hasMore: boolean; totalCallbacks: number }> {
+  try {
+    console.log(`Cargando ${additionalLimit} callbacks adicionales para client_id:`, clientId);
+    
+    // Calcular desde qué página continuar
+    const currentPage = Math.ceil(currentCallbacks.length / 100);
+    const startPage = currentPage + 1;
+    
+    let allCallbacks = [...currentCallbacks];
+    let page = startPage;
+    let hasMore = true;
+    let totalCallbacks = 0;
+    let loadedCount = 0;
+    
+    while (hasMore && loadedCount < additionalLimit) {
+      const response = await fetchCallbacks(clientId, page, 100);
+      
+      // Si es la primera página de esta carga, obtener el total
+      if (page === startPage) {
+        totalCallbacks = response.total_callbacks || 0;
+      }
+      
+      // Agregar callbacks hasta alcanzar el límite adicional
+      const remainingSlots = additionalLimit - loadedCount;
+      const callbacksToAdd = response.callbacks.slice(0, remainingSlots);
+      allCallbacks = [...allCallbacks, ...callbacksToAdd];
+      loadedCount += callbacksToAdd.length;
+      
+      // Si obtuvimos menos de 100 callbacks, no hay más páginas
+      hasMore = response.callbacks.length === 100 && loadedCount < additionalLimit;
+      
+      if (hasMore) {
+        page++;
+        // Pequeña pausa para no sobrecargar el servidor
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+    }
+    
+    const hasMoreCallbacks = allCallbacks.length < totalCallbacks;
+    
+    console.log(`Callbacks adicionales cargados: ${loadedCount}, Total: ${allCallbacks.length}/${totalCallbacks}, Hay más: ${hasMoreCallbacks}`);
+    return {
+      callbacks: allCallbacks,
+      hasMore: hasMoreCallbacks,
+      totalCallbacks
+    };
+    
+  } catch (error) {
+    console.error('Error al cargar más callbacks:', error);
+    throw error;
+  }
+}
+
+// Función para exportar TODOS los callbacks con filtros de fecha
+export async function exportAllCallbacks(
+  clientId: string,
+  params: {
+    fecha_inicio?: string;
+    fecha_fin?: string;
+    phone_number?: string;
+    sort_order?: 'ASC' | 'DESC';
+    sort_by?: 'date_to_call' | 'created_at';
+  }
+): Promise<{ callbacks: Callback[]; total_callbacks: number }> {
+  try {
+    if (!clientId) {
+      throw new Error('client_id es obligatorio para exportAllCallbacks');
+    }
+    
+    console.log('Exportando callbacks con parámetros:', params);
+    
+    const url = `${BASE_URL}/api/calls/list-callbacks-all`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        client_id: clientId,
+        ...params
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error en exportAllCallbacks: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('Callbacks exportados:', data.callbacks.length);
+    
+    return {
+      callbacks: data.callbacks || [],
+      total_callbacks: data.total_callbacks || 0
+    };
+  } catch (error) {
+    console.error('Error al exportar callbacks:', error);
+    throw error;
+  }
+}
+
 export { fetchAllCalls };
 
 // Obtener llamadas por número de teléfono
