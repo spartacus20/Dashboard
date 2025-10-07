@@ -7,6 +7,7 @@ import { Recordings } from './pages/Recordings';
 import { PhoneNumbers } from './pages/PhoneNumbers';
 import { Agendas } from './pages/Agendas';
 import { Callbacks } from './pages/Callbacks';
+import { Ventas } from './pages/Ventas';
 import { useCallsContext } from './context/CallsContext';
 import { X, Upload, Phone, Info, Check, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 
@@ -1268,6 +1269,9 @@ function DashboardApp() {
         )}
         {currentPage === 'batch-call' && (
           <BatchCall onNavigate={setCurrentPage as (page: string) => void} />
+        )}
+        {currentPage === 'ventas' && (
+          <Ventas onNavigate={setCurrentPage as (page: string) => void} />
         )}
       </div>
     </div>

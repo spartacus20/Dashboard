@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BarChart3, Mic, Menu, X, Key, Phone, PhoneOutgoing, Calendar, PhoneCall, LogOut } from 'lucide-react';
+import { BarChart3, Mic, Menu, X, Key, Phone, PhoneOutgoing, Calendar, PhoneCall, LogOut, TrendingUp } from 'lucide-react';
 import { useCallsContext } from '../../context/CallsContext';
 import { useAuth } from '../../context/AuthContext';
 
@@ -220,6 +220,19 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
               Llamadas en Lote
             </button>
           )}
+          <button
+            onClick={() => {
+              navigateWithParams('ventas');
+            }}
+            className={`flex w-full items-center gap-2 px-4 py-2 ${
+              currentPage === 'ventas'
+                ? 'text-white bg-[#0a2a5a] border border-[#1e4a8a]'
+                : 'text-gray-300 hover:bg-[#0a2a5a]'
+            } rounded-lg`}
+          >
+            <TrendingUp className="w-5 h-5" />
+            Ventas
+          </button>
         </nav>
         
         {/* Información del usuario y botón de logout */}
