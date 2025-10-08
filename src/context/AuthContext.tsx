@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { User, Session, AuthError } from '@supabase/supabase-js'
-import { supabase, getClientId } from '../lib/supabase'
+import { supabase, getClientId, get_client_id } from '../lib/supabase'
 
 interface AuthContextType {
   user: User | null
@@ -61,6 +61,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           } catch (err) {
             console.warn('No se pudo obtener el client_id de get-client:', err)
           }
+
+          // Establecer filtro por defecto del dashboard a "today"
+          try {
+            localStorage.setItem('dashboard_time_period', 'today')
+          } catch {}
         }
       }
     )
@@ -81,6 +86,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       } catch (err) {
         console.warn('No se pudo obtener el client_id de get-client:', err)
       }
+
+      // Establecer filtro por defecto del dashboard a "today" en login con email/contraseña
+      try {
+        localStorage.setItem('dashboard_time_period', 'today')
+      } catch {}
     }
     
     return { error }
