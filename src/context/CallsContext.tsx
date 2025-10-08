@@ -174,8 +174,9 @@ export function CallsProvider({ children }: CallsProviderProps) {
               setError('No se encontró client_id. Por favor, inicia sesión nuevamente.');
             }
           } else {
-            console.error('No hay email disponible para buscar el client_id');
-            setError('Se requiere el client_id en localStorage. Por favor, inicia sesión nuevamente.');
+            // No hay sesión aún; no marcar error para no confundir al usuario antes de iniciar sesión
+            console.log('Sin email aún: esperando evento de autenticación para resolver client_id');
+            return;
           }
         } catch (e) {
           console.error('Error intentando resolver client_id usando el email:', e);
@@ -186,6 +187,50 @@ export function CallsProvider({ children }: CallsProviderProps) {
 
     fetchApiKey();
   }, [getParamsFromUrl]);
+
+  // Suscribirse a cambios de autenticación para resolver client_id y apiKey inmediatamente al iniciar sesión
+  useEffect(() => {
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN') {
+        const email = session?.user?.email || undefined;
+        if (!email) {
+          console.log('Evento SIGNED_IN sin email, omitiendo resolución de client_id');
+          return;
+        }
+
+        try {
+          console.log('SIGNED_IN: resolviendo client_id para', email);
+          const newClientId = await fetchAndStoreClientId(email);
+          if (newClientId) {
+            setClientId(newClientId);
+            try {
+              const result = await getClientApiKey(newClientId);
+              if (result.apiKey) {
+                setApiKey(result.apiKey);
+                console.log('API key establecida tras inicio de sesión');
+              } else {
+                console.error('No se pudo obtener API key tras inicio de sesión');
+                setError('No se pudo obtener la configuración del cliente tras iniciar sesión');
+              }
+            } catch (e) {
+              console.error('Error obteniendo API key tras inicio de sesión:', e);
+              setError('Error al obtener configuración tras iniciar sesión');
+            }
+          } else {
+            console.error('No se pudo obtener client_id tras inicio de sesión');
+            setError('No se pudo resolver client_id tras iniciar sesión');
+          }
+        } catch (e) {
+          console.error('Error resolviendo client_id tras SIGNED_IN:', e);
+          setError('Error resolviendo client_id tras iniciar sesión');
+        }
+      }
+    });
+
+    return () => {
+      authListener?.subscription?.unsubscribe();
+    };
+  }, []);
 
   // Función para cargar una página específica de llamadas
   const loadCallsPage = useCallback(async (page: number, filterCriteria?: FilterCriteria): Promise<RetellCall[]> => {

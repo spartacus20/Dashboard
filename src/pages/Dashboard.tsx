@@ -845,7 +845,7 @@ export function Dashboard({
               </CardContent>
             </Card>
           </div>
-          <div className="grid gap-4 mb-8 md:grid-cols-2 lg:grid-cols-3 w-full lg:w-auto mx-auto">
+          <div className="grid gap-4 mb-8 md:grid-cols-2 lg:grid-cols-4">
             {agendaEnabled && (
               <Card>
                 <CardHeader className="flex flex-row items-center justify-center gap-2 pb-2">
@@ -957,6 +957,35 @@ export function Dashboard({
                 </CardContent>
               </Card>
             )}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-center gap-2 pb-2">
+                <CardTitle className="text-sm font-medium text-center">Duración Total de Llamadas</CardTitle>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  className="h-4 w-4 text-slate-400"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+              </CardHeader>
+              <CardContent className="flex flex-col items-center justify-center text-center">
+                <div className="text-xl font-bold text-center">
+                  {(() => {
+                    const minutes = dashboardData?.dashboard_data?.metricas_generales?.total_duration_minutes || 0;
+                    return <span className="font-bold">{minutes.toLocaleString()} min</span>;
+                  })()}
+                </div>
+                <div className="text-xs text-slate-600 text-center">
+                  Suma de duración de llamadas (en minutos)
+                </div>
+              </CardContent>
+            </Card>
           </div>
           
           {/* Gráfico de llamadas por día */}

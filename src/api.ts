@@ -668,6 +668,8 @@ function transformDashboardData(data: any): any {
           llamadas_efectivas: data.llamadas_efectivas || 0,
           llamadas_fallidas: data.llamadas_fallidas || 0,
           costo_total: data.costo_total || 0,
+          total_duration_seconds: data.total_duration_seconds || 0,
+          total_duration_minutes: data.total_duration_seconds ? Math.round((data.total_duration_seconds || 0) / 60) : 0,
           total_agendamientos: data.total_agendamientos || 0,
           costo_por_agenda: data.costo_por_agenda || 0
         },
