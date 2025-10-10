@@ -1519,7 +1519,9 @@ export async function fetchSalesMetrics(fechaInicio?: string, fechaFin?: string)
 }> {
   try {
     const url = `${BASE_URL}/api/sales/metrics`;
-    const body: any = {};
+    const body: any = {
+      client_id: getClientId()
+    };
     
     if (fechaInicio) body.fecha_inicio = fechaInicio;
     if (fechaFin) body.fecha_fin = fechaFin;
@@ -1566,10 +1568,13 @@ export async function fetchSalesMetricsToday(): Promise<{
     const url = `${BASE_URL}/api/sales/metrics/today`;
 
     const response = await fetch(url, {
-      method: 'GET',
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify({
+        client_id: getClientId()
+      }),
     });
 
     if (!response.ok) {
@@ -1606,10 +1611,13 @@ export async function fetchSalesMetricsWeek(): Promise<{
     const url = `${BASE_URL}/api/sales/metrics/week`;
 
     const response = await fetch(url, {
-      method: 'GET',
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify({
+        client_id: getClientId()
+      }),
     });
 
     if (!response.ok) {
@@ -1646,10 +1654,13 @@ export async function fetchSalesMetricsMonth(): Promise<{
     const url = `${BASE_URL}/api/sales/metrics/month`;
 
     const response = await fetch(url, {
-      method: 'GET',
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify({
+        client_id: getClientId()
+      }),
     });
 
     if (!response.ok) {
@@ -1686,10 +1697,13 @@ export async function fetchSalesMetricsQuarter(): Promise<{
     const url = `${BASE_URL}/api/sales/metrics/quarter`;
 
     const response = await fetch(url, {
-      method: 'GET',
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify({
+        client_id: getClientId()
+      }),
     });
 
     if (!response.ok) {

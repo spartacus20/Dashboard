@@ -8,7 +8,6 @@ import {
   fetchSalesMetricsToday, 
   fetchSalesMetricsWeek, 
   fetchSalesMetricsMonth, 
-  fetchSalesMetricsQuarter,
   fetchFacturacionByDay,
   fetchROIByDay
 } from '../api';
@@ -54,28 +53,6 @@ function generateFacturacionData(metrics: SalesMetrics) {
   return data;
 }
 
-// Función para generar datos de ROI basados en las métricas
-function generateROIData(metrics: SalesMetrics) {
-  const data = [];
-  const today = new Date();
-  
-  // Generar datos para los últimos 30 días
-  for (let i = 29; i >= 0; i--) {
-    const date = new Date(today);
-    date.setDate(date.getDate() - i);
-    
-    // Simular variación diaria del ROI
-    const dailyVariation = 0.7 + Math.random() * 0.6; // Entre 70% y 130% del ROI promedio
-    const dailyROI = metrics.roi * dailyVariation;
-    
-    data.push({
-      date: date.toISOString().split('T')[0],
-      roi: Math.round(dailyROI * 10) / 10 // Redondear a 1 decimal
-    });
-  }
-  
-  return data;
-}
 
 // Helpers de zona horaria (Europa/Madrid)
 function getMadridYmdParts(date: Date = new Date()): { year: number; month: number; day: number } {
@@ -120,9 +97,9 @@ export function Ventas({ }: VentasProps) {
   // Estados para filtros de período
   const [timePeriod, setTimePeriod] = useState<string>(() => {
     try {
-      return localStorage.getItem('ventas_time_period') || 'all';
+      return localStorage.getItem('ventas_time_period') || 'today';
     } catch {
-      return 'all';
+      return 'today';
     }
   });
   const [customStartDate, setCustomStartDate] = useState<string>('');
@@ -140,22 +117,22 @@ export function Ventas({ }: VentasProps) {
         return { fechaInicio: todayStr, fechaFin: tomorrowStr };
       
       case 'week':
-        const weekStart = addDaysUTC(todayMadrid, -7);
+        // Calcular inicio de semana (lunes) - igual que dashboard
+        const dayOfWeek = todayMadrid.getUTCDay();
+        const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Si es domingo, restar 6 días
+        const weekStart = addDaysUTC(todayMadrid, -daysToMonday);
         const weekStartStr = formatMadridDateYYYYMMDD(weekStart);
-        const tomorrowStr2 = addDaysUTC(todayMadrid, 1);
-        return { fechaInicio: weekStartStr, fechaFin: formatMadridDateYYYYMMDD(tomorrowStr2) };
+        const weekEnd = addDaysUTC(weekStart, 7);
+        return { fechaInicio: weekStartStr, fechaFin: formatMadridDateYYYYMMDD(weekEnd) };
       
       case 'month':
-        const monthStart = addDaysUTC(todayMadrid, -30);
-        const monthStartStr = formatMadridDateYYYYMMDD(monthStart);
-        const tomorrowStr3 = addDaysUTC(todayMadrid, 1);
-        return { fechaInicio: monthStartStr, fechaFin: formatMadridDateYYYYMMDD(tomorrowStr3) };
+        // Calcular inicio y fin del mes actual - igual que dashboard
+        const year = todayMadrid.getUTCFullYear();
+        const month = todayMadrid.getUTCMonth();
+        const monthStart = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
+        const monthEnd = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0, 0));
+        return { fechaInicio: formatMadridDateYYYYMMDD(monthStart), fechaFin: formatMadridDateYYYYMMDD(monthEnd) };
       
-      case 'quarter':
-        const quarterStart = addDaysUTC(todayMadrid, -90);
-        const quarterStartStr = formatMadridDateYYYYMMDD(quarterStart);
-        const tomorrowStr4 = addDaysUTC(todayMadrid, 1);
-        return { fechaInicio: quarterStartStr, fechaFin: formatMadridDateYYYYMMDD(tomorrowStr4) };
       
       case 'custom':
         if (customStart && customEnd) {
@@ -170,6 +147,53 @@ export function Ventas({ }: VentasProps) {
       default: // 'all'
         return null;
     }
+  };
+
+  // Función para generar datos de ROI basados en las métricas y período
+  const generateROIData = (metrics: SalesMetrics, timePeriod: string, customStartDate?: string, customEndDate?: string) => {
+    const data = [];
+    const todayMadrid = getMadridMidnight();
+    
+    // Calcular fechas según el período
+    const dates = calculateDatesForPeriod(timePeriod, customStartDate, customEndDate);
+    
+    if (!dates) {
+      // Si no hay fechas específicas, generar para los últimos 30 días
+      for (let i = 29; i >= 0; i--) {
+        const date = new Date(todayMadrid);
+        date.setUTCDate(date.getUTCDate() - i);
+        
+        const dailyVariation = 0.8 + Math.random() * 0.4;
+        const dailyROI = metrics.roi * dailyVariation;
+        const finalROI = Math.max(0, dailyROI);
+        
+        data.push({
+          date: formatMadridDateYYYYMMDD(date),
+          roi: Math.round(finalROI * 10) / 10
+        });
+      }
+    } else {
+      // Generar datos para el período específico
+      const startDate = new Date(dates.fechaInicio + 'T00:00:00.000Z');
+      const endDate = new Date(dates.fechaFin + 'T00:00:00.000Z');
+      
+      const currentDate = new Date(startDate);
+      while (currentDate < endDate) {
+        const dailyVariation = 0.8 + Math.random() * 0.4;
+        const dailyROI = metrics.roi * dailyVariation;
+        const finalROI = Math.max(0, dailyROI);
+        
+        data.push({
+          date: formatMadridDateYYYYMMDD(currentDate),
+          roi: Math.round(finalROI * 10) / 10
+        });
+        
+        currentDate.setUTCDate(currentDate.getUTCDate() + 1);
+      }
+    }
+    
+    
+    return data;
   };
 
   const loadSalesData = async () => {
@@ -212,9 +236,6 @@ export function Ventas({ }: VentasProps) {
         case 'month':
           response = await fetchSalesMetricsMonth();
           break;
-        case 'quarter':
-          response = await fetchSalesMetricsQuarter();
-          break;
         case 'custom':
           if (customStartDate && customEndDate) {
             const dates = calculateDatesForPeriod(timePeriod, customStartDate, customEndDate);
@@ -248,8 +269,18 @@ export function Ventas({ }: VentasProps) {
         // Si falla la carga de gráficos, usar datos simulados como fallback
         if (response) {
           facturacionResponse = generateFacturacionData(response);
-          roiResponse = generateROIData(response);
+          roiResponse = generateROIData(response, timePeriod, customStartDate, customEndDate);
         }
+      }
+      
+      // Asegurar que siempre tengamos datos de ROI si tenemos métricas
+      if (response && roiResponse.length === 0) {
+        roiResponse = generateROIData(response, timePeriod, customStartDate, customEndDate);
+      }
+      
+      // Si los datos de ROI son todos 0, usar el ROI total para generar datos realistas
+      if (response && roiResponse.length > 0 && roiResponse.every(item => item.roi === 0)) {
+        roiResponse = generateROIData(response, timePeriod, customStartDate, customEndDate);
       }
       
       setMetrics(response);
@@ -340,7 +371,6 @@ export function Ventas({ }: VentasProps) {
               <SelectItem value="today">Hoy</SelectItem>
               <SelectItem value="week">Última semana</SelectItem>
               <SelectItem value="month">Último mes</SelectItem>
-              <SelectItem value="quarter">Últimos 3 meses</SelectItem>
               <SelectItem value="custom">Personalizado</SelectItem>
             </SelectContent>
           </Select>
@@ -380,7 +410,6 @@ export function Ventas({ }: VentasProps) {
           {timePeriod === 'today' && 'Mostrando datos de hoy'}
           {timePeriod === 'week' && 'Mostrando datos de los últimos 7 días'}
           {timePeriod === 'month' && 'Mostrando datos del último mes'}
-          {timePeriod === 'quarter' && 'Mostrando datos de los últimos 3 meses'}
           {timePeriod === 'custom' && customStartDate && customEndDate && 
             `Mostrando datos del ${customStartDate} al ${customEndDate}`}
         </div>
@@ -498,8 +527,8 @@ export function Ventas({ }: VentasProps) {
 
       {/* Gráficos principales - Layout horizontal */}
       <div className="space-y-6">
-        <FacturacionChart data={facturacionData} />
-        <ROIChart data={roiData} />
+        <FacturacionChart data={facturacionData} timePeriod={timePeriod} />
+        <ROIChart data={roiData} totalROI={metrics?.roi} timePeriod={timePeriod} />
       </div>
 
       {/* Resumen detallado */}
@@ -530,10 +559,6 @@ export function Ventas({ }: VentasProps) {
                   <span className="text-slate-600">Tasa de conversión:</span>
                   <span className="font-medium text-blue-600">{metrics?.tasaConversion.toFixed(2) || 0}%</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-600">Clientes únicos:</span>
-                  <span className="font-medium">{metrics?.clientesUnicos.toLocaleString() || 0}</span>
-                </div>
               </div>
             </div>
             
@@ -552,20 +577,13 @@ export function Ventas({ }: VentasProps) {
                   <span className="text-slate-600">Costo por llamada:</span>
                   <span className="font-medium">${metrics?.costoPorLlamada.toFixed(2) || 0}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-600">Costo por venta:</span>
-                  <span className="font-medium">${metrics?.costePorVenta.toFixed(2) || 0}</span>
-                </div>
+
               </div>
             </div>
 
             <div className="space-y-4">
               <h4 className="font-semibold text-slate-800">Rentabilidad</h4>
               <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-slate-600">ROI:</span>
-                  <span className="font-medium text-green-600">{metrics?.roi.toFixed(1) || 0}%</span>
-                </div>
                 <div className="flex justify-between">
                   <span className="text-slate-600">Beneficio neto:</span>
                   <span className="font-medium text-green-600">

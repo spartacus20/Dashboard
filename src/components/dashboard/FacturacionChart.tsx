@@ -5,10 +5,16 @@ import { TrendingUp } from 'lucide-react';
 
 interface FacturacionChartProps {
   data?: any[];
+  timePeriod?: string;
 }
 
-export function FacturacionChart({ data = [] }: FacturacionChartProps) {
-  const chartData = data.length > 0 ? data : [];
+export function FacturacionChart({ data = [], timePeriod }: FacturacionChartProps) {
+  // Procesar los datos para formatear las fechas correctamente
+  const chartData = data.length > 0 ? data.map(item => ({
+    ...item,
+    date: item.date.includes('T') ? item.date.split('T')[0] : item.date
+  })) : [];
+  
   const totalFacturacion = chartData.reduce((sum, item) => sum + item.facturacion, 0);
   
   // Calcular el promedio diario basado en el rango de fechas, no en el número de días con datos
@@ -63,19 +69,21 @@ export function FacturacionChart({ data = [] }: FacturacionChartProps) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="mb-4 grid grid-cols-2 gap-4">
+        <div className={`mb-4 grid gap-4 ${timePeriod === 'today' ? 'grid-cols-1' : 'grid-cols-2'}`}>
           <div className="text-center">
             <p className="text-2xl font-bold text-green-600">
               ${totalFacturacion.toLocaleString()}
             </p>
             <p className="text-sm text-slate-600">Total facturado</p>
           </div>
-          <div className="text-center">
-            <p className="text-2xl font-bold text-blue-600">
-              ${promedioFacturacion.toLocaleString()}
-            </p>
-            <p className="text-sm text-slate-600">Promedio diario</p>
-          </div>
+          {timePeriod !== 'today' && (
+            <div className="text-center">
+              <p className="text-2xl font-bold text-blue-600">
+                ${promedioFacturacion.toLocaleString()}
+              </p>
+              <p className="text-sm text-slate-600">Promedio diario</p>
+            </div>
+          )}
         </div>
         <div className="h-[300px]">
           <Chart
