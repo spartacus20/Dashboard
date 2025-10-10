@@ -4,6 +4,7 @@ import { get_client_id } from './lib/supabase';
 // Obtener la URL base según el entorno
 const IS_PRODUCTION = import.meta.env.VITE_PRODUCTION_API === 'on';
 const BASE_URL = IS_PRODUCTION ? 'https://n8n.aiagencyusa.com/webhook/ed980be2-4957-44cf-8f61-8b8c4d4957e8' : 'https://api.iacreatorhub.com';
+
 const WEBHOOK_URL = BASE_URL;
 const GET_CLIENT_WEBHOOK_URL = IS_PRODUCTION ? 'https://n8n.aiagencyusa.com/webhook/get-client' : `${BASE_URL}/get-client`;
 const GET_DASHBOARD_WEBHOOK_URL = `${BASE_URL}/api/dashboard/get-dashboard`;
@@ -668,6 +669,8 @@ function transformDashboardData(data: any): any {
           llamadas_efectivas: data.llamadas_efectivas || 0,
           llamadas_fallidas: data.llamadas_fallidas || 0,
           costo_total: data.costo_total || 0,
+          total_duration_seconds: data.total_duration_seconds || 0,
+          total_duration_minutes: data.total_duration_seconds ? Math.round((data.total_duration_seconds || 0) / 60) : 0,
           total_agendamientos: data.total_agendamientos || 0,
           costo_por_agenda: data.costo_por_agenda || 0
         },
