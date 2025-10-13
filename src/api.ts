@@ -484,6 +484,11 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
         config: clientData.config ?? {
           agenda_enabled: clientData.agenda_enabled,
           calls_enabled: clientData.calls_enabled,
+          sales: clientData.metadata?.sales,
+          agenda: clientData.metadata?.agenda,
+          num_tel: clientData.metadata?.num_tel,
+          records: clientData.metadata?.records,
+          callbacks: clientData.metadata?.callbacks,
         }
       };
     }
@@ -496,6 +501,11 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
         config: data.config ?? {
           agenda_enabled: data.agenda_enabled,
           calls_enabled: data.calls_enabled,
+          sales: data.metadata?.sales,
+          agenda: data.metadata?.agenda,
+          num_tel: data.metadata?.num_tel,
+          records: data.metadata?.records,
+          callbacks: data.metadata?.callbacks,
         }
       };
     }

@@ -11,7 +11,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: SidebarProps) {
-  const { loadingProgress, totalCalls, loadingAllCalls, apiKey, agendaEnabled } = useCallsContext();
+  const { loadingProgress, totalCalls, loadingAllCalls, apiKey, agendaEnabled, salesEnabled, numTelEnabled, recordsEnabled, callbacksEnabled } = useCallsContext();
   const { user, signOut } = useAuth();
   const progressPercentage = totalCalls > 0 ? Math.min(100, Math.round((loadingProgress / totalCalls) * 100)) : 0;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
@@ -166,45 +166,51 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
               Agendas
             </button>
           )}
-          <button
-            onClick={() => {
-              navigateWithParams('recordings');
-            }}
-            className={`flex w-full items-center gap-2 px-4 py-2 ${
-              currentPage === 'recordings'
-                ? 'text-white bg-[#0a2a5a] border border-[#1e4a8a]'
-                : 'text-gray-300 hover:bg-[#0a2a5a]'
-            } rounded-lg`}
-          >
-            <Mic className="w-5 h-5" />
-            Grabaciones
-          </button>
-          <button
-            onClick={() => {
-              navigateWithParams('phones');
-            }}
-            className={`flex w-full items-center gap-2 px-4 py-2 ${
-              currentPage === 'phones'
-                ? 'text-white bg-[#0a2a5a] border border-[#1e4a8a]'
-                : 'text-gray-300 hover:bg-[#0a2a5a]'
-            } rounded-lg`}
-          >
-            <Phone className="w-5 h-5" />
-            Números de Teléfono
-          </button>
-          <button
-            onClick={() => {
-              navigateWithParams('callbacks');
-            }}
-            className={`flex w-full items-center gap-2 px-4 py-2 ${
-              currentPage === 'callbacks'
-                ? 'text-white bg-[#0a2a5a] border border-[#1e4a8a]'
-                : 'text-gray-300 hover:bg-[#0a2a5a]'
-            } rounded-lg`}
-          >
-            <PhoneCall className="w-5 h-5" />
-            Callbacks
-          </button>
+          {recordsEnabled && (
+            <button
+              onClick={() => {
+                navigateWithParams('recordings');
+              }}
+              className={`flex w-full items-center gap-2 px-4 py-2 ${
+                currentPage === 'recordings'
+                  ? 'text-white bg-[#0a2a5a] border border-[#1e4a8a]'
+                  : 'text-gray-300 hover:bg-[#0a2a5a]'
+              } rounded-lg`}
+            >
+              <Mic className="w-5 h-5" />
+              Grabaciones
+            </button>
+          )}
+          {numTelEnabled && (
+            <button
+              onClick={() => {
+                navigateWithParams('phones');
+              }}
+              className={`flex w-full items-center gap-2 px-4 py-2 ${
+                currentPage === 'phones'
+                  ? 'text-white bg-[#0a2a5a] border border-[#1e4a8a]'
+                  : 'text-gray-300 hover:bg-[#0a2a5a]'
+              } rounded-lg`}
+            >
+              <Phone className="w-5 h-5" />
+              Números de Teléfono
+            </button>
+          )}
+          {callbacksEnabled && (
+            <button
+              onClick={() => {
+                navigateWithParams('callbacks');
+              }}
+              className={`flex w-full items-center gap-2 px-4 py-2 ${
+                currentPage === 'callbacks'
+                  ? 'text-white bg-[#0a2a5a] border border-[#1e4a8a]'
+                  : 'text-gray-300 hover:bg-[#0a2a5a]'
+              } rounded-lg`}
+            >
+              <PhoneCall className="w-5 h-5" />
+              Callbacks
+            </button>
+          )}
           {showBatchCall && (
             <button
               onClick={() => {
@@ -220,19 +226,21 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
               Llamadas en Lote
             </button>
           )}
-          <button
-            onClick={() => {
-              navigateWithParams('ventas');
-            }}
-            className={`flex w-full items-center gap-2 px-4 py-2 ${
-              currentPage === 'ventas'
-                ? 'text-white bg-[#0a2a5a] border border-[#1e4a8a]'
-                : 'text-gray-300 hover:bg-[#0a2a5a]'
-            } rounded-lg`}
-          >
-            <TrendingUp className="w-5 h-5" />
-            Ventas
-          </button>
+          {salesEnabled && (
+            <button
+              onClick={() => {
+                navigateWithParams('ventas');
+              }}
+              className={`flex w-full items-center gap-2 px-4 py-2 ${
+                currentPage === 'ventas'
+                  ? 'text-white bg-[#0a2a5a] border border-[#1e4a8a]'
+                  : 'text-gray-300 hover:bg-[#0a2a5a]'
+              } rounded-lg`}
+            >
+              <TrendingUp className="w-5 h-5" />
+              Ventas
+            </button>
+          )}
         </nav>
         
         {/* Información del usuario y botón de logout */}

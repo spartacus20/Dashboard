@@ -202,7 +202,21 @@ export interface ClientData {
   // Campos opcionales de configuración que pueden venir desde get-client
   agenda_enabled?: boolean;
   calls_enabled?: boolean;
+  sales?: boolean;
+  agenda?: boolean;
+  num_tel?: boolean;
+  records?: boolean;
+  callbacks?: boolean;
   phone_filter?: string;
+  // Objeto de metadata que viene del backend
+  metadata?: {
+    sales?: boolean;
+    agenda?: boolean;
+    num_tel?: boolean;
+    records?: boolean;
+    callbacks?: boolean;
+    [key: string]: any;
+  };
   // Objeto de configuración genérico por si el backend devuelve un blob
   config?: Record<string, any>;
 }

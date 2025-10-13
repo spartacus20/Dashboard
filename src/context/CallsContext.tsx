@@ -41,6 +41,10 @@ interface CallsContextType {
   totalCallsFiltered: number | null;
   agendaEnabled: boolean;
   callsEnabled: boolean;
+  salesEnabled: boolean;
+  numTelEnabled: boolean;
+  recordsEnabled: boolean;
+  callbacksEnabled: boolean;
   phoneFilter: string | null;
 }
 
@@ -93,6 +97,14 @@ export function CallsProvider({ children }: CallsProviderProps) {
   // Estado para controlar la visibilidad de llamadas
   const [callsEnabled, setCallsEnabled] = useState(true);
   
+  // Estado para controlar la visibilidad de ventas
+  const [salesEnabled, setSalesEnabled] = useState(false);
+  
+  // Estados para controlar la visibilidad de otras secciones
+  const [numTelEnabled, setNumTelEnabled] = useState(false);
+  const [recordsEnabled, setRecordsEnabled] = useState(false);
+  const [callbacksEnabled, setCallbacksEnabled] = useState(false);
+  
   // Estado para filtrar por número de teléfono específico
   const [phoneFilter, setPhoneFilter] = useState<string | null>(null);
   
@@ -136,11 +148,22 @@ export function CallsProvider({ children }: CallsProviderProps) {
           if (result.apiKey) {
             console.log('API key obtenida exitosamente para client_id:', storedClientId);
             setApiKey(result.apiKey);
+            
+            // Procesar configuración del cliente
+            if (result.config) {
+              console.log('🔍 Configuración del cliente:', result.config);
+              console.log('🔍 Sales desde config:', result.config.sales);
+              setAgendaEnabled(result.config.agenda ?? true);
+              setCallsEnabled(result.config.calls_enabled ?? true);
+              setSalesEnabled(result.config.sales ?? false);
+              setNumTelEnabled(result.config.num_tel ?? false);
+              setRecordsEnabled(result.config.records ?? false);
+              setCallbacksEnabled(result.config.callbacks ?? false);
+            }
           } else {
             console.error('No se pudo obtener la API key para el client_id:', storedClientId);
             setError('No se pudo obtener la configuración para el client_id proporcionado');
           }
-          // Ya no mapeamos claves de configuración como agenda/calls desde get-client
         } catch (err) {
           console.error('Error al obtener API key/configuración:', err);
           setError('Error al obtener la configuración del cliente');
@@ -161,6 +184,16 @@ export function CallsProvider({ children }: CallsProviderProps) {
                 if (result.apiKey) {
                   console.log('API key obtenida exitosamente para client_id:', newClientId);
                   setApiKey(result.apiKey);
+                  
+                  // Procesar configuración del cliente
+                  if (result.config) {
+                    setAgendaEnabled(result.config.agenda ?? true);
+                    setCallsEnabled(result.config.calls_enabled ?? true);
+                    setSalesEnabled(result.config.sales ?? false);
+                    setNumTelEnabled(result.config.num_tel ?? false);
+                    setRecordsEnabled(result.config.records ?? false);
+                    setCallbacksEnabled(result.config.callbacks ?? false);
+                  }
                 } else {
                   console.error('No se pudo obtener la API key para el client_id:', newClientId);
                   setError('No se pudo obtener la configuración para el client_id proporcionado');
@@ -208,6 +241,16 @@ export function CallsProvider({ children }: CallsProviderProps) {
               if (result.apiKey) {
                 setApiKey(result.apiKey);
                 console.log('API key establecida tras inicio de sesión');
+                
+                // Procesar configuración del cliente
+                if (result.config) {
+                  setAgendaEnabled(result.config.agenda ?? true);
+                  setCallsEnabled(result.config.calls_enabled ?? true);
+                  setSalesEnabled(result.config.sales ?? false);
+                  setNumTelEnabled(result.config.num_tel ?? false);
+                  setRecordsEnabled(result.config.records ?? false);
+                  setCallbacksEnabled(result.config.callbacks ?? false);
+                }
               } else {
                 console.error('No se pudo obtener API key tras inicio de sesión');
                 setError('No se pudo obtener la configuración del cliente tras iniciar sesión');
@@ -606,6 +649,10 @@ export function CallsProvider({ children }: CallsProviderProps) {
     totalCallsFiltered,
     agendaEnabled,
     callsEnabled,
+    salesEnabled,
+    numTelEnabled,
+    recordsEnabled,
+    callbacksEnabled,
     phoneFilter
   };
 
