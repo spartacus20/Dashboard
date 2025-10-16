@@ -34,12 +34,38 @@ export const getClientId = async (email: string): Promise<string | null> => {
     })
 
     if (response.ok) {
-      const data = await response.json()
-      const clientId = data.client_id || data.clientId
+      const userData = await response.json()
+      const clientId = userData.clientId
       
       if (clientId) {
-        // Guardar en localStorage
+        // Guardar en localStorage (compatibilidad hacia atrás)
         setClientId(clientId)
+        
+        // Guardar TODOS los datos en sessionStorage
+        sessionStorage.setItem('userData', JSON.stringify(userData))
+        sessionStorage.setItem('apiKey', userData.apiKey)
+        sessionStorage.setItem('clientId', userData.clientId)
+        sessionStorage.setItem('email', userData.email)
+        sessionStorage.setItem('fullName', userData.fullName || '')
+        
+        // Guardar metadatos
+        if (userData.metadata) {
+          sessionStorage.setItem('metadata', JSON.stringify(userData.metadata))
+        }
+        
+        // Guardar metadata_llamadas
+        if (userData.metadata_llamadas) {
+          sessionStorage.setItem('metadata_llamadas', JSON.stringify(userData.metadata_llamadas))
+        }
+        
+        console.log('✅ Datos del usuario guardados en sessionStorage:', {
+          clientId: userData.clientId,
+          email: userData.email,
+          fullName: userData.fullName,
+          hasMetadata: !!userData.metadata,
+          hasMetadataLlamadas: !!userData.metadata_llamadas
+        })
+        
         return clientId
       }
     }
@@ -63,4 +89,48 @@ export const setClientId = (clientId: string) => {
 // Función para obtener el client_id desde localStorage
 export const getStoredClientId = (): string | null => {
   return localStorage.getItem(get_client_id)
+}
+
+// Funciones helper para acceder a los datos del sessionStorage
+export const getUserData = () => {
+  const userData = sessionStorage.getItem('userData')
+  return userData ? JSON.parse(userData) : null
+}
+
+export const getApiKey = (): string | null => {
+  return sessionStorage.getItem('apiKey')
+}
+
+export const getClientIdFromSession = (): string | null => {
+  return sessionStorage.getItem('clientId')
+}
+
+export const getEmail = (): string | null => {
+  return sessionStorage.getItem('email')
+}
+
+export const getFullName = (): string | null => {
+  return sessionStorage.getItem('fullName')
+}
+
+export const getMetadata = () => {
+  const metadata = sessionStorage.getItem('metadata')
+  return metadata ? JSON.parse(metadata) : null
+}
+
+export const getMetadataLlamadas = () => {
+  const metadata_llamadas = sessionStorage.getItem('metadata_llamadas')
+  return metadata_llamadas ? JSON.parse(metadata_llamadas) : null
+}
+
+// Función para limpiar todos los datos del sessionStorage
+export const clearSessionData = () => {
+  sessionStorage.removeItem('userData')
+  sessionStorage.removeItem('apiKey')
+  sessionStorage.removeItem('clientId')
+  sessionStorage.removeItem('email')
+  sessionStorage.removeItem('fullName')
+  sessionStorage.removeItem('metadata')
+  sessionStorage.removeItem('metadata_llamadas')
+  console.log('🧹 Datos del sessionStorage limpiados')
 }

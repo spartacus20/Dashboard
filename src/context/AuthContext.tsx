@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { User, Session, AuthError } from '@supabase/supabase-js'
-import { supabase, getClientId, get_client_id } from '../lib/supabase'
+import { supabase, getClientId, get_client_id, clearSessionData } from '../lib/supabase'
 
 interface AuthContextType {
   user: User | null
@@ -120,7 +120,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // Limpiar el client_id del localStorage al cerrar sesión
     if (!error) {
       localStorage.removeItem(get_client_id)
-      console.log('Client ID eliminado del localStorage al cerrar sesión')
+      // Limpiar todos los datos del sessionStorage
+      clearSessionData()
+      console.log('Client ID eliminado del localStorage y sessionStorage al cerrar sesión')
     }
     
     return { error }
