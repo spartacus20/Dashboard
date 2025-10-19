@@ -217,6 +217,8 @@ export interface ClientData {
     callbacks?: boolean;
     [key: string]: any;
   };
+  // Objeto de metadata específico para llamadas
+  metadata_llamadas?: Record<string, any>;
   // Objeto de configuración genérico por si el backend devuelve un blob
   config?: Record<string, any>;
 }

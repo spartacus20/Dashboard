@@ -135,14 +135,17 @@ export async function fetchCalls(
         transcript: webhookCall.transcript,
         recording_url: webhookCall.recordings,
         to_number: webhookCall.phone_number,
+        // Mantener el metadata original de la llamada si existe, y agregar campos adicionales
         metadata: {
-          id: webhookCall.id,
-          client_id: webhookCall.client_id,
-          summary: webhookCall.summary,
-          interest: webhookCall.interest,
-          tipo_vivienda: webhookCall.tipo_vivienda,
-          created_at: webhookCall.created_at,
-          end_reason: webhookCall.end_reason
+          ...webhookCall.metadata, // Preservar metadata original de la llamada
+          // Agregar campos específicos de la base de datos como campos adicionales
+          db_id: webhookCall.id,
+          db_client_id: webhookCall.client_id,
+          db_summary: webhookCall.summary,
+          db_interest: webhookCall.interest,
+          db_tipo_vivienda: webhookCall.tipo_vivienda,
+          db_created_at: webhookCall.created_at,
+          db_end_reason: webhookCall.end_reason
         }
       }));
       
@@ -478,6 +481,13 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
         email: clientData.email,
         full_name: clientData.full_name || 'Sin nombre'
       });
+      
+      // Guardar metadata_llamadas en sessionStorage si está disponible
+      if (clientData.metadata_llamadas) {
+        sessionStorage.setItem('metadata_llamadas', JSON.stringify(clientData.metadata_llamadas));
+        console.log('✅ metadata_llamadas guardado en sessionStorage');
+      }
+      
       return {
         apiKey: clientData.api_key || null,
         clientId: clientData.client_id || null,
@@ -495,6 +505,12 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
     
     // Si no es un array, intentar obtener directamente
     if (data && typeof data === 'object') {
+      // Guardar metadata_llamadas en sessionStorage si está disponible
+      if (data.metadata_llamadas) {
+        sessionStorage.setItem('metadata_llamadas', JSON.stringify(data.metadata_llamadas));
+        console.log('✅ metadata_llamadas guardado en sessionStorage (formato objeto)');
+      }
+      
       return {
         apiKey: data.api_key || data.apiKey || null,
         clientId: data.client_id || data.clientId || null,
@@ -1826,6 +1842,61 @@ export async function getCallsByPhone(
     return data;
   } catch (error) {
     console.error('Error al obtener llamadas por teléfono:', error);
+    throw error;
+  }
+}
+
+// Exportar llamadas con columnas seleccionadas
+export async function exportCallsWithColumns(
+  apiKey: string,
+  params: {
+    client_id: string;
+    columns: string[];
+    fecha_inicio?: string;
+    fecha_fin?: string;
+    from_number?: string;
+    to_number?: string;
+    to_number_norm?: string;
+    status?: string;
+    sort_order?: 'ASC' | 'DESC';
+  }
+): Promise<{ calls: any[]; total_llamadas: number; columns_selected: string[] }> {
+  try {
+    if (!params?.client_id) {
+      throw new Error('client_id es obligatorio para exportCallsWithColumns');
+    }
+    
+    if (!params?.columns || params.columns.length === 0) {
+      throw new Error('Debe seleccionar al menos una columna para exportar');
+    }
+    
+    console.log('Exportando llamadas con columnas seleccionadas:', params);
+    
+    const url = `${BASE_URL}/api/calls/export-calls-with-columns`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error en exportCallsWithColumns: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('Llamadas exportadas con columnas:', data);
+    
+    return {
+      calls: data.llamadas || [],
+      total_llamadas: data.total_llamadas || 0,
+      columns_selected: data.columns_selected || params.columns
+    };
+  } catch (error) {
+    console.error('Error al exportar llamadas con columnas:', error);
     throw error;
   }
 }

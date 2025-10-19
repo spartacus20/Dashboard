@@ -4,7 +4,7 @@ import type { DetailedRetellCall, FilterCriteria } from '../types';
 import { useCallsContext } from '../context/CallsContext';
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { listCalls, fetchAllCallsWithListCalls, listAllCalls } from '../api';
+import { listCalls, exportCallsWithColumns } from '../api';
 
 // Componentes UI simplificados
 const Input = ({ className = "", ...props }: { className?: string; [key: string]: any }) => (
@@ -292,6 +292,27 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   const [exportEndTime, setExportEndTime] = React.useState('');
   const [exportLoading, setExportLoading] = React.useState(false);
   const [exportError, setExportError] = React.useState<string | null>(null);
+  
+  // Estados para selección de columnas en exportación
+  const [exportColumns, setExportColumns] = React.useState({
+    created_at: true,
+    duration: true,
+    to_number: true,
+    summary: false,
+    transcript: false,
+    end_reason: true,
+    recordings: false,
+    call_id: true,
+    interest: false,
+    tipo_vivienda: false,
+    status: true,
+    client_id: false,
+    cost: false,
+    metadata: false,
+    from_number: false,
+    from_number_norm: false,
+    to_number_norm: false
+  });
 
   // Cargar página cuando cambia currentPage
   React.useEffect(() => {
@@ -605,69 +626,41 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     setCurrentPage(1); // Reset to first page when filter changes
   };
 
-  // Función para exportar datos a Excel (CSV)
-  const buildCsvAndDownload = (dataToExport: DetailedRetellCall[]) => {
+
+  // Función para exportar datos con columnas seleccionadas
+  const buildCsvAndDownloadWithColumns = (dataToExport: any[], selectedColumns: string[]) => {
+    // Mapeo de nombres de columnas a etiquetas en español
+    const columnLabels: Record<string, string> = {
+      created_at: 'Fecha y Hora',
+      duration: 'Duración',
+      to_number: 'Número de Teléfono',
+      summary: 'Resumen',
+      transcript: 'Transcripción',
+      end_reason: 'Razón de Desconexión',
+      recordings: 'Grabaciones',
+      call_id: 'ID de Llamada',
+      interest: 'Interés',
+      tipo_vivienda: 'Tipo de Vivienda',
+      status: 'Estado',
+      client_id: 'ID de Cliente',
+      cost: 'Costo',
+      metadata: 'Metadatos',
+      from_number: 'Número de Origen',
+      from_number_norm: 'Número de Origen Normalizado',
+      to_number_norm: 'Número de Teléfono Normalizado'
+    };
+
+    // Crear encabezados basados en las columnas seleccionadas
+    const headers = selectedColumns.map(col => columnLabels[col] || col);
     
-    // Definimos los encabezados basados en las columnas visibles
-    const headers: string[] = [];
-    const columns: string[] = [];
-    
-    if (visibleColumns.callId) {
-      headers.push('ID de Llamada');
-      columns.push('call_id');
-    }
-    
-    if (visibleColumns.status) {
-      headers.push('Estado');
-      columns.push('call_status');
-    }
-    
-    if (visibleColumns.timestamp) {
-      headers.push('Fecha y Hora');
-      columns.push('start_timestamp');
-    }
-    
-    if (visibleColumns.duration) {
-      headers.push('Duración');
-      columns.push('duration');
-    }
-    
-    if (visibleColumns.disconnectionReason) {
-      headers.push('Razón de Desconexión');
-      columns.push('disconnection_reason');
-    }
-    
-    if (visibleColumns.callType) {
-      headers.push('Tipo de Llamada');
-      columns.push('call_type');
-    }
-    
-    if (visibleColumns.agent) {
-      headers.push('Agente');
-      columns.push('agent_id');
-    }
-    
-    if (visibleColumns.fromNumber) {
-      headers.push('Número de Origen');
-      columns.push('from_number');
-    }
-    
-    if (visibleColumns.toNumber) {
-      headers.push('Número de Teléfono'); // Etiqueta actualizada para CSV
-      columns.push('to_number');
-    }
-    
-    // Helper para formatear timestamp EXACTO como en DB (UTC, sin convertir a zona local)
+    // Helper para formatear timestamp
     const formatTimestampUTC = (ts: number | string | undefined): string => {
       if (!ts) return '';
-      // Preferir string crudo si viene del backend (created_at / start_time)
       if (typeof ts === 'string') {
-        // Mostrar en formato español pero fijando timeZone UTC para no desplazar hora
         const d = new Date(ts);
-        if (isNaN(d.getTime())) return ts; // si no parsea, devolver tal cual
+        if (isNaN(d.getTime())) return ts;
         return d.toLocaleString('es-ES', { timeZone: 'UTC' });
       }
-      // Si es numérico (ms), tratarlo como instante UTC y formatear en UTC
       const d = new Date(ts);
       if (isNaN(d.getTime())) return '';
       return d.toLocaleString('es-ES', { timeZone: 'UTC' });
@@ -677,15 +670,21 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     const rows = dataToExport.map(call => {
       const row: any = {};
       
-      columns.forEach(column => {
-        if (column === 'duration') {
-          row[column] = getDuration(call);
-        } else if (column === 'start_timestamp') {
-          // Usar el valor exacto del backend sin desplazamientos: preferir call.start_time si existe
-          const raw = (call as any).start_time || (call as any).created_at || (call as any).metadata?.created_at || call[column];
-          row[column] = formatTimestampUTC(raw);
+      selectedColumns.forEach(column => {
+        if (column === 'created_at') {
+          row[column] = formatTimestampUTC(call[column]);
+        } else if (column === 'duration') {
+          // Formatear duración en MM:SS
+          const duration = parseInt(call[column]) || 0;
+          const minutes = Math.floor(duration / 60);
+          const seconds = duration % 60;
+          row[column] = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        } else if (column === 'metadata') {
+          // Convertir metadata a JSON string si es un objeto
+          row[column] = typeof call[column] === 'object' 
+            ? JSON.stringify(call[column]) 
+            : call[column] || '';
         } else {
-          // @ts-ignore - Ignoramos los errores de tipo aquí ya que from_number y to_number no están en el tipo
           row[column] = call[column] || '';
         }
       });
@@ -697,7 +696,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     let csvContent = headers.join(',') + '\n';
     
     rows.forEach(row => {
-      const values = columns.map(column => {
+      const values = selectedColumns.map(column => {
         // Escapar comillas y valores que contengan comas
         const value = String(row[column]).replace(/"/g, '""');
         return value.includes(',') ? `"${value}"` : value;
@@ -751,6 +750,17 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       setExportError('Selecciona al menos una fecha (inicio o fin).');
       return;
     }
+    
+    // Validar que se hayan seleccionado columnas
+    const selectedColumns = Object.entries(exportColumns)
+      .filter(([_, selected]) => selected)
+      .map(([column, _]) => column);
+    
+    if (selectedColumns.length === 0) {
+      setExportError('Selecciona al menos una columna para exportar.');
+      return;
+    }
+    
     setExportLoading(true);
     setExportError(null);
     try {
@@ -766,9 +776,10 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         endISO = `${exportEndDate}T${hhmm}:59Z`;
       }
 
-      // Construir filtros para list-calls completo
+      // Construir filtros para exportación con columnas seleccionadas
       const params: any = {
         client_id: clientId,
+        columns: selectedColumns,
         sort_order: sortOrderFilter
       };
       if (statusFilter) params.status = statusFilter;
@@ -784,8 +795,8 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       if (startISO) params.fecha_inicio = startISO;
       if (endISO) params.fecha_fin = endISO;
 
-      // Usar endpoint sin paginación del backend para exportar todo
-      const allResp = await listAllCalls(apiKey, params);
+      // Usar el nuevo endpoint con columnas seleccionadas
+      const allResp = await exportCallsWithColumns(apiKey, params);
       const allForExport = allResp.calls;
 
       // Aplicar filtro de disconnection_reason solo a nivel frontend si está seleccionado
@@ -799,7 +810,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         return;
       }
 
-      buildCsvAndDownload(finalData as any);
+      buildCsvAndDownloadWithColumns(finalData as any, selectedColumns);
       setShowExportModal(false);
     } catch (err: any) {
       setExportError(err?.message || 'Error al exportar.');
@@ -808,11 +819,6 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     }
   };
 
-  // Exportación rápida actual (solo lo visible) por compatibilidad si se necesita
-  const exportToExcel = () => {
-    const dataToExport = filteredCalls;
-    buildCsvAndDownload(dataToExport);
-  };
 
   // Reset all filters
   const resetAllFilters = () => {
@@ -1884,16 +1890,71 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                 </Card>
               )}
               
-              {/* Metadata */}
+              {/* Metadata de la llamada */}
               {selectedCallModal.metadata && Object.keys(selectedCallModal.metadata).length > 0 && (
                 <Card className="mb-6 bg-white shadow-sm border-slate-200">
                   <CardHeader className="pb-2">
-                    <h3 className="text-lg font-semibold text-slate-800">Metadata</h3>
+                    <h3 className="text-lg font-semibold text-slate-800">Metadata de la Llamada</h3>
                   </CardHeader>
                   <CardContent className="p-4">
                     <pre className="bg-slate-50 p-4 rounded-lg text-slate-800 text-xs overflow-auto max-h-96">
                       {JSON.stringify(selectedCallModal.metadata, null, 2)}
                     </pre>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Campos específicos de la base de datos */}
+              {(selectedCallModal.metadata?.db_id || selectedCallModal.metadata?.db_summary || selectedCallModal.metadata?.db_interest || selectedCallModal.metadata?.db_tipo_vivienda) && (
+                <Card className="mb-6 bg-white shadow-sm border-slate-200">
+                  <CardHeader className="pb-2">
+                    <h3 className="text-lg font-semibold text-slate-800">Datos Específicos de la Base de Datos</h3>
+                  </CardHeader>
+                  <CardContent className="p-4">
+                    <div className="space-y-3">
+                      {selectedCallModal.metadata?.db_id && (
+                        <div>
+                          <p className="text-sm text-slate-600">ID de Base de Datos</p>
+                          <p className="text-slate-800">{selectedCallModal.metadata.db_id}</p>
+                        </div>
+                      )}
+                      {selectedCallModal.metadata?.db_summary && (
+                        <div>
+                          <p className="text-sm text-slate-600">Resumen</p>
+                          <p className="text-slate-800">{selectedCallModal.metadata.db_summary}</p>
+                        </div>
+                      )}
+                      {selectedCallModal.metadata?.db_interest && (
+                        <div>
+                          <p className="text-sm text-slate-600">Interés</p>
+                          <p className="text-slate-800">{selectedCallModal.metadata.db_interest}</p>
+                        </div>
+                      )}
+                      {selectedCallModal.metadata?.db_tipo_vivienda && (
+                        <div>
+                          <p className="text-sm text-slate-600">Tipo de Vivienda</p>
+                          <p className="text-slate-800">{selectedCallModal.metadata.db_tipo_vivienda}</p>
+                        </div>
+                      )}
+                      {selectedCallModal.metadata?.db_client_id && (
+                        <div>
+                          <p className="text-sm text-slate-600">Client ID</p>
+                          <p className="text-slate-800">{selectedCallModal.metadata.db_client_id}</p>
+                        </div>
+                      )}
+                      {selectedCallModal.metadata?.db_created_at && (
+                        <div>
+                          <p className="text-sm text-slate-600">Fecha de Creación (BD)</p>
+                          <p className="text-slate-800">{new Date(selectedCallModal.metadata.db_created_at).toLocaleString('es-ES', { timeZone: 'UTC' })}</p>
+                        </div>
+                      )}
+                      {selectedCallModal.metadata?.db_end_reason && (
+                        <div>
+                          <p className="text-sm text-slate-600">Razón de Fin (BD)</p>
+                          <p className="text-slate-800">{selectedCallModal.metadata.db_end_reason}</p>
+                        </div>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               )}
@@ -2010,12 +2071,12 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         </div>
       )}
 
-      {/* Modal de exportación CSV (selección de rango) */}
+      {/* Modal de exportación CSV (selección de rango y columnas) */}
       {showExportModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Exportar CSV - Rango de fechas</h3>
+              <h3 className="text-lg font-semibold">Exportar CSV - Seleccionar columnas y rango</h3>
               <button
                 onClick={() => setShowExportModal(false)}
                 className="text-gray-500 hover:text-gray-700"
@@ -2025,49 +2086,101 @@ export function Recordings({ onNavigate }: RecordingsProps) {
               </button>
             </div>
 
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Fecha inicial</label>
-                  <Input
-                    type="date"
-                    value={exportStartDate}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setExportStartDate(e.target.value)}
-                    className="w-full"
-                    disabled={exportLoading}
-                  />
+            <div className="space-y-6">
+              {/* Selección de fechas */}
+              <div>
+                <h4 className="text-md font-medium text-gray-800 mb-3">Rango de fechas</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Fecha inicial</label>
+                    <Input
+                      type="date"
+                      value={exportStartDate}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setExportStartDate(e.target.value)}
+                      className="w-full"
+                      disabled={exportLoading}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Hora inicial</label>
+                    <Input
+                      type="time"
+                      value={exportStartTime}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setExportStartTime(e.target.value)}
+                      className="w-full"
+                      disabled={exportLoading}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Hora inicial</label>
-                  <Input
-                    type="time"
-                    value={exportStartTime}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setExportStartTime(e.target.value)}
-                    className="w-full"
-                    disabled={exportLoading}
-                  />
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Fecha final</label>
+                    <Input
+                      type="date"
+                      value={exportEndDate}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setExportEndDate(e.target.value)}
+                      className="w-full"
+                      disabled={exportLoading}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Hora final</label>
+                    <Input
+                      type="time"
+                      value={exportEndTime}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setExportEndTime(e.target.value)}
+                      className="w-full"
+                      disabled={exportLoading}
+                    />
+                  </div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Fecha final</label>
-                  <Input
-                    type="date"
-                    value={exportEndDate}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setExportEndDate(e.target.value)}
-                    className="w-full"
-                    disabled={exportLoading}
-                  />
+
+              {/* Selección de columnas */}
+              <div>
+                <h4 className="text-md font-medium text-gray-800 mb-3">Columnas a exportar</h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-60 overflow-y-auto border border-gray-200 rounded-lg p-4">
+                  {Object.entries({
+                    created_at: 'Fecha y Hora',
+                    duration: 'Duración',
+                    to_number: 'Número de Teléfono',
+                    summary: 'Resumen',
+                    transcript: 'Transcripción',
+                    end_reason: 'Razón de Desconexión',
+                    recordings: 'Grabaciones',
+                    call_id: 'ID de Llamada',
+                    interest: 'Interés',
+                    tipo_vivienda: 'Tipo de Vivienda',
+                    status: 'Estado',
+                    client_id: 'ID de Cliente',
+                    cost: 'Costo',
+                    metadata: 'Metadata',
+                    from_number: 'Número de Origen',
+                    from_number_norm: 'Número de Origen Normalizado',
+                    to_number_norm: 'Número de Teléfono Normalizado'
+                  }).map(([key, label]) => (
+                    <div key={key} className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id={`export-column-${key}`}
+                        checked={exportColumns[key as keyof typeof exportColumns]}
+                        onChange={() => {
+                          setExportColumns({
+                            ...exportColumns,
+                            [key]: !exportColumns[key as keyof typeof exportColumns]
+                          });
+                        }}
+                        className="rounded bg-white border-slate-300 text-blue-600 focus:ring-blue-500"
+                        disabled={exportLoading}
+                      />
+                      <label htmlFor={`export-column-${key}`} className="ml-2 text-sm text-slate-700">
+                        {label}
+                      </label>
+                    </div>
+                  ))}
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Hora final</label>
-                  <Input
-                    type="time"
-                    value={exportEndTime}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setExportEndTime(e.target.value)}
-                    className="w-full"
-                    disabled={exportLoading}
-                  />
+                <div className="mt-2 text-xs text-gray-500">
+                  Seleccionadas: {Object.values(exportColumns).filter(Boolean).length} de {Object.keys(exportColumns).length} columnas
                 </div>
               </div>
 
@@ -2084,6 +2197,26 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                   setExportStartTime('');
                   setExportEndTime('');
                   setExportError(null);
+                  // Resetear columnas a valores por defecto
+                  setExportColumns({
+                    created_at: true,
+                    duration: true,
+                    to_number: true,
+                    summary: false,
+                    transcript: false,
+                    end_reason: true,
+                    recordings: false,
+                    call_id: true,
+                    interest: false,
+                    tipo_vivienda: false,
+                    status: true,
+                    client_id: false,
+                    cost: false,
+                    metadata: false,
+                    from_number: false,
+                    from_number_norm: false,
+                    to_number_norm: false
+                  });
                 }}
                 variant="outline"
                 className="flex-1"
