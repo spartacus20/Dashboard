@@ -308,11 +308,61 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     status: true,
     client_id: false,
     cost: false,
-    metadata: false,
     from_number: false,
     from_number_norm: false,
     to_number_norm: false
   });
+
+  // Estados para campos de metadata dinámicos
+  const [metadataFields, setMetadataFields] = React.useState<Record<string, boolean>>({});
+  const [availableMetadataFields, setAvailableMetadataFields] = React.useState<string[]>([]);
+
+  // Cargar campos de metadata del session storage
+  React.useEffect(() => {
+    try {
+      const storedMetadata = sessionStorage.getItem('metadata_llamadas');
+      console.log('🔍 Metadata del session storage:', storedMetadata);
+      
+      if (storedMetadata) {
+        const metadataArray = JSON.parse(storedMetadata);
+        console.log('🔍 Metadata parseada:', metadataArray);
+        
+        if (Array.isArray(metadataArray) && metadataArray.length > 0) {
+          // Si es un array, obtener las claves del primer objeto
+          const fields = Object.keys(metadataArray[0]);
+          console.log('🔍 Campos de metadata encontrados (array):', fields);
+          
+          setAvailableMetadataFields(fields);
+          
+          // Inicializar todos los campos como no seleccionados
+          const initialFields: Record<string, boolean> = {};
+          fields.forEach(field => {
+            initialFields[field] = false;
+          });
+          setMetadataFields(initialFields);
+        } else if (typeof metadataArray === 'object' && metadataArray !== null) {
+          // Si es un objeto directo, obtener sus claves
+          const fields = Object.keys(metadataArray);
+          console.log('🔍 Campos de metadata encontrados (objeto):', fields);
+          
+          setAvailableMetadataFields(fields);
+          
+          // Inicializar todos los campos como no seleccionados
+          const initialFields: Record<string, boolean> = {};
+          fields.forEach(field => {
+            initialFields[field] = false;
+          });
+          setMetadataFields(initialFields);
+        } else {
+          console.log('🔍 No se encontraron campos de metadata válidos');
+        }
+      } else {
+        console.log('🔍 No hay metadata en session storage');
+      }
+    } catch (error) {
+      console.error('Error al cargar metadata del session storage:', error);
+    }
+  }, []);
 
   // Cargar página cuando cambia currentPage
   React.useEffect(() => {
@@ -628,7 +678,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
 
 
   // Función para exportar datos con columnas seleccionadas
-  const buildCsvAndDownloadWithColumns = (dataToExport: any[], selectedColumns: string[]) => {
+  const buildCsvAndDownloadWithColumns = (dataToExport: any[], selectedColumns: string[], selectedMetadataFields: string[] = []) => {
     // Mapeo de nombres de columnas a etiquetas en español
     const columnLabels: Record<string, string> = {
       created_at: 'Fecha y Hora',
@@ -644,14 +694,22 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       status: 'Estado',
       client_id: 'ID de Cliente',
       cost: 'Costo',
-      metadata: 'Metadatos',
       from_number: 'Número de Origen',
       from_number_norm: 'Número de Origen Normalizado',
       to_number_norm: 'Número de Teléfono Normalizado'
     };
 
-    // Crear encabezados basados en las columnas seleccionadas
-    const headers = selectedColumns.map(col => columnLabels[col] || col);
+    // Agregar etiquetas para campos de metadata dinámicos
+    selectedMetadataFields.forEach(field => {
+      columnLabels[`metadata_${field}`] = `Metadata - ${field}`;
+    });
+
+    // Crear encabezados basados en las columnas seleccionadas y campos de metadata
+    const allColumns = [...selectedColumns];
+    selectedMetadataFields.forEach(field => {
+      allColumns.push(`metadata_${field}`);
+    });
+    const headers = allColumns.map(col => columnLabels[col] || col);
     
     // Helper para formatear timestamp
     const formatTimestampUTC = (ts: number | string | undefined): string => {
@@ -670,6 +728,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     const rows = dataToExport.map(call => {
       const row: any = {};
       
+      // Procesar columnas normales
       selectedColumns.forEach(column => {
         if (column === 'created_at') {
           row[column] = formatTimestampUTC(call[column]);
@@ -679,13 +738,24 @@ export function Recordings({ onNavigate }: RecordingsProps) {
           const minutes = Math.floor(duration / 60);
           const seconds = duration % 60;
           row[column] = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-        } else if (column === 'metadata') {
-          // Convertir metadata a JSON string si es un objeto
-          row[column] = typeof call[column] === 'object' 
-            ? JSON.stringify(call[column]) 
-            : call[column] || '';
         } else {
           row[column] = call[column] || '';
+        }
+      });
+
+      // Procesar campos de metadata dinámicos
+      selectedMetadataFields.forEach(field => {
+        const metadataKey = `metadata_${field}`;
+        // Buscar el campo en la metadata de la llamada
+        if (call.metadata && Array.isArray(call.metadata) && call.metadata.length > 0) {
+          // Si metadata es un array, buscar en el primer elemento
+          const metadataObj = call.metadata[0];
+          row[metadataKey] = metadataObj && metadataObj[field] !== undefined ? metadataObj[field] : '';
+        } else if (call.metadata && typeof call.metadata === 'object') {
+          // Si metadata es un objeto directo
+          row[metadataKey] = call.metadata[field] !== undefined ? call.metadata[field] : '';
+        } else {
+          row[metadataKey] = '';
         }
       });
       
@@ -736,6 +806,46 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       setExportEndTime('');
     }
     setExportError(null);
+    
+    // Validar y cargar metadata del session storage al abrir el modal
+    try {
+      const storedMetadata = sessionStorage.getItem('metadata_llamadas');
+      console.log('🔍 [openExportModal] Metadata del session storage:', storedMetadata);
+      
+      if (storedMetadata) {
+        const metadataArray = JSON.parse(storedMetadata);
+        console.log('🔍 [openExportModal] Metadata parseada:', metadataArray);
+        
+        if (Array.isArray(metadataArray) && metadataArray.length > 0) {
+          // Si es un array, obtener las claves del primer objeto
+          const fields = Object.keys(metadataArray[0]);
+          console.log('🔍 [openExportModal] Campos de metadata encontrados (array):', fields);
+          
+          setAvailableMetadataFields(fields);
+          
+          const initialFields: Record<string, boolean> = {};
+          fields.forEach(field => {
+            initialFields[field] = false;
+          });
+          setMetadataFields(initialFields);
+        } else if (typeof metadataArray === 'object' && metadataArray !== null) {
+          // Si es un objeto directo, obtener sus claves
+          const fields = Object.keys(metadataArray);
+          console.log('🔍 [openExportModal] Campos de metadata encontrados (objeto):', fields);
+          
+          setAvailableMetadataFields(fields);
+          
+          const initialFields: Record<string, boolean> = {};
+          fields.forEach(field => {
+            initialFields[field] = false;
+          });
+          setMetadataFields(initialFields);
+        }
+      }
+    } catch (error) {
+      console.error('Error al cargar metadata del session storage en openExportModal:', error);
+    }
+    
     setShowExportModal(true);
   };
 
@@ -810,7 +920,12 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         return;
       }
 
-      buildCsvAndDownloadWithColumns(finalData as any, selectedColumns);
+      // Obtener campos de metadata seleccionados
+      const selectedMetadataFields = Object.entries(metadataFields)
+        .filter(([_, selected]) => selected)
+        .map(([field, _]) => field);
+
+      buildCsvAndDownloadWithColumns(finalData as any, selectedColumns, selectedMetadataFields);
       setShowExportModal(false);
     } catch (err: any) {
       setExportError(err?.message || 'Error al exportar.');
@@ -1904,60 +2019,6 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                 </Card>
               )}
 
-              {/* Campos específicos de la base de datos */}
-              {(selectedCallModal.metadata?.db_id || selectedCallModal.metadata?.db_summary || selectedCallModal.metadata?.db_interest || selectedCallModal.metadata?.db_tipo_vivienda) && (
-                <Card className="mb-6 bg-white shadow-sm border-slate-200">
-                  <CardHeader className="pb-2">
-                    <h3 className="text-lg font-semibold text-slate-800">Datos Específicos de la Base de Datos</h3>
-                  </CardHeader>
-                  <CardContent className="p-4">
-                    <div className="space-y-3">
-                      {selectedCallModal.metadata?.db_id && (
-                        <div>
-                          <p className="text-sm text-slate-600">ID de Base de Datos</p>
-                          <p className="text-slate-800">{selectedCallModal.metadata.db_id}</p>
-                        </div>
-                      )}
-                      {selectedCallModal.metadata?.db_summary && (
-                        <div>
-                          <p className="text-sm text-slate-600">Resumen</p>
-                          <p className="text-slate-800">{selectedCallModal.metadata.db_summary}</p>
-                        </div>
-                      )}
-                      {selectedCallModal.metadata?.db_interest && (
-                        <div>
-                          <p className="text-sm text-slate-600">Interés</p>
-                          <p className="text-slate-800">{selectedCallModal.metadata.db_interest}</p>
-                        </div>
-                      )}
-                      {selectedCallModal.metadata?.db_tipo_vivienda && (
-                        <div>
-                          <p className="text-sm text-slate-600">Tipo de Vivienda</p>
-                          <p className="text-slate-800">{selectedCallModal.metadata.db_tipo_vivienda}</p>
-                        </div>
-                      )}
-                      {selectedCallModal.metadata?.db_client_id && (
-                        <div>
-                          <p className="text-sm text-slate-600">Client ID</p>
-                          <p className="text-slate-800">{selectedCallModal.metadata.db_client_id}</p>
-                        </div>
-                      )}
-                      {selectedCallModal.metadata?.db_created_at && (
-                        <div>
-                          <p className="text-sm text-slate-600">Fecha de Creación (BD)</p>
-                          <p className="text-slate-800">{new Date(selectedCallModal.metadata.db_created_at).toLocaleString('es-ES', { timeZone: 'UTC' })}</p>
-                        </div>
-                      )}
-                      {selectedCallModal.metadata?.db_end_reason && (
-                        <div>
-                          <p className="text-sm text-slate-600">Razón de Fin (BD)</p>
-                          <p className="text-slate-800">{selectedCallModal.metadata.db_end_reason}</p>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
 
               {/* Variables dinámicas */}
               {selectedCallModal.metadata?.retell_llm_dynamic_variables && Object.keys(selectedCallModal.metadata.retell_llm_dynamic_variables).length > 0 && (
@@ -2154,7 +2215,6 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                     status: 'Estado',
                     client_id: 'ID de Cliente',
                     cost: 'Costo',
-                    metadata: 'Metadata',
                     from_number: 'Número de Origen',
                     from_number_norm: 'Número de Origen Normalizado',
                     to_number_norm: 'Número de Teléfono Normalizado'
@@ -2184,6 +2244,156 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                 </div>
               </div>
 
+              {/* Selección de campos de metadata dinámicos */}
+              {console.log('🔍 Renderizando sección metadata. availableMetadataFields:', availableMetadataFields, 'length:', availableMetadataFields.length, 'metadataFields:', metadataFields)}
+              {console.log('🔍 Condición para mostrar:', availableMetadataFields.length > 0)}
+              {availableMetadataFields.length > 0 ? (
+                <div>
+                  <h4 className="text-md font-medium text-gray-800 mb-3">Campos de Metadata a exportar</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-60 overflow-y-auto border border-gray-200 rounded-lg p-4">
+                    {availableMetadataFields.map((field) => (
+                      <div key={field} className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id={`export-metadata-${field}`}
+                          checked={metadataFields[field] || false}
+                          onChange={() => {
+                            setMetadataFields({
+                              ...metadataFields,
+                              [field]: !metadataFields[field]
+                            });
+                          }}
+                          className="rounded bg-white border-slate-300 text-blue-600 focus:ring-blue-500"
+                          disabled={exportLoading}
+                        />
+                        <label htmlFor={`export-metadata-${field}`} className="ml-2 text-sm text-slate-700">
+                          {field}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-2 text-xs text-gray-500">
+                    Seleccionados: {Object.values(metadataFields).filter(Boolean).length} de {availableMetadataFields.length} campos de metadata
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <h4 className="text-md font-medium text-yellow-800 mb-2">Debug: Campos de Metadata</h4>
+                  <p className="text-sm text-yellow-700 mb-3">
+                    No se encontraron campos de metadata en sessionStorage con key 'metadata_llamadas'.
+                    <br />
+                    Campos disponibles: {availableMetadataFields.length}
+                    <br />
+                    SessionStorage metadata: {sessionStorage.getItem('metadata_llamadas') ? 'Existe' : 'No existe'}
+                    <br />
+                    <strong>Contenido del session storage:</strong>
+                    <br />
+                    <code className="text-xs bg-gray-100 p-1 rounded block mt-1">
+                      {sessionStorage.getItem('metadata_llamadas') || 'No hay datos'}
+                    </code>
+                  </p>
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      onClick={() => {
+                        // Mostrar contenido exacto del session storage
+                        const storedMetadata = sessionStorage.getItem('metadata_llamadas');
+                        alert(`Contenido del session storage:\n\n${storedMetadata}\n\nTipo: ${typeof storedMetadata}\nLongitud: ${storedMetadata?.length}`);
+                      }}
+                      className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700"
+                    >
+                      Ver contenido exacto del session storage
+                    </button>
+                    
+                    <button
+                      onClick={() => {
+                        // Recargar metadata del session storage
+                        try {
+                          const storedMetadata = sessionStorage.getItem('metadata_llamadas');
+                          console.log('🔍 [Recargar] Metadata del session storage:', storedMetadata);
+                          console.log('🔍 [Recargar] Tipo de datos:', typeof storedMetadata);
+                          console.log('🔍 [Recargar] Longitud:', storedMetadata?.length);
+                          
+                          if (storedMetadata) {
+                            const metadataArray = JSON.parse(storedMetadata);
+                            console.log('🔍 [Recargar] Metadata parseada:', metadataArray);
+                            console.log('🔍 [Recargar] Es array?', Array.isArray(metadataArray));
+                            console.log('🔍 [Recargar] Longitud del array:', metadataArray?.length);
+                            
+                            if (Array.isArray(metadataArray) && metadataArray.length > 0) {
+                              // Si es un array, obtener las claves del primer objeto
+                              const fields = Object.keys(metadataArray[0]);
+                              console.log('🔍 [Recargar] Campos de metadata encontrados (array):', fields);
+                              console.log('🔍 [Recargar] Primer objeto:', metadataArray[0]);
+                              
+                              setAvailableMetadataFields(fields);
+                              console.log('🔍 [Recargar] Estado actualizado - availableMetadataFields:', fields);
+                              
+                              const initialFields: Record<string, boolean> = {};
+                              fields.forEach(field => {
+                                initialFields[field] = false;
+                              });
+                              setMetadataFields(initialFields);
+                              console.log('🔍 [Recargar] Estado actualizado - metadataFields:', initialFields);
+                            } else if (typeof metadataArray === 'object' && metadataArray !== null) {
+                              // Si es un objeto directo, obtener sus claves
+                              const fields = Object.keys(metadataArray);
+                              console.log('🔍 [Recargar] Campos de metadata encontrados (objeto):', fields);
+                              console.log('🔍 [Recargar] Objeto completo:', metadataArray);
+                              
+                              setAvailableMetadataFields(fields);
+                              console.log('🔍 [Recargar] Estado actualizado - availableMetadataFields:', fields);
+                              
+                              const initialFields: Record<string, boolean> = {};
+                              fields.forEach(field => {
+                                initialFields[field] = false;
+                              });
+                              setMetadataFields(initialFields);
+                              console.log('🔍 [Recargar] Estado actualizado - metadataFields:', initialFields);
+                            } else {
+                              console.log('🔍 [Recargar] No es un array válido o está vacío');
+                            }
+                          } else {
+                            console.log('🔍 [Recargar] No hay metadata en session storage');
+                          }
+                        } catch (error) {
+                          console.error('Error al recargar metadata:', error);
+                        }
+                      }}
+                      className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                    >
+                      Recargar metadata del session storage
+                    </button>
+                    
+                    <button
+                      onClick={() => {
+                        // Simular datos de metadata para prueba
+                        const testMetadata = [
+                          {
+                            "total_llamadas": "12",
+                            "ultima_llamada": "hoy",
+                            "duracion_promedio": "",
+                            "llamadas_exitosas": ""
+                          }
+                        ];
+                        sessionStorage.setItem('metadata_llamadas', JSON.stringify(testMetadata));
+                        
+                        // Recargar los campos
+                        const fields = Object.keys(testMetadata[0]);
+                        setAvailableMetadataFields(fields);
+                        const initialFields: Record<string, boolean> = {};
+                        fields.forEach(field => {
+                          initialFields[field] = false;
+                        });
+                        setMetadataFields(initialFields);
+                      }}
+                      className="px-3 py-1 bg-yellow-600 text-white text-sm rounded hover:bg-yellow-700"
+                    >
+                      Simular datos de metadata para prueba
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {exportError && (
                 <div className="text-red-600 text-sm">{exportError}</div>
               )}
@@ -2212,11 +2422,16 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                     status: true,
                     client_id: false,
                     cost: false,
-                    metadata: false,
                     from_number: false,
                     from_number_norm: false,
                     to_number_norm: false
                   });
+                  // Resetear campos de metadata
+                  const resetMetadataFields: Record<string, boolean> = {};
+                  availableMetadataFields.forEach(field => {
+                    resetMetadataFields[field] = false;
+                  });
+                  setMetadataFields(resetMetadataFields);
                 }}
                 variant="outline"
                 className="flex-1"

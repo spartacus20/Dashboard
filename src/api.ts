@@ -1121,15 +1121,7 @@ export async function listCalls(
       recording_url: call.recordings || call.recording_url,
       to_number: call.phone_number || call.to_number,
       from_number: call.from_number,
-      metadata: {
-        id: call.id,
-        client_id: call.client_id,
-        summary: call.summary,
-        interest: call.interest,
-        tipo_vivienda: call.tipo_vivienda,
-        created_at: call.created_at,
-        end_reason: call.end_reason
-      }
+      metadata: call.metadata || {}
     }));
     
     return {
@@ -1190,15 +1182,7 @@ export async function listAllCalls(
       recording_url: call.recordings || call.recording_url,
       to_number: call.phone_number || call.to_number,
       from_number: call.from_number,
-      metadata: {
-        id: call.id,
-        client_id: call.client_id,
-        summary: call.summary,
-        interest: call.interest,
-        tipo_vivienda: call.tipo_vivienda,
-        created_at: call.created_at,
-        end_reason: call.end_reason
-      }
+      metadata: call.metadata || {}
     }));
     return { calls, total_calls: data.total_llamadas || calls.length };
   } catch (error) {

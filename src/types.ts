@@ -33,7 +33,19 @@ export interface RetellCall {
   metadata?: Record<string, any>;
 }
 
-export type DetailedRetellCall = RetellCall;
+export interface DetailedRetellCall extends RetellCall {
+  // Campos adicionales de la base de datos
+  id?: number;
+  client_id?: string;
+  summary?: string;
+  interest?: string;
+  tipo_vivienda?: string;
+  created_at?: string;
+  end_reason?: string;
+  cost?: number;
+  from_number_norm?: string;
+  to_number_norm?: string;
+}
 
 export interface TranscriptEntry {
   timestamp: number;
