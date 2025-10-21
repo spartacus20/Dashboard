@@ -746,17 +746,49 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       // Procesar campos de metadata dinámicos
       selectedMetadataFields.forEach(field => {
         const metadataKey = `metadata_${field}`;
-        // Buscar el campo en la metadata de la llamada
-        if (call.metadata && Array.isArray(call.metadata) && call.metadata.length > 0) {
-          // Si metadata es un array, buscar en el primer elemento
-          const metadataObj = call.metadata[0];
-          row[metadataKey] = metadataObj && metadataObj[field] !== undefined ? metadataObj[field] : '';
-        } else if (call.metadata && typeof call.metadata === 'object') {
-          // Si metadata es un objeto directo
-          row[metadataKey] = call.metadata[field] !== undefined ? call.metadata[field] : '';
-        } else {
-          row[metadataKey] = '';
+        let fieldValue = '';
+        
+        // Debug: Log para verificar la estructura de metadata
+        if (selectedMetadataFields.length > 0 && call.call_id) {
+          console.log(`🔍 Procesando metadata para call ${call.call_id}:`, {
+            metadata: call.metadata,
+            field: field,
+            isArray: Array.isArray(call.metadata),
+            length: call.metadata?.length,
+            fullCall: call // Ver toda la estructura de la llamada
+          });
         }
+        
+        // Buscar el campo en la metadata de la llamada
+        let metadataSource = null;
+        
+        // Intentar diferentes ubicaciones posibles para la metadata
+        if (call.metadata) {
+          metadataSource = call.metadata;
+        } else if (call.metadata_llamadas) {
+          metadataSource = call.metadata_llamadas;
+        } else if (call.data && call.data.metadata) {
+          metadataSource = call.data.metadata;
+        } else if (call.data && call.data.metadata_llamadas) {
+          metadataSource = call.data.metadata_llamadas;
+        }
+        
+        if (metadataSource && Array.isArray(metadataSource) && metadataSource.length > 0) {
+          // Si metadata es un array, buscar en el primer elemento
+          const metadataObj = metadataSource[0];
+          if (metadataObj && metadataObj[field] !== undefined) {
+            fieldValue = String(metadataObj[field]);
+            console.log(`🔍 Valor encontrado para ${field}:`, fieldValue);
+          }
+        } else if (metadataSource && typeof metadataSource === 'object' && !Array.isArray(metadataSource)) {
+          // Si metadata es un objeto directo (no array)
+          if (metadataSource[field] !== undefined) {
+            fieldValue = String(metadataSource[field]);
+            console.log(`🔍 Valor encontrado para ${field}:`, fieldValue);
+          }
+        }
+        
+        row[metadataKey] = fieldValue;
       });
       
       return row;
@@ -766,9 +798,9 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     let csvContent = headers.join(',') + '\n';
     
     rows.forEach(row => {
-      const values = selectedColumns.map(column => {
+      const values = allColumns.map(column => {
         // Escapar comillas y valores que contengan comas
-        const value = String(row[column]).replace(/"/g, '""');
+        const value = String(row[column] || '').replace(/"/g, '""');
         return value.includes(',') ? `"${value}"` : value;
       });
       csvContent += values.join(',') + '\n';
@@ -886,10 +918,23 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         endISO = `${exportEndDate}T${hhmm}:59Z`;
       }
 
+      // Obtener campos de metadata seleccionados
+      const selectedMetadataFields = Object.entries(metadataFields)
+        .filter(([_, selected]) => selected)
+        .map(([field, _]) => field);
+
+      // Si hay campos de metadata seleccionados, agregar 'metadata' a las columnas
+      const finalSelectedColumns = [...selectedColumns];
+      if (selectedMetadataFields.length > 0 && !finalSelectedColumns.includes('metadata')) {
+        finalSelectedColumns.push('metadata');
+        console.log('🔍 Agregando metadata a las columnas solicitadas:', finalSelectedColumns);
+        console.log('🔍 Campos de metadata seleccionados:', selectedMetadataFields);
+      }
+
       // Construir filtros para exportación con columnas seleccionadas
       const params: any = {
         client_id: clientId,
-        columns: selectedColumns,
+        columns: finalSelectedColumns,
         sort_order: sortOrderFilter
       };
       if (statusFilter) params.status = statusFilter;
@@ -919,11 +964,6 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         setExportLoading(false);
         return;
       }
-
-      // Obtener campos de metadata seleccionados
-      const selectedMetadataFields = Object.entries(metadataFields)
-        .filter(([_, selected]) => selected)
-        .map(([field, _]) => field);
 
       buildCsvAndDownloadWithColumns(finalData as any, selectedColumns, selectedMetadataFields);
       setShowExportModal(false);
@@ -2245,8 +2285,6 @@ export function Recordings({ onNavigate }: RecordingsProps) {
               </div>
 
               {/* Selección de campos de metadata dinámicos */}
-              {console.log('🔍 Renderizando sección metadata. availableMetadataFields:', availableMetadataFields, 'length:', availableMetadataFields.length, 'metadataFields:', metadataFields)}
-              {console.log('🔍 Condición para mostrar:', availableMetadataFields.length > 0)}
               {availableMetadataFields.length > 0 ? (
                 <div>
                   <h4 className="text-md font-medium text-gray-800 mb-3">Campos de Metadata a exportar</h4>
