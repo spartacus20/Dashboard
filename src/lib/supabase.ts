@@ -115,12 +115,27 @@ export const getFullName = (): string | null => {
 
 export const getMetadata = () => {
   const metadata = sessionStorage.getItem('metadata')
-  return metadata ? JSON.parse(metadata) : null
+  const parsedMetadata = metadata ? JSON.parse(metadata) : null
+  console.log('📋 Obteniendo metadatos:', {
+    rawMetadata: metadata,
+    parsedMetadata
+  })
+  return parsedMetadata
 }
 
 export const getMetadataLlamadas = () => {
   const metadata_llamadas = sessionStorage.getItem('metadata_llamadas')
   return metadata_llamadas ? JSON.parse(metadata_llamadas) : null
+}
+
+// Función para verificar si el usuario tiene permisos de lanzamiento
+export const hasLaunchPermissions = (): boolean => {
+  const metadata = getMetadata()
+  console.log('🔍 Verificando permisos de lanzamiento:', {
+    metadata,
+    hasLaunch: metadata?.launch === true
+  })
+  return metadata?.launch === true
 }
 
 // Función para limpiar todos los datos del sessionStorage

@@ -8,6 +8,7 @@ import { PhoneNumbers } from './pages/PhoneNumbers';
 import { Agendas } from './pages/Agendas';
 import { Callbacks } from './pages/Callbacks';
 import { Ventas } from './pages/Ventas';
+import Lanzamiento from './pages/Lanzamiento';
 import { useCallsContext } from './context/CallsContext';
 import { X, Upload, Phone, Info, Check, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 
@@ -44,7 +45,8 @@ function DashboardApp() {
     dashboardData,
     loadingDashboardData,
     loadDashboardData,
-    agendaEnabled
+    agendaEnabled,
+    launchEnabled
   } = useCallsContext();
   
   // Cargar números de teléfono y batch calls una sola vez al iniciar la aplicación
@@ -66,6 +68,14 @@ function DashboardApp() {
       setCurrentPage('dashboard');
     }
   }, [currentPage, agendaEnabled]);
+  
+  // Redirigir si se intenta acceder a lanzamiento sin permisos
+  React.useEffect(() => {
+    if (currentPage === 'lanzamiento' && !launchEnabled) {
+      console.log('Sin permisos de lanzamiento, redirigiendo al dashboard');
+      setCurrentPage('dashboard');
+    }
+  }, [currentPage, launchEnabled]);
   
   // Calculamos si la caché está activa
   const cacheStatus = lastUpdated 
@@ -1272,6 +1282,9 @@ function DashboardApp() {
         )}
         {currentPage === 'ventas' && (
           <Ventas onNavigate={setCurrentPage as (page: string) => void} />
+        )}
+        {currentPage === 'lanzamiento' && (
+          <Lanzamiento />
         )}
       </div>
     </div>

@@ -45,6 +45,7 @@ interface CallsContextType {
   numTelEnabled: boolean;
   recordsEnabled: boolean;
   callbacksEnabled: boolean;
+  launchEnabled: boolean;
   phoneFilter: string | null;
 }
 
@@ -104,6 +105,7 @@ export function CallsProvider({ children }: CallsProviderProps) {
   const [numTelEnabled, setNumTelEnabled] = useState(false);
   const [recordsEnabled, setRecordsEnabled] = useState(false);
   const [callbacksEnabled, setCallbacksEnabled] = useState(false);
+  const [launchEnabled, setLaunchEnabled] = useState(false);
   
   // Estado para filtrar por número de teléfono específico
   const [phoneFilter, setPhoneFilter] = useState<string | null>(null);
@@ -159,6 +161,7 @@ export function CallsProvider({ children }: CallsProviderProps) {
               setNumTelEnabled(result.config.num_tel ?? false);
               setRecordsEnabled(result.config.records ?? false);
               setCallbacksEnabled(result.config.callbacks ?? false);
+              setLaunchEnabled(result.config.launch ?? false);
             }
           } else {
             console.error('No se pudo obtener la API key para el client_id:', storedClientId);
@@ -193,6 +196,7 @@ export function CallsProvider({ children }: CallsProviderProps) {
                     setNumTelEnabled(result.config.num_tel ?? false);
                     setRecordsEnabled(result.config.records ?? false);
                     setCallbacksEnabled(result.config.callbacks ?? false);
+                    setLaunchEnabled(result.config.launch ?? false);
                   }
                 } else {
                   console.error('No se pudo obtener la API key para el client_id:', newClientId);
@@ -250,6 +254,7 @@ export function CallsProvider({ children }: CallsProviderProps) {
                   setNumTelEnabled(result.config.num_tel ?? false);
                   setRecordsEnabled(result.config.records ?? false);
                   setCallbacksEnabled(result.config.callbacks ?? false);
+                  setLaunchEnabled(result.config.launch ?? false);
                 }
               } else {
                 console.error('No se pudo obtener API key tras inicio de sesión');
@@ -653,6 +658,7 @@ export function CallsProvider({ children }: CallsProviderProps) {
     numTelEnabled,
     recordsEnabled,
     callbacksEnabled,
+    launchEnabled,
     phoneFilter
   };
 

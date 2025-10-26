@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { BarChart3, Mic, Menu, X, Key, Phone, PhoneOutgoing, Calendar, PhoneCall, LogOut, TrendingUp } from 'lucide-react';
+import { BarChart3, Mic, Menu, X, Key, Phone, PhoneOutgoing, Calendar, PhoneCall, LogOut, TrendingUp, Rocket } from 'lucide-react';
 import { useCallsContext } from '../../context/CallsContext';
 import { useAuth } from '../../context/AuthContext';
+import { hasLaunchPermissions } from '../../lib/supabase';
 
 interface SidebarProps {
   currentPage: string;
@@ -11,11 +12,21 @@ interface SidebarProps {
 }
 
 export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: SidebarProps) {
-  const { loadingProgress, totalCalls, loadingAllCalls, apiKey, agendaEnabled, salesEnabled, numTelEnabled, recordsEnabled, callbacksEnabled } = useCallsContext();
+  const { loadingProgress, totalCalls, loadingAllCalls, apiKey, agendaEnabled, salesEnabled, numTelEnabled, recordsEnabled, callbacksEnabled, launchEnabled } = useCallsContext();
   const { user, signOut } = useAuth();
   const progressPercentage = totalCalls > 0 ? Math.min(100, Math.round((loadingProgress / totalCalls) * 100)) : 0;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [showBatchCall, setShowBatchCall] = useState(false);
+  
+  // Debug: Log para verificar el estado
+  console.log('🔧 Sidebar - Estado de permisos:', {
+    launchEnabled,
+    agendaEnabled,
+    salesEnabled,
+    numTelEnabled,
+    recordsEnabled,
+    callbacksEnabled
+  });
   
   // Verificar si debemos mostrar Batch Call basado en parámetros URL
   useEffect(() => {
@@ -239,6 +250,21 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
             >
               <TrendingUp className="w-5 h-5" />
               Ventas
+            </button>
+          )}
+          {launchEnabled && (
+            <button
+              onClick={() => {
+                navigateWithParams('lanzamiento');
+              }}
+              className={`flex w-full items-center gap-2 px-4 py-2 ${
+                currentPage === 'lanzamiento'
+                  ? 'text-white bg-[#0a2a5a] border border-[#1e4a8a]'
+                  : 'text-gray-300 hover:bg-[#0a2a5a]'
+              } rounded-lg`}
+            >
+              <Rocket className="w-5 h-5" />
+              Lanzamiento
             </button>
           )}
         </nav>

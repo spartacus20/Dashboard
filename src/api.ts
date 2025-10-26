@@ -3,7 +3,9 @@ import { get_client_id } from './lib/supabase';
 
 // Obtener la URL base según el entorno
 const IS_PRODUCTION = import.meta.env.VITE_PRODUCTION_API === 'on';
-const BASE_URL = IS_PRODUCTION ? 'https://n8n.aiagencyusa.com/webhook/ed980be2-4957-44cf-8f61-8b8c4d4957e8' : 'https://api.iacreatorhub.com';
+//const BASE_URL = IS_PRODUCTION ? 'https://n8n.aiagencyusa.com/webhook/ed980be2-4957-44cf-8f61-8b8c4d4957e8' : 'https://api.iacreatorhub.com';
+const BASE_URL = 'http://localhost:3000';
+
 
 const WEBHOOK_URL = BASE_URL;
 const GET_CLIENT_WEBHOOK_URL = IS_PRODUCTION ? 'https://n8n.aiagencyusa.com/webhook/get-client' : `${BASE_URL}/get-client`;
@@ -488,6 +490,18 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
         console.log('✅ metadata_llamadas guardado en sessionStorage');
       }
       
+      console.log('🔧 Configuración construida:', {
+        metadata: clientData.metadata,
+        config: {
+          sales: clientData.metadata?.sales,
+          agenda: clientData.metadata?.agenda,
+          num_tel: clientData.metadata?.num_tel,
+          records: clientData.metadata?.records,
+          callbacks: clientData.metadata?.callbacks,
+          launch: clientData.metadata?.launch,
+        }
+      });
+      
       return {
         apiKey: clientData.api_key || null,
         clientId: clientData.client_id || null,
@@ -499,6 +513,7 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
           num_tel: clientData.metadata?.num_tel,
           records: clientData.metadata?.records,
           callbacks: clientData.metadata?.callbacks,
+          launch: clientData.metadata?.launch,
         }
       };
     }
@@ -522,6 +537,7 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
           num_tel: data.metadata?.num_tel,
           records: data.metadata?.records,
           callbacks: data.metadata?.callbacks,
+          launch: data.metadata?.launch,
         }
       };
     }
@@ -1881,6 +1897,310 @@ export async function exportCallsWithColumns(
     };
   } catch (error) {
     console.error('Error al exportar llamadas con columnas:', error);
+    throw error;
+  }
+}
+
+// Obtener métricas de lanzamiento
+export async function fetchLanzamientoMetrics(
+  fechaInicio?: string, 
+  fechaFin?: string
+): Promise<{
+  totalLlamadas: number;
+  llamadasContestadas: number;
+  llamadasFallidas: number;
+  enlacesEnviados: number;
+  clicksTotales: number;
+  noLlamar: number;
+  porRegion: {
+    europa: {
+      totalLlamadas: number;
+      llamadasContestadas: number;
+      llamadasFallidas: number;
+      enlacesEnviados: number;
+      clicksTotales: number;
+      noLlamar: number;
+    };
+    latam: {
+      totalLlamadas: number;
+      llamadasContestadas: number;
+      llamadasFallidas: number;
+      enlacesEnviados: number;
+      clicksTotales: number;
+      noLlamar: number;
+    };
+    espana: {
+      totalLlamadas: number;
+      llamadasContestadas: number;
+      llamadasFallidas: number;
+      enlacesEnviados: number;
+      clicksTotales: number;
+      noLlamar: number;
+    };
+  };
+}> {
+  try {
+    const url = `${BASE_URL}/api/lanzamiento/metrics`;
+    const body: any = {
+      client_id: getClientId()
+    };
+    
+    if (fechaInicio) body.fecha_inicio = fechaInicio;
+    if (fechaFin) body.fecha_fin = fechaFin;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error en fetchLanzamientoMetrics: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    
+    if (!data.success) {
+      throw new Error(data.error || 'Error al obtener métricas de lanzamiento');
+    }
+
+    return data.metrics;
+  } catch (error) {
+    console.error('Error al obtener métricas de lanzamiento:', error);
+    throw error;
+  }
+}
+
+// Obtener métricas de lanzamiento de hoy
+export async function fetchLanzamientoMetricsToday(): Promise<{
+  success: boolean;
+  fecha: string;
+  total_llamadas: number;
+  llamadas_contestadas: number;
+  llamadas_fallidas: number;
+  total_enlaces_enviados: number;
+  total_clicks_totales: number;
+  total_no_llamar: number;
+  metrics_by_region: Array<{
+    region: string;
+    enlaces_enviados: number;
+    clicks_totales: number;
+    no_llamar: number;
+  }>;
+}> {
+  try {
+    const url = `${BASE_URL}/api/lanzamiento/calls/metrics/today`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        client_id: getClientId()
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error en fetchLanzamientoMetricsToday: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    
+    if (!data.success) {
+      throw new Error(data.error || 'Error al obtener métricas de lanzamiento de hoy');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error al obtener métricas de lanzamiento de hoy:', error);
+    throw error;
+  }
+}
+
+// Obtener métricas de lanzamiento personalizado
+export async function fetchLanzamientoMetricsCustom(fechaInicio: string, fechaFin: string): Promise<{
+  success: boolean;
+  fecha_inicio: string;
+  fecha_fin: string;
+  total_llamadas: number;
+  llamadas_contestadas: number;
+  llamadas_fallidas: number;
+  total_enlaces_enviados: number;
+  total_clicks_totales: number;
+  total_no_llamar: number;
+  metrics_by_region: Array<{
+    region: string;
+    enlaces_enviados: number;
+    clicks_totales: number;
+    no_llamar: number;
+  }>;
+}> {
+  try {
+    const url = `${BASE_URL}/api/lanzamiento/calls/metrics/`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        client_id: getClientId(),
+        fecha_inicio: fechaInicio,
+        fecha_fin: fechaFin
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error en fetchLanzamientoMetricsCustom: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    
+    if (!data.success) {
+      throw new Error(data.error || 'Error al obtener métricas de lanzamiento personalizado');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error al obtener métricas de lanzamiento personalizado:', error);
+    throw error;
+  }
+}
+
+// Obtener métricas de lanzamiento de la semana
+export async function fetchLanzamientoMetricsWeek(): Promise<{
+  totalLlamadas: number;
+  llamadasContestadas: number;
+  llamadasFallidas: number;
+  enlacesEnviados: number;
+  clicksTotales: number;
+  noLlamar: number;
+  porRegion: {
+    europa: {
+      totalLlamadas: number;
+      llamadasContestadas: number;
+      llamadasFallidas: number;
+      enlacesEnviados: number;
+      clicksTotales: number;
+      noLlamar: number;
+    };
+    latam: {
+      totalLlamadas: number;
+      llamadasContestadas: number;
+      llamadasFallidas: number;
+      enlacesEnviados: number;
+      clicksTotales: number;
+      noLlamar: number;
+    };
+    espana: {
+      totalLlamadas: number;
+      llamadasContestadas: number;
+      llamadasFallidas: number;
+      enlacesEnviados: number;
+      clicksTotales: number;
+      noLlamar: number;
+    };
+  };
+}> {
+  try {
+    const url = `${BASE_URL}/api/lanzamiento/metrics/week`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        client_id: getClientId()
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error en fetchLanzamientoMetricsWeek: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    
+    if (!data.success) {
+      throw new Error(data.error || 'Error al obtener métricas de lanzamiento de la semana');
+    }
+
+    return data.metrics;
+  } catch (error) {
+    console.error('Error al obtener métricas de lanzamiento de la semana:', error);
+    throw error;
+  }
+}
+
+// Obtener métricas de lanzamiento del mes
+export async function fetchLanzamientoMetricsMonth(): Promise<{
+  totalLlamadas: number;
+  llamadasContestadas: number;
+  llamadasFallidas: number;
+  enlacesEnviados: number;
+  clicksTotales: number;
+  noLlamar: number;
+  porRegion: {
+    europa: {
+      totalLlamadas: number;
+      llamadasContestadas: number;
+      llamadasFallidas: number;
+      enlacesEnviados: number;
+      clicksTotales: number;
+      noLlamar: number;
+    };
+    latam: {
+      totalLlamadas: number;
+      llamadasContestadas: number;
+      llamadasFallidas: number;
+      enlacesEnviados: number;
+      clicksTotales: number;
+      noLlamar: number;
+    };
+    espana: {
+      totalLlamadas: number;
+      llamadasContestadas: number;
+      llamadasFallidas: number;
+      enlacesEnviados: number;
+      clicksTotales: number;
+      noLlamar: number;
+    };
+  };
+}> {
+  try {
+    const url = `${BASE_URL}/api/lanzamiento/metrics/month`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        client_id: getClientId()
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error en fetchLanzamientoMetricsMonth: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    
+    if (!data.success) {
+      throw new Error(data.error || 'Error al obtener métricas de lanzamiento del mes');
+    }
+
+    return data.metrics;
+  } catch (error) {
+    console.error('Error al obtener métricas de lanzamiento del mes:', error);
     throw error;
   }
 }
