@@ -365,6 +365,37 @@ const Lanzamiento: React.FC = () => {
         </div>
       ) : metrics ? (
         <>
+        {/* Resumen de rendimiento */}
+        <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5" />
+                Resumen de Rendimiento
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="text-center p-4 bg-green-50 rounded-lg">
+                  <div className="text-2xl font-bold text-green-600">
+                    {calculatePercentage(metrics.llamadas_contestadas, metrics.total_llamadas)}%
+                  </div>
+                  <div className="text-sm text-gray-600">Tasa de Contestación</div>
+                </div>
+                <div className="text-center p-4 bg-purple-50 rounded-lg">
+                  <div className="text-2xl font-bold text-purple-600">
+                    {calculatePercentage(metrics.total_clicks_totales, metrics.total_enlaces_enviados)}%
+                  </div>
+                  <div className="text-sm text-gray-600">Tasa de Clicks</div>
+                </div>
+                <div className="text-center p-4 bg-blue-50 rounded-lg">
+                  <div className="text-2xl font-bold text-blue-600">
+                    {calculatePercentage(metrics.total_enlaces_enviados, metrics.total_llamadas)}%
+                  </div>
+                  <div className="text-sm text-gray-600">Tasa de Enlaces</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <MetricCard
               title="Total Llamadas"
@@ -435,37 +466,7 @@ const Lanzamiento: React.FC = () => {
             </div>
           </div>
 
-          {/* Resumen de rendimiento */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="h-5 w-5" />
-                Resumen de Rendimiento
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="text-center p-4 bg-green-50 rounded-lg">
-                  <div className="text-2xl font-bold text-green-600">
-                    {calculatePercentage(metrics.llamadas_contestadas, metrics.total_llamadas)}%
-                  </div>
-                  <div className="text-sm text-gray-600">Tasa de Contestación</div>
-                </div>
-                <div className="text-center p-4 bg-purple-50 rounded-lg">
-                  <div className="text-2xl font-bold text-purple-600">
-                    {calculatePercentage(metrics.total_clicks_totales, metrics.total_enlaces_enviados)}%
-                  </div>
-                  <div className="text-sm text-gray-600">Tasa de Clicks</div>
-                </div>
-                <div className="text-center p-4 bg-blue-50 rounded-lg">
-                  <div className="text-2xl font-bold text-blue-600">
-                    {calculatePercentage(metrics.total_enlaces_enviados, metrics.total_llamadas)}%
-                  </div>
-                  <div className="text-sm text-gray-600">Tasa de Enlaces</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          
         </>
       ) : (
         <div className="text-center py-12">
