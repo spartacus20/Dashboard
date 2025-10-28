@@ -9,6 +9,7 @@ import { Agendas } from './pages/Agendas';
 import { Callbacks } from './pages/Callbacks';
 import { Ventas } from './pages/Ventas';
 import Lanzamiento from './pages/Lanzamiento';
+import NoLlamar from './pages/NoLlamar';
 import { useCallsContext } from './context/CallsContext';
 import { X, Upload, Phone, Info, Check, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 
@@ -46,7 +47,8 @@ function DashboardApp() {
     loadingDashboardData,
     loadDashboardData,
     agendaEnabled,
-    launchEnabled
+    launchEnabled,
+    dontCallEnabled
   } = useCallsContext();
   
   // Cargar números de teléfono y batch calls una sola vez al iniciar la aplicación
@@ -76,6 +78,14 @@ function DashboardApp() {
       setCurrentPage('dashboard');
     }
   }, [currentPage, launchEnabled]);
+  
+  // Redirigir si se intenta acceder a no-llamar sin permisos
+  React.useEffect(() => {
+    if (currentPage === 'no-llamar' && !dontCallEnabled) {
+      console.log('Sin permisos de no-llamar, redirigiendo al dashboard');
+      setCurrentPage('dashboard');
+    }
+  }, [currentPage, dontCallEnabled]);
   
   // Calculamos si la caché está activa
   const cacheStatus = lastUpdated 
@@ -1285,6 +1295,9 @@ function DashboardApp() {
         )}
         {currentPage === 'lanzamiento' && (
           <Lanzamiento />
+        )}
+        {currentPage === 'no-llamar' && (
+          <NoLlamar />
         )}
       </div>
     </div>

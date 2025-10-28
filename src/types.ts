@@ -315,3 +315,13 @@ export interface CallsByPhoneResponse {
     como_destino?: any[];
   };
 }
+
+export interface DontCall {
+  id: number;
+  created_at: string;
+  phone_number: string;
+  client_id: string;
+  name?: string;
+  campaña?: string;
+  region?: string;
+}

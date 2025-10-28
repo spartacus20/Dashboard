@@ -499,6 +499,7 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
           records: clientData.metadata?.records,
           callbacks: clientData.metadata?.callbacks,
           launch: clientData.metadata?.launch,
+          dont_call: clientData.metadata?.dont_call,
         }
       });
       
@@ -514,6 +515,7 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
           records: clientData.metadata?.records,
           callbacks: clientData.metadata?.callbacks,
           launch: clientData.metadata?.launch,
+          dont_call: clientData.metadata?.dont_call,
         }
       };
     }
@@ -538,6 +540,7 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
           records: data.metadata?.records,
           callbacks: data.metadata?.callbacks,
           launch: data.metadata?.launch,
+          dont_call: data.metadata?.dont_call,
         }
       };
     }
@@ -2201,6 +2204,246 @@ export async function fetchLanzamientoMetricsMonth(): Promise<{
     return data.metrics;
   } catch (error) {
     console.error('Error al obtener métricas de lanzamiento del mes:', error);
+    throw error;
+  }
+}
+
+// Funciones para manejar registros de "No Llamar"
+export async function listDontCallRecords(
+  apiKey: string,
+  params: {
+    client_id: string;
+    per_page?: number;
+    page?: number;
+    fecha_inicio?: string;
+    fecha_fin?: string;
+    search_term?: string;
+    filter_status?: 'all' | 'active' | 'inactive';
+    sort_order?: 'ASC' | 'DESC';
+  }
+): Promise<{
+  registros: any[];
+  total_registros: number;
+  total_paginas: number;
+  pagina_actual: number;
+  limit: number;
+}> {
+  try {
+    if (!params?.client_id) {
+      throw new Error('client_id es obligatorio para listDontCallRecords');
+    }
+
+    const url = `${BASE_URL}/api/dont-call/list`;
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error en la respuesta:', response.status, response.statusText, errorText);
+      throw new Error(`Error al obtener registros de No Llamar: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('Respuesta del endpoint listDontCallRecords:', data);
+    
+    return {
+      registros: data.registros || [],
+      total_registros: data.total_registros || 0,
+      total_paginas: data.total_paginas || 0,
+      pagina_actual: data.pagina_actual || 1,
+      limit: data.limit || 50
+    };
+  } catch (error) {
+    console.error('Error al obtener registros de No Llamar:', error);
+    throw error;
+  }
+}
+
+export async function createDontCallRecord(
+  apiKey: string,
+  params: {
+    client_id: string;
+    phone_number: string;
+    nombre?: string;
+    motivo?: string;
+    fecha_registro?: string;
+    call_id?: string;
+    region?: string;
+  }
+): Promise<{
+  success: boolean;
+  message: string;
+  data: any;
+}> {
+  try {
+    if (!params?.client_id || !params?.phone_number) {
+      throw new Error('client_id y phone_number son obligatorios para createDontCallRecord');
+    }
+
+    const url = `${BASE_URL}/api/dont-call/create`;
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error en la respuesta:', response.status, response.statusText, errorText);
+      throw new Error(`Error al crear registro de No Llamar: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('Respuesta del endpoint createDontCallRecord:', data);
+    
+    return data;
+  } catch (error) {
+    console.error('Error al crear registro de No Llamar:', error);
+    throw error;
+  }
+}
+
+export async function updateDontCallRecord(
+  apiKey: string,
+  id: string,
+  params: {
+    phone_number?: string;
+    nombre?: string;
+    motivo?: string;
+    fecha_registro?: string;
+    activo?: boolean;
+    region?: string;
+  }
+): Promise<{
+  success: boolean;
+  message: string;
+  data: any;
+}> {
+  try {
+    if (!id) {
+      throw new Error('ID es obligatorio para updateDontCallRecord');
+    }
+
+    const url = `${BASE_URL}/api/dont-call/${id}`;
+    
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error en la respuesta:', response.status, response.statusText, errorText);
+      throw new Error(`Error al actualizar registro de No Llamar: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('Respuesta del endpoint updateDontCallRecord:', data);
+    
+    return data;
+  } catch (error) {
+    console.error('Error al actualizar registro de No Llamar:', error);
+    throw error;
+  }
+}
+
+export async function deleteDontCallRecord(
+  apiKey: string,
+  id: string
+): Promise<{
+  success: boolean;
+  message: string;
+  data: any;
+}> {
+  try {
+    if (!id) {
+      throw new Error('ID es obligatorio para deleteDontCallRecord');
+    }
+
+    const url = `${BASE_URL}/api/dont-call/${id}`;
+    
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error en la respuesta:', response.status, response.statusText, errorText);
+      throw new Error(`Error al eliminar registro de No Llamar: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('Respuesta del endpoint deleteDontCallRecord:', data);
+    
+    return data;
+  } catch (error) {
+    console.error('Error al eliminar registro de No Llamar:', error);
+    throw error;
+  }
+}
+
+export async function getDontCallStats(
+  apiKey: string,
+  params: {
+    client_id: string;
+    fecha_inicio?: string;
+    fecha_fin?: string;
+  }
+): Promise<{
+  success: boolean;
+  total_registros: number;
+  registros_activos: number;
+  registros_inactivos: number;
+  con_region: number;
+  sin_region: number;
+}> {
+  try {
+    if (!params?.client_id) {
+      throw new Error('client_id es obligatorio para getDontCallStats');
+    }
+
+    const url = `${BASE_URL}/api/dont-call/stats`;
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error en la respuesta:', response.status, response.statusText, errorText);
+      throw new Error(`Error al obtener estadísticas de No Llamar: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('Respuesta del endpoint getDontCallStats:', data);
+    
+    return data;
+  } catch (error) {
+    console.error('Error al obtener estadísticas de No Llamar:', error);
     throw error;
   }
 }
