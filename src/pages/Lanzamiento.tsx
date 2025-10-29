@@ -405,18 +405,19 @@ const Lanzamiento: React.FC = () => {
                   </div>
                   <div className="text-sm text-gray-600">Tasa de Contestación</div>
                 </div>
+                <div className="text-center p-4 bg-blue-50 rounded-lg">
+                  <div className="text-2xl font-bold text-blue-600">
+                    {calculatePercentage(metrics.total_enlaces_enviados, metrics.total_llamadas)}%
+                  </div>
+                  <div className="text-sm text-gray-600">Enlaces Enviados</div>
+                </div>
                 <div className="text-center p-4 bg-purple-50 rounded-lg">
                   <div className="text-2xl font-bold text-purple-600">
                     {calculatePercentage(metrics.total_clicks_totales, metrics.total_enlaces_enviados)}%
                   </div>
                   <div className="text-sm text-gray-600">Tasa de Clicks</div>
                 </div>
-                <div className="text-center p-4 bg-blue-50 rounded-lg">
-                  <div className="text-2xl font-bold text-blue-600">
-                    {calculatePercentage(metrics.total_enlaces_enviados, metrics.total_llamadas)}%
-                  </div>
-                  <div className="text-sm text-gray-600">Tasa de Enlaces</div>
-                </div>
+                
               </div>
             </CardContent>
           </Card>
