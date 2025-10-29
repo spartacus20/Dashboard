@@ -63,9 +63,9 @@ const Lanzamiento: React.FC = () => {
     const getRegionData = (regionName: string) => {
       const regionData = regionMap.get(regionName.toLowerCase());
       return {
-        total_llamadas: regionData ? Math.floor(apiData.total_llamadas / 3) : 0, // Solo distribuir si hay datos
-        llamadas_contestadas: regionData ? Math.floor(apiData.llamadas_contestadas / 3) : 0,
-        llamadas_fallidas: regionData ? Math.floor(apiData.llamadas_fallidas / 3) : 0,
+        total_llamadas: regionData?.total_llamadas || 0,
+        llamadas_contestadas: regionData?.llamadas_contestadas || 0,
+        llamadas_fallidas: regionData?.llamadas_fallidas || 0,
         enlaces_enviados: regionData?.enlaces_enviados || 0,
         clicks_totales: regionData?.clicks_totales || 0,
         no_llamar: regionData?.no_llamar || 0,
@@ -192,16 +192,28 @@ const Lanzamiento: React.FC = () => {
       <CardContent className="space-y-3">
         <div className="grid grid-cols-1 gap-3 text-sm">
           <div className="flex justify-between">
+            <span className="text-gray-600">Llamadas:</span>
+            <span className="font-medium text-blue-600">{formatNumber(data.total_llamadas || 0)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600">Contestadas:</span>
+            <span className="font-medium text-green-600">{formatNumber(data.llamadas_contestadas || 0)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600">Fallidas:</span>
+            <span className="font-medium text-red-600">{formatNumber(data.llamadas_fallidas || 0)}</span>
+          </div>
+          <div className="flex justify-between">
             <span className="text-gray-600">Enlaces:</span>
-            <span className="font-medium text-blue-600">{formatNumber(data.enlaces_enviados)}</span>
+            <span className="font-medium text-blue-600">{formatNumber(data.enlaces_enviados || 0)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-600">Clicks:</span>
-            <span className="font-medium text-purple-600">{formatNumber(data.clicks_totales)}</span>
+            <span className="font-medium text-purple-600">{formatNumber(data.clicks_totales || 0)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-600">No Llamar:</span>
-            <span className="font-medium text-orange-600">{formatNumber(data.no_llamar)}</span>
+            <span className="font-medium text-orange-600">{formatNumber(data.no_llamar || 0)}</span>
           </div>
         </div>
         
@@ -209,13 +221,25 @@ const Lanzamiento: React.FC = () => {
         <div className="space-y-2">
           <div>
             <div className="flex justify-between text-xs text-gray-500 mb-1">
+              <span>Tasa de Contestación</span>
+              <span>{calculatePercentage(data.llamadas_contestadas || 0, data.total_llamadas || 0)}%</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div 
+                className="bg-green-500 h-2 rounded-full" 
+                style={{ width: `${calculatePercentage(data.llamadas_contestadas || 0, data.total_llamadas || 0)}%` }}
+              ></div>
+            </div>
+          </div>
+          <div>
+            <div className="flex justify-between text-xs text-gray-500 mb-1">
               <span>Tasa de Clicks</span>
-              <span>{calculatePercentage(data.clicks_totales, data.enlaces_enviados)}%</span>
+              <span>{calculatePercentage(data.clicks_totales || 0, data.enlaces_enviados || 0)}%</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2">
               <div 
                 className="bg-purple-500 h-2 rounded-full" 
-                style={{ width: `${calculatePercentage(data.clicks_totales, data.enlaces_enviados)}%` }}
+                style={{ width: `${calculatePercentage(data.clicks_totales || 0, data.enlaces_enviados || 0)}%` }}
               ></div>
             </div>
           </div>
