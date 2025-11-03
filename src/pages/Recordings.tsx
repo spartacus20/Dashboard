@@ -192,6 +192,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const [audioCurrentTime, setAudioCurrentTime] = React.useState(0);
   const [audioDuration, setAudioDuration] = React.useState(0);
+  const [audioError, setAudioError] = React.useState<string | null>(null);
   
   // Usar el contexto compartido en lugar de tener estados duplicados
   const { 
@@ -505,6 +506,12 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   // Create audio element on mount
   React.useEffect(() => {
     audioRef.current = new Audio();
+    if (audioRef.current) {
+      audioRef.current.preload = 'metadata';
+      try {
+        audioRef.current.crossOrigin = 'anonymous';
+      } catch {}
+    }
     
     const handleTimeUpdate = () => {
       if (audioRef.current) {
@@ -526,6 +533,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     
     const handleError = () => {
       setPlayingId(null);
+      setAudioError('No se pudo reproducir el audio. Verifica conexión, permisos CORS o que la URL siga activa.');
     };
     
     if (audioRef.current) {
@@ -577,6 +585,8 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       return;
     }
 
+    setAudioError(null);
+
     // Si es la pista actual y se está reproduciendo, la pausamos.
     if (playingId === callId && !audioRef.current.paused) {
       audioRef.current.pause();
@@ -603,6 +613,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       } catch (error) {
         console.error('Error playing audio:', error);
         setPlayingId(null); // Limpiar estado de reproducción en caso de error.
+        setAudioError('El navegador bloqueó la reproducción automática o hubo un error de audio. Intenta presionar Play nuevamente.');
       }
     }
   };
@@ -664,6 +675,57 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       togglePlayPause(selectedCallModal.call_id);
     }
   };
+
+  // Navegación con teclado (flechas arriba/abajo)
+  React.useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Solo activar cuando el sidebar está abierto
+      if (!selectedCallModal) return;
+      
+      // Evitar navegación si el usuario está escribiendo en un input
+      const target = event.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+      
+      // Navegar a la siguiente grabación (flecha abajo)
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        const currentIndex = filteredCalls.findIndex(call => call.call_id === selectedCallModal.call_id);
+        
+        if (currentIndex !== -1 && currentIndex < filteredCalls.length - 1) {
+          const nextCall = filteredCalls[currentIndex + 1];
+          openCallModal(nextCall);
+          
+          // Si la siguiente grabación está en otra página, cambiar de página
+          const nextCallPage = Math.ceil((currentIndex + 2) / itemsPerPage);
+          if (nextCallPage !== currentPage && nextCallPage <= totalPages) {
+            setCurrentPage(nextCallPage);
+          }
+        }
+      }
+      
+      // Navegar a la grabación anterior (flecha arriba)
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        const currentIndex = filteredCalls.findIndex(call => call.call_id === selectedCallModal.call_id);
+        
+        if (currentIndex > 0) {
+          const prevCall = filteredCalls[currentIndex - 1];
+          openCallModal(prevCall);
+          
+          // Si la grabación anterior está en otra página, cambiar de página
+          const prevCallPage = Math.ceil(currentIndex / itemsPerPage);
+          if (prevCallPage !== currentPage && prevCallPage >= 1) {
+            setCurrentPage(prevCallPage);
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedCallModal, filteredCalls, itemsPerPage, currentPage, totalPages]);
 
   // Filter handlers
   const handleDisconnectionReasonFilter = (reason: string | null) => {
@@ -1017,62 +1079,6 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     return count;
   }, [searchTerm, startDate, endDate, statusFilter, disconnectionReasonFilter, durationFilter, phoneNumberFilter, sortOrderFilter]);
 
-  // Custom audio player para el modal
-  const AudioPlayer = () => {
-    if (!selectedCallModal?.recording_url) return null;
-    
-    return (
-      <Card className="bg-white shadow-sm border-slate-200">
-        <CardContent className="p-4">
-          <h3 className="text-lg font-semibold text-slate-800 mb-4">Reproductor</h3>
-          <div className="space-y-4">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={togglePlayPauseModal}
-                className="p-3 bg-gradient-to-r from-blue-600 to-indigo-700 rounded-full hover:from-blue-700 hover:to-indigo-800 transition-colors"
-              >
-                {playingId === selectedCallModal.call_id ? (
-                  <Pause className="w-6 h-6 text-white" />
-                ) : (
-                  <Play className="w-6 h-6 text-white" />
-                )}
-              </button>
-              
-              <a
-                href={selectedCallModal.recording_url}
-                download
-                className="p-3 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors"
-              >
-                <Download className="w-6 h-6 text-slate-700" />
-              </a>
-            </div>
-            
-            {/* Barra de progreso */}
-            <div className="space-y-2">
-              <div className="flex items-center">
-                <input
-                  type="range"
-                  min="0"
-                  max={audioDuration || 100}
-                  value={audioCurrentTime}
-                  onChange={handleProgressChange}
-                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                  style={{
-                    background: `linear-gradient(to right, #2563eb 0%, #2563eb ${(audioCurrentTime / (audioDuration || 1)) * 100}%, #e2e8f0 ${(audioCurrentTime / (audioDuration || 1)) * 100}%, #e2e8f0 100%)`
-                  }}
-                />
-              </div>
-              
-              <div className="flex justify-between text-xs text-slate-600">
-                <span>{formatTime(audioCurrentTime)}</span>
-                <span>{formatTime(audioDuration)}</span>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  };
 
   // Función para aplicar filtros usando la API list-calls
   const applyFilters = React.useCallback(async () => {
@@ -1881,12 +1887,13 @@ export function Recordings({ onNavigate }: RecordingsProps) {
 
       {/* Modal para mostrar toda la información detallada */}
       {selectedCallModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col bg-white shadow-2xl">
-            <CardHeader className="border-b border-slate-200 flex justify-between items-center sticky top-0 bg-gradient-to-r from-slate-50 to-blue-50 p-4">
+        <>
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-40" onClick={closeCallModal} />
+          <div className="fixed top-0 right-0 h-full w-full sm:w-[420px] md:w-[520px] lg:w-[640px] bg-white z-50 shadow-2xl flex flex-col">
+            <div className="border-b border-slate-200 flex justify-between items-center sticky top-0 bg-gradient-to-r from-slate-50 to-blue-50 p-4">
               <div className="flex items-center">
                 <Phone className="w-5 h-5 text-blue-600 mr-2" />
-                <h2 className="text-xl font-bold text-slate-800">{selectedCallModal.call_id}</h2>
+                <h2 className="text-xl font-bold text-slate-800 break-all">{selectedCallModal.call_id}</h2>
               </div>
               <button 
                 onClick={closeCallModal}
@@ -1894,81 +1901,143 @@ export function Recordings({ onNavigate }: RecordingsProps) {
               >
                 <X className="w-6 h-6 text-slate-500 hover:text-slate-700" />
               </button>
-            </CardHeader>
+            </div>
             
-            <div className="overflow-y-auto p-6 flex-grow bg-white">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                <Card className="bg-white shadow-sm border-slate-200">
+            <div className="overflow-y-auto p-6 flex-grow bg-white" onClick={(e) => e.stopPropagation()}>
+              {/* Indicador de navegación con teclado */}
+              <p className="text-sm text-slate-700 mb-2">
+                Usa 
+                <kbd className="mx-1 px-1.5 py-0.5 border border-slate-300 rounded bg-white shadow-sm text-xs font-mono">↑</kbd>
+                y
+                <kbd className="mx-1 px-1.5 py-0.5 border border-slate-300 rounded bg-white shadow-sm text-xs font-mono">↓</kbd>
+                para navegar
+              </p>
+              <div className="border-b border-slate-200 mb-4" />
+              
+              {/* Información Básica - Horizontal */}
+              <Card className="bg-white shadow-sm border-slate-200 mb-6">
+                <CardContent className="p-4">
+                  <h3 className="text-lg font-semibold text-slate-800 mb-4">Información Básica</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    <div>
+                      <p className="text-sm text-slate-600">ID del Agente</p>
+                      <p className="text-slate-800">{selectedCallModal.agent_id}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-slate-600">Estado de la Llamada</p>
+                      <p className="text-slate-800">{selectedCallModal.call_status}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-slate-600">Tipo de Llamada</p>
+                      <p className="text-slate-800">{selectedCallModal.call_type}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-slate-600">Fecha y Hora</p>
+                      <p className="text-slate-800 text-xs">{(() => {
+                        const raw = (selectedCallModal as any).start_time || (selectedCallModal as any).created_at || (selectedCallModal as any).metadata?.created_at || selectedCallModal.start_timestamp;
+                        const d = new Date(raw);
+                        return isNaN(d.getTime()) ? '' : d.toLocaleString('es-ES', { timeZone: 'UTC' });
+                      })()}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-slate-600">Duración</p>
+                      <p className="text-slate-800 flex items-center gap-2">
+                        <Clock className="w-4 h-4" />
+                        {getDuration(selectedCallModal)}
+                      </p>
+                    </div>
+                    {/* Metadatos adicionales si están disponibles */}
+                    {selectedCallModal.from_number && (
+                      <div>
+                        <p className="text-sm text-slate-600">Número de Origen</p>
+                        <p className="text-slate-800">{selectedCallModal.from_number}</p>
+                      </div>
+                    )}
+                    {selectedCallModal.to_number && (
+                      <div>
+                        <p className="text-sm text-slate-600">Número de Destino</p>
+                        <p className="text-slate-800">{selectedCallModal.to_number}</p>
+                      </div>
+                    )}
+                    {selectedCallModal.metadata?.direction && (
+                      <div>
+                        <p className="text-sm text-slate-600">Dirección</p>
+                        <p className="text-slate-800 capitalize">{selectedCallModal.metadata.direction}</p>
+                      </div>
+                    )}
+                    {selectedCallModal.call_cost && (
+                      <div>
+                        <p className="text-sm text-slate-600">Costo Total</p>
+                        <p className="text-slate-800">{formatCost(selectedCallModal.call_cost.total_cost || 0)}</p>
+                      </div>
+                    )}
+                    {selectedCallModal.disconnection_reason && (
+                      <div>
+                        <p className="text-sm text-slate-600">Razón de Desconexión</p>
+                        <p className="text-slate-800">{selectedCallModal.disconnection_reason}</p>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Reproductor de audio - Horizontal */}
+              {selectedCallModal.recording_url && (
+                <Card className="bg-white shadow-sm border-slate-200 mb-6">
                   <CardContent className="p-4">
-                    <h3 className="text-lg font-semibold text-slate-800 mb-4">Información Básica</h3>
-                    <div className="space-y-3">
-                      <div>
-                        <p className="text-sm text-slate-600">ID del Agente</p>
-                        <p className="text-slate-800">{selectedCallModal.agent_id}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-slate-600">Estado de la Llamada</p>
-                        <p className="text-slate-800">{selectedCallModal.call_status}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-slate-600">Tipo de Llamada</p>
-                        <p className="text-slate-800">{selectedCallModal.call_type}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-slate-600">Fecha y Hora</p>
-                        <p className="text-slate-800">{(() => {
-                          const raw = (selectedCallModal as any).start_time || (selectedCallModal as any).created_at || (selectedCallModal as any).metadata?.created_at || selectedCallModal.start_timestamp;
-                          const d = new Date(raw);
-                          return isNaN(d.getTime()) ? '' : d.toLocaleString('es-ES', { timeZone: 'UTC' });
-                        })()}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-slate-600">Duración</p>
-                        <p className="text-slate-800 flex items-center gap-2">
-                          <Clock className="w-4 h-4" />
-                          {getDuration(selectedCallModal)}
-                        </p>
-                      </div>
-                      {/* Metadatos adicionales si están disponibles */}
-                      {selectedCallModal.from_number && (
-                        <div>
-                          <p className="text-sm text-slate-600">Número de Origen</p>
-                          <p className="text-slate-800">{selectedCallModal.from_number}</p>
+                    <h3 className="text-lg font-semibold text-slate-800 mb-4">Reproductor</h3>
+                    <div className="flex items-center gap-4 flex-wrap">
+                      <button
+                        onClick={togglePlayPauseModal}
+                        className="p-3 bg-gradient-to-r from-blue-600 to-indigo-700 rounded-full hover:from-blue-700 hover:to-indigo-800 transition-colors"
+                      >
+                        {playingId === selectedCallModal.call_id ? (
+                          <Pause className="w-6 h-6 text-white" />
+                        ) : (
+                          <Play className="w-6 h-6 text-white" />
+                        )}
+                      </button>
+                      
+                      <a
+                        href={selectedCallModal.recording_url}
+                        download
+                        className="p-3 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors"
+                      >
+                        <Download className="w-6 h-6 text-slate-700" />
+                      </a>
+                      
+                      {audioError && (
+                        <div className="text-red-600 text-sm bg-red-50 border border-red-200 rounded px-3 py-2">
+                          {audioError}
                         </div>
                       )}
-                      {selectedCallModal.to_number && (
-                        <div>
-                          <p className="text-sm text-slate-600">Número de Destino</p>
-                          <p className="text-slate-800">{selectedCallModal.to_number}</p>
+                      
+                      <div className="flex-1 min-w-[200px]">
+                        <div className="flex items-center">
+                          <input
+                            type="range"
+                            min="0"
+                            max={audioDuration || 100}
+                            value={audioCurrentTime}
+                            onChange={handleProgressChange}
+                            className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                            style={{
+                              background: `linear-gradient(to right, #2563eb 0%, #2563eb ${(audioCurrentTime / (audioDuration || 1)) * 100}%, #e2e8f0 ${(audioCurrentTime / (audioDuration || 1)) * 100}%, #e2e8f0 100%)`
+                            }}
+                          />
                         </div>
-                      )}
-                      {selectedCallModal.metadata?.direction && (
-                        <div>
-                          <p className="text-sm text-slate-600">Dirección</p>
-                          <p className="text-slate-800 capitalize">{selectedCallModal.metadata.direction}</p>
+                        <div className="flex justify-between text-xs text-slate-600 mt-1">
+                          <span>{formatTime(audioCurrentTime)}</span>
+                          <span>{formatTime(audioDuration)}</span>
                         </div>
-                      )}
-                      {selectedCallModal.call_cost && (
-                        <div>
-                          <p className="text-sm text-slate-600">Costo Total</p>
-                          <p className="text-slate-800">{formatCost(selectedCallModal.call_cost.total_cost || 0)}</p>
-                        </div>
-                      )}
-                      {selectedCallModal.disconnection_reason && (
-                        <div>
-                          <p className="text-sm text-slate-600">Razón de Desconexión</p>
-                          <p className="text-slate-800">{selectedCallModal.disconnection_reason}</p>
-                        </div>
-                      )}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
-                
-                <div className="space-y-6">
-                  {/* Reproductor de audio con barra de progreso */}
-                  {selectedCallModal.recording_url && <AudioPlayer />}
-                  
-                  {selectedCallModal.call_analysis && (
+              )}
+              
+              {/* Análisis de la Llamada */}
+              {selectedCallModal.call_analysis && (
                     <Card className="bg-white shadow-sm border-slate-200">
                       <CardContent className="p-4">
                         <h3 className="text-lg font-semibold text-slate-800 mb-4">Análisis de la Llamada</h3>
@@ -2006,9 +2075,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                         </div>
                       </CardContent>
                     </Card>
-                  )}
-                </div>
-              </div>
+              )}
               
               {/* Sección de la transcripción con formato mejorado */}
               {selectedCallModal.transcript && (
@@ -2074,8 +2141,8 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                 </Card>
               )}
             </div>
-          </Card>
-        </div>
+          </div>
+        </>
       )}
 
       {/* Modal de filtros de fechas */}
