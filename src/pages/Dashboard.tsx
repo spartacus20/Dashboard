@@ -440,10 +440,13 @@ export function Dashboard({
         console.log('Recargando datos del dashboard con fechas personalizadas:', dates);
         loadDashboardData(dates.fechaInicio, dates.fechaFin, 'custom');
       }
-    } else {
+    } else if (timePeriod === 'today' || timePeriod === 'week' || timePeriod === 'month') {
       // Para otros períodos (today, week, month), usar endpoints específicos
       console.log('Recargando datos del dashboard para período:', timePeriod);
       loadDashboardData(undefined, undefined, timePeriod);
+    } else if (timePeriod === 'custom') {
+      // No cargar nada hasta que ambas fechas estén seleccionadas
+      console.log('Período personalizado seleccionado sin fechas completas: esperando selección de rangos');
     }
   }, [timePeriod, customStartDate, customEndDate, loadDashboardData]);
 

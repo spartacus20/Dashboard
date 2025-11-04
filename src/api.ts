@@ -10,6 +10,7 @@ const BASE_URL = 'http://localhost:3000';
 const WEBHOOK_URL = BASE_URL;
 const GET_CLIENT_WEBHOOK_URL = IS_PRODUCTION ? 'https://n8n.aiagencyusa.com/webhook/get-client' : `${BASE_URL}/get-client`;
 const GET_DASHBOARD_WEBHOOK_URL = `${BASE_URL}/api/dashboard/get-dashboard`;
+const GET_DASHBOARD_CUSTOM_WEBHOOK_URL = `${BASE_URL}/api/dashboard/get-dashboard-custom`;
 const GET_AGENDAS_WEBHOOK_URL =  `${BASE_URL}/api/agenda/get-agenda`;
 const API_URL = 'https://api.retellai.com/v2/list-calls';
 
@@ -574,13 +575,23 @@ export async function getDashboardData(
       client_id: actualClientId
     };
     
-    // Agregar fechas al body si se proporcionan
-    if (fechaInicio && fechaFin) {
-      requestBody.fecha_inicio = fechaInicio;
-      requestBody.fecha_fin = fechaFin;
+    // Completar fechaFin si sólo viene fechaInicio
+    let effectiveFechaInicio = fechaInicio;
+    let effectiveFechaFin = fechaFin;
+    if (effectiveFechaInicio && !effectiveFechaFin) {
+      effectiveFechaFin = new Date().toISOString();
     }
     
-    const response = await fetch(GET_DASHBOARD_WEBHOOK_URL, {
+    // Agregar fechas al body si se proporcionan (tras autocompletar)
+    if (effectiveFechaInicio) requestBody.fecha_inicio = effectiveFechaInicio;
+    if (effectiveFechaFin) requestBody.fecha_fin = effectiveFechaFin;
+    
+    // Usar endpoint custom cuando hay al menos fechaInicio
+    const url = (effectiveFechaInicio)
+      ? GET_DASHBOARD_CUSTOM_WEBHOOK_URL
+      : GET_DASHBOARD_WEBHOOK_URL;
+
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -598,6 +609,48 @@ export async function getDashboardData(
     return transformDashboardData(data);
   } catch (error) {
     console.error('Error al obtener datos del dashboard:', error);
+    throw error;
+  }
+}
+
+// Nuevo: obtener datos del dashboard usando el endpoint custom explícitamente
+export async function getDashboardCustom(
+  clientId?: string,
+  fechaInicio?: string,
+  fechaFin?: string
+): Promise<any> {
+  try {
+    const actualClientId = clientId || getClientId();
+    if (!actualClientId) {
+      throw new Error('No se encontró client_id. Por favor, inicia sesión nuevamente.');
+    }
+
+    if (!fechaInicio || !fechaFin) {
+      throw new Error('fecha_inicio y fecha_fin son requeridas para getDashboardCustom');
+    }
+
+    const requestBody: any = {
+      client_id: actualClientId,
+      fecha_inicio: fechaInicio,
+      fecha_fin: fechaFin
+    };
+
+    const response = await fetch(GET_DASHBOARD_CUSTOM_WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Error al obtener datos del dashboard custom: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return transformDashboardData(data);
+  } catch (error) {
+    console.error('Error en getDashboardCustom:', error);
     throw error;
   }
 }

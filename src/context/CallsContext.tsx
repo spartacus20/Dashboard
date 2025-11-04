@@ -566,6 +566,12 @@ export function CallsProvider({ children }: CallsProviderProps) {
     try {
       console.log('Cargando datos del dashboard con período:', { timePeriod, fechaInicio, fechaFin });
       
+      // Salvaguarda: en personalizado, no llamar si no hay ambas fechas
+      if (timePeriod === 'custom' && (!fechaInicio || !fechaFin)) {
+        console.log('Custom sin rango completo: abortando carga hasta tener ambas fechas');
+        return;
+      }
+
       let data;
       
       // Determinar qué endpoint usar según el período
