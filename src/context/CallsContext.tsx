@@ -375,6 +375,12 @@ export function CallsProvider({ children }: CallsProviderProps) {
       setCurrentPage(page);
       setLastUpdated(Date.now());
       
+      // Limpiar error si la carga fue exitosa (especialmente en la primera página)
+      // Incluso si no hay llamadas, si la petición fue exitosa, no hay error
+      if (page === 1) {
+        setError(null);
+      }
+      
       return newCalls;
     } catch (err) {
       console.error(`Error cargando página ${page}:`, err);
@@ -561,6 +567,12 @@ export function CallsProvider({ children }: CallsProviderProps) {
 
   // Función para cargar los datos del dashboard
   const loadDashboardData = useCallback(async (fechaInicio?: string, fechaFin?: string, timePeriod?: string) => {
+    // No intentar cargar si no tenemos clientId o apiKey
+    if (!clientId || !apiKey) {
+      console.log('⏳ No se puede cargar dashboard: faltan clientId o apiKey');
+      return;
+    }
+    
     setLoadingDashboardData(true);
     
     try {
@@ -575,26 +587,41 @@ export function CallsProvider({ children }: CallsProviderProps) {
       let data;
       
       // Determinar qué endpoint usar según el período
+      // Pasar clientId explícitamente para evitar depender del localStorage
       if (timePeriod === 'today') {
-        data = await getDashboardToday();
+        data = await getDashboardToday(clientId);
       } else if (timePeriod === 'week') {
-        data = await getDashboardWeek();
+        data = await getDashboardWeek(clientId);
       } else if (timePeriod === 'month') {
-        data = await getDashboardMonth();
+        data = await getDashboardMonth(clientId);
       } else {
         // Usar el endpoint genérico con fechas
-        data = await getDashboardData(undefined, fechaInicio, fechaFin);
+        data = await getDashboardData(clientId, fechaInicio, fechaFin);
       }
       
       setDashboardData(data);
       console.log('Datos del dashboard cargados:', data);
+      // Limpiar error si la carga fue exitosa
+      setError(null);
     } catch (err) {
       console.error('Error al cargar datos del dashboard:', err);
-      setError('Error al cargar datos del dashboard');
+      // Solo establecer error si realmente falló y tenemos los datos necesarios
+      // No establecer error si es un problema de inicialización (clientId o apiKey faltantes)
+      if (clientId && apiKey) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        // Solo establecer error si no es un error de "no se encontró client_id"
+        if (!errorMessage.includes('No se encontró client_id') && !errorMessage.includes('client_id')) {
+          setError('Error al cargar datos del dashboard');
+        } else {
+          console.log('⚠️ Error del dashboard ignorado (problema de inicialización):', errorMessage);
+        }
+      } else {
+        console.log('⚠️ Error del dashboard ignorado (faltan clientId o apiKey)');
+      }
     } finally {
       setLoadingDashboardData(false);
     }
-  }, []);
+  }, [clientId, apiKey]);
 
   // Cargar datos cuando se monta el componente y tenemos la API key
   useEffect(() => {
@@ -603,12 +630,16 @@ export function CallsProvider({ children }: CallsProviderProps) {
     }
   }, [loadAllCalls, allCalls.length, loadingAllCalls, apiKey]);
 
-  // Cargar datos del dashboard cuando tenemos clientId (por defecto cargar datos de hoy)
+  // Cargar datos del dashboard cuando tenemos clientId y apiKey disponibles
   useEffect(() => {
-    if (clientId && !dashboardData && !loadingDashboardData) {
+    // Solo cargar si tenemos clientId y apiKey, y no hay datos cargados ni se está cargando
+    if (clientId && apiKey && !dashboardData && !loadingDashboardData) {
+      console.log('🔄 Cargando datos del dashboard con clientId y apiKey disponibles');
       loadDashboardData(undefined, undefined, 'today');
+    } else if (!clientId || !apiKey) {
+      console.log('⏳ Esperando clientId y apiKey antes de cargar dashboard...', { clientId: !!clientId, apiKey: !!apiKey });
     }
-  }, [clientId, dashboardData, loadingDashboardData, loadDashboardData]);
+  }, [clientId, apiKey, dashboardData, loadingDashboardData, loadDashboardData]);
 
   // agendaEnabled y callsEnabled ahora vienen desde la configuración del cliente
 

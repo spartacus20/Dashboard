@@ -456,14 +456,27 @@ export function Recordings({ onNavigate }: RecordingsProps) {
 
   // Iniciar la carga de datos la primera vez que se monta el componente
   React.useEffect(() => {
-    // Solo cargamos si no hay datos, no está cargando ya, y no estamos aplicando filtros manualmente
-    if (allCalls.length === 0 && !loadingAllCalls && !isApplyingFilters.current) {
+    // Solo cargamos si:
+    // 1. Tenemos apiKey y clientId disponibles (necesarios para hacer la petición)
+    // 2. No hay datos cargados
+    // 3. No está cargando ya
+    // 4. No estamos aplicando filtros manualmente
+    if (
+      apiKey && 
+      clientId && 
+      allCalls.length === 0 && 
+      !loadingAllCalls && 
+      !isApplyingFilters.current
+    ) {
+      console.log('🔄 Iniciando carga de grabaciones con apiKey y clientId disponibles');
       loadAllCalls();
+    } else if (!apiKey || !clientId) {
+      console.log('⏳ Esperando apiKey y clientId antes de cargar grabaciones...', { apiKey: !!apiKey, clientId: !!clientId });
     }
     
     // Sincronizamos los estados locales con el contexto
     setError(contextError);
-  }, [allCalls.length, loadingAllCalls, contextError]); // Removido loadAllCalls de las dependencias
+  }, [allCalls.length, loadingAllCalls, contextError, apiKey, clientId, loadAllCalls]); // Agregado apiKey, clientId y loadAllCalls a las dependencias
 
   // Actualizar las llamadas mostradas cuando cambia la página
   React.useEffect(() => {
