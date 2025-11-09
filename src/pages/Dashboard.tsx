@@ -5,6 +5,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { Chart } from "../components/ui/chart";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
+import {
   ResponsiveContainer,
   BarChart,
   Bar,
@@ -308,8 +316,18 @@ export function Dashboard({
       return 'today';
     }
   });
+  const [selectValue, setSelectValue] = useState<string>(() => {
+    try {
+      return localStorage.getItem('dashboard_time_period') || 'today';
+    } catch {
+      return 'today';
+    }
+  });
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
+  const [isCustomDateDialogOpen, setIsCustomDateDialogOpen] = useState<boolean>(false);
+  const [tempStartDate, setTempStartDate] = useState<string>('');
+  const [tempEndDate, setTempEndDate] = useState<string>('');
   
   // Estados para filtro de rango de horas (agendamientos)
   const [hourRangeStart, setHourRangeStart] = useState<string>('8');
@@ -372,8 +390,12 @@ export function Dashboard({
   React.useEffect(() => {
     try {
       localStorage.setItem('dashboard_time_period', timePeriod);
+      // Sincronizar selectValue con timePeriod cuando no es 'custom' o cuando se confirma
+      if (timePeriod !== 'custom' || (customStartDate && customEndDate)) {
+        setSelectValue(timePeriod);
+      }
     } catch {}
-  }, [timePeriod]);
+  }, [timePeriod, customStartDate, customEndDate]);
 
   // Efecto para cargar datos la primera vez con el período seleccionado
   React.useEffect(() => {
@@ -425,6 +447,49 @@ export function Dashboard({
     }
   };
 
+  // Función para manejar el cambio de período
+  const handleTimePeriodChange = (newPeriod: string) => {
+    if (newPeriod === 'custom') {
+      // Si se selecciona personalizado, abrir el dialog
+      setTempStartDate(customStartDate);
+      setTempEndDate(customEndDate);
+      setIsCustomDateDialogOpen(true);
+      // Actualizar selectValue para que el Select muestre "custom" visualmente
+      // pero no cambiar timePeriod hasta confirmar las fechas
+      setSelectValue('custom');
+    } else {
+      // Para otros períodos, cambiar directamente
+      setTimePeriod(newPeriod);
+      setSelectValue(newPeriod);
+    }
+  };
+
+  // Función para confirmar las fechas personalizadas
+  const handleConfirmCustomDates = () => {
+    if (tempStartDate && tempEndDate && tempStartDate <= tempEndDate) {
+      setCustomStartDate(tempStartDate);
+      setCustomEndDate(tempEndDate);
+      setTimePeriod('custom');
+      setSelectValue('custom');
+      setIsCustomDateDialogOpen(false);
+      // Resetear las fechas temporales
+      setTempStartDate('');
+      setTempEndDate('');
+    }
+  };
+
+  // Función para cancelar el dialog
+  const handleCancelCustomDates = () => {
+    setIsCustomDateDialogOpen(false);
+    // Resetear las fechas temporales
+    setTempStartDate('');
+    setTempEndDate('');
+    // Revertir el selectValue al período anterior si no había fechas confirmadas
+    if (!customStartDate || !customEndDate) {
+      setSelectValue(timePeriod);
+    }
+  };
+
   // Efecto para recargar datos cuando cambia el filtro de período
   React.useEffect(() => {
     if (!loadDashboardData) return;
@@ -444,9 +509,6 @@ export function Dashboard({
       // Para otros períodos (today, week, month), usar endpoints específicos
       console.log('Recargando datos del dashboard para período:', timePeriod);
       loadDashboardData(undefined, undefined, timePeriod);
-    } else if (timePeriod === 'custom') {
-      // No cargar nada hasta que ambas fechas estén seleccionadas
-      console.log('Período personalizado seleccionado sin fechas completas: esperando selección de rangos');
     }
   }, [timePeriod, customStartDate, customEndDate, loadDashboardData]);
 
@@ -657,7 +719,7 @@ export function Dashboard({
             <label htmlFor="timePeriod" className="text-sm font-medium text-slate-700">
               Período:
             </label>
-            <Select value={timePeriod} onValueChange={setTimePeriod}>
+            <Select value={selectValue} onValueChange={handleTimePeriodChange}>
               <SelectTrigger className="w-48">
                 <SelectValue placeholder="Seleccionar período" />
               </SelectTrigger>
@@ -671,33 +733,17 @@ export function Dashboard({
             </Select>
           </div>
           
-          {timePeriod === 'custom' && (
-            <div className="flex gap-4 items-center">
-              <div className="flex items-center gap-2">
-                <label htmlFor="startDate" className="text-sm font-medium text-slate-700">
-                  Desde:
-                </label>
-                <input
-                  type="date"
-                  id="startDate"
-                  value={customStartDate}
-                  onChange={(e) => setCustomStartDate(e.target.value)}
-                  className="px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <label htmlFor="endDate" className="text-sm font-medium text-slate-700">
-                  Hasta:
-                </label>
-                <input
-                  type="date"
-                  id="endDate"
-                  value={customEndDate}
-                  onChange={(e) => setCustomEndDate(e.target.value)}
-                  className="px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
+          {timePeriod === 'custom' && customStartDate && customEndDate && (
+            <Button
+              onClick={() => {
+                setTempStartDate(customStartDate);
+                setTempEndDate(customEndDate);
+                setIsCustomDateDialogOpen(true);
+              }}
+              className="text-sm bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              Seleccionar rango de fechas
+            </Button>
           )}
           
           <div className="text-xs text-slate-600">
@@ -707,9 +753,74 @@ export function Dashboard({
             {timePeriod === 'month' && 'Mostrando datos del último mes'}
             {timePeriod === 'custom' && customStartDate && customEndDate && 
               `Mostrando datos del ${customStartDate} al ${customEndDate}`}
+            {timePeriod === 'custom' && (!customStartDate || !customEndDate) && 
+              'Selecciona un rango de fechas personalizado'}
           </div>
         </div>
       )}
+
+      {/* Dialog para seleccionar fechas personalizadas */}
+      <Dialog open={isCustomDateDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          // Si se cierra el dialog sin confirmar, cancelar
+          handleCancelCustomDates();
+        }
+      }}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Seleccionar Rango de Fechas Personalizado</DialogTitle>
+            <DialogDescription>
+              Elige el rango de fechas para filtrar los datos del dashboard
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="flex flex-col gap-2">
+              <label htmlFor="dialogStartDate" className="text-sm font-medium text-slate-700">
+                Fecha de inicio:
+              </label>
+              <input
+                type="date"
+                id="dialogStartDate"
+                value={tempStartDate}
+                onChange={(e) => setTempStartDate(e.target.value)}
+                className="px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label htmlFor="dialogEndDate" className="text-sm font-medium text-slate-700">
+                Fecha de fin:
+              </label>
+              <input
+                type="date"
+                id="dialogEndDate"
+                value={tempEndDate}
+                onChange={(e) => setTempEndDate(e.target.value)}
+                min={tempStartDate || undefined}
+                className="px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            {tempStartDate && tempEndDate && tempStartDate > tempEndDate && (
+              <div className="text-sm text-red-600 bg-red-50 p-2 rounded border border-red-200">
+                La fecha de inicio no puede ser posterior a la fecha de fin
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={handleCancelCustomDates}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleConfirmCustomDates}
+              disabled={!tempStartDate || !tempEndDate || tempStartDate > tempEndDate}
+            >
+              Aplicar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       
       {loading ? (
         <DashboardSkeleton />

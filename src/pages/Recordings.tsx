@@ -188,6 +188,9 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   const [selectedCallModal, setSelectedCallModal] = React.useState<DetailedRetellCall | null>(null);
   const [selectedCall, setSelectedCall] = React.useState<string | null>(null);
   const [playingId, setPlayingId] = React.useState<string | null>(null);
+  const [isModalVisible, setIsModalVisible] = React.useState(false);
+  const [shouldRenderModal, setShouldRenderModal] = React.useState(false);
+  const [modalCallForTransition, setModalCallForTransition] = React.useState<DetailedRetellCall | null>(null);
   const [searchTerm, setSearchTerm] = React.useState('');
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const [audioCurrentTime, setAudioCurrentTime] = React.useState(0);
@@ -617,6 +620,32 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       }
     }
   };
+
+  // Manejar la transición del modal cuando se abre o cierra
+  React.useEffect(() => {
+    if (selectedCallModal) {
+      // Cuando hay un modal seleccionado, guardar la referencia y montarlo
+      setModalCallForTransition(selectedCallModal);
+      setShouldRenderModal(true);
+      setIsModalVisible(false);
+      // Activar la transición después de que el DOM esté listo
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setIsModalVisible(true);
+        });
+      });
+    } else if (modalCallForTransition) {
+      // Cuando se cierra, mantener la referencia del call para la transición
+      // Iniciar la transición de salida
+      setIsModalVisible(false);
+      // Desmontar después de que termine la transición
+      const timer = setTimeout(() => {
+        setShouldRenderModal(false);
+        setModalCallForTransition(null);
+      }, 300); // Duración de la transición
+      return () => clearTimeout(timer);
+    }
+  }, [selectedCallModal, modalCallForTransition]);
 
   // Modal functionality
   const openCallModal = (call: DetailedRetellCall) => {
@@ -1886,14 +1915,25 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       </Card>
 
       {/* Modal para mostrar toda la información detallada */}
-      {selectedCallModal && (
+      {shouldRenderModal && modalCallForTransition && (
         <>
-          <div className="fixed inset-0 bg-black bg-opacity-50 z-40" onClick={closeCallModal} />
-          <div className="fixed top-0 right-0 h-full w-full sm:w-[420px] md:w-[520px] lg:w-[640px] bg-white z-50 shadow-2xl flex flex-col">
+          {/* Overlay con transición de opacidad */}
+          <div 
+            className={`fixed inset-0 bg-black z-40 transition-opacity duration-300 ease-in-out ${
+              isModalVisible ? 'opacity-50' : 'opacity-0 pointer-events-none'
+            }`}
+            onClick={closeCallModal}
+          />
+          {/* Modal con transición de deslizamiento de derecha a izquierda */}
+          <div 
+            className={`fixed top-0 right-0 h-full w-full sm:w-[420px] md:w-[520px] lg:w-[640px] bg-white z-50 shadow-2xl flex flex-col transform transition-transform duration-300 ease-in-out ${
+              isModalVisible ? 'translate-x-0' : 'translate-x-full'
+            }`}
+          >
             <div className="border-b border-slate-200 flex justify-between items-center sticky top-0 bg-gradient-to-r from-slate-50 to-blue-50 p-4">
               <div className="flex items-center">
                 <Phone className="w-5 h-5 text-blue-600 mr-2" />
-                <h2 className="text-xl font-bold text-slate-800 break-all">{selectedCallModal.call_id}</h2>
+                <h2 className="text-xl font-bold text-slate-800 break-all">{modalCallForTransition.call_id}</h2>
               </div>
               <button 
                 onClick={closeCallModal}
@@ -1921,20 +1961,20 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                     <div>
                       <p className="text-sm text-slate-600">ID del Agente</p>
-                      <p className="text-slate-800">{selectedCallModal.agent_id}</p>
+                      <p className="text-slate-800">{modalCallForTransition.agent_id}</p>
                     </div>
                     <div>
                       <p className="text-sm text-slate-600">Estado de la Llamada</p>
-                      <p className="text-slate-800">{selectedCallModal.call_status}</p>
+                      <p className="text-slate-800">{modalCallForTransition.call_status}</p>
                     </div>
                     <div>
                       <p className="text-sm text-slate-600">Tipo de Llamada</p>
-                      <p className="text-slate-800">{selectedCallModal.call_type}</p>
+                      <p className="text-slate-800">{modalCallForTransition.call_type}</p>
                     </div>
                     <div>
                       <p className="text-sm text-slate-600">Fecha y Hora</p>
                       <p className="text-slate-800 text-xs">{(() => {
-                        const raw = (selectedCallModal as any).start_time || (selectedCallModal as any).created_at || (selectedCallModal as any).metadata?.created_at || selectedCallModal.start_timestamp;
+                        const raw = (modalCallForTransition as any).start_time || (modalCallForTransition as any).created_at || (modalCallForTransition as any).metadata?.created_at || modalCallForTransition.start_timestamp;
                         const d = new Date(raw);
                         return isNaN(d.getTime()) ? '' : d.toLocaleString('es-ES', { timeZone: 'UTC' });
                       })()}</p>
@@ -1943,38 +1983,38 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                       <p className="text-sm text-slate-600">Duración</p>
                       <p className="text-slate-800 flex items-center gap-2">
                         <Clock className="w-4 h-4" />
-                        {getDuration(selectedCallModal)}
+                        {getDuration(modalCallForTransition)}
                       </p>
                     </div>
                     {/* Metadatos adicionales si están disponibles */}
-                    {selectedCallModal.from_number && (
+                    {modalCallForTransition.from_number && (
                       <div>
                         <p className="text-sm text-slate-600">Número de Origen</p>
-                        <p className="text-slate-800">{selectedCallModal.from_number}</p>
+                        <p className="text-slate-800">{modalCallForTransition.from_number}</p>
                       </div>
                     )}
-                    {selectedCallModal.to_number && (
+                    {modalCallForTransition.to_number && (
                       <div>
                         <p className="text-sm text-slate-600">Número de Destino</p>
-                        <p className="text-slate-800">{selectedCallModal.to_number}</p>
+                        <p className="text-slate-800">{modalCallForTransition.to_number}</p>
                       </div>
                     )}
-                    {selectedCallModal.metadata?.direction && (
+                    {modalCallForTransition.metadata?.direction && (
                       <div>
                         <p className="text-sm text-slate-600">Dirección</p>
-                        <p className="text-slate-800 capitalize">{selectedCallModal.metadata.direction}</p>
+                        <p className="text-slate-800 capitalize">{modalCallForTransition.metadata.direction}</p>
                       </div>
                     )}
-                    {selectedCallModal.call_cost && (
+                    {modalCallForTransition.call_cost && (
                       <div>
                         <p className="text-sm text-slate-600">Costo Total</p>
-                        <p className="text-slate-800">{formatCost(selectedCallModal.call_cost.total_cost || 0)}</p>
+                        <p className="text-slate-800">{formatCost(modalCallForTransition.call_cost.total_cost || 0)}</p>
                       </div>
                     )}
-                    {selectedCallModal.disconnection_reason && (
+                    {modalCallForTransition.disconnection_reason && (
                       <div>
                         <p className="text-sm text-slate-600">Razón de Desconexión</p>
-                        <p className="text-slate-800">{selectedCallModal.disconnection_reason}</p>
+                        <p className="text-slate-800">{modalCallForTransition.disconnection_reason}</p>
                       </div>
                     )}
                   </div>
@@ -1982,7 +2022,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
               </Card>
 
               {/* Reproductor de audio - Horizontal */}
-              {selectedCallModal.recording_url && (
+              {modalCallForTransition.recording_url && (
                 <Card className="bg-white shadow-sm border-slate-200 mb-6">
                   <CardContent className="p-4">
                     <h3 className="text-lg font-semibold text-slate-800 mb-4">Reproductor</h3>
@@ -1991,7 +2031,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                         onClick={togglePlayPauseModal}
                         className="p-3 bg-gradient-to-r from-blue-600 to-indigo-700 rounded-full hover:from-blue-700 hover:to-indigo-800 transition-colors"
                       >
-                        {playingId === selectedCallModal.call_id ? (
+                        {playingId === modalCallForTransition.call_id ? (
                           <Pause className="w-6 h-6 text-white" />
                         ) : (
                           <Play className="w-6 h-6 text-white" />
@@ -1999,7 +2039,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                       </button>
                       
                       <a
-                        href={selectedCallModal.recording_url}
+                        href={modalCallForTransition.recording_url}
                         download
                         className="p-3 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors"
                       >
@@ -2037,33 +2077,33 @@ export function Recordings({ onNavigate }: RecordingsProps) {
               )}
               
               {/* Análisis de la Llamada */}
-              {selectedCallModal.call_analysis && (
+              {modalCallForTransition.call_analysis && (
                     <Card className="bg-white shadow-sm border-slate-200">
                       <CardContent className="p-4">
                         <h3 className="text-lg font-semibold text-slate-800 mb-4">Análisis de la Llamada</h3>
                         <div className="space-y-3">
-                          {selectedCallModal.call_analysis.sentiment && (
+                          {modalCallForTransition.call_analysis.sentiment && (
                             <div>
                               <p className="text-sm text-slate-600">Sentimiento</p>
-                              <p className="text-slate-800">{selectedCallModal.call_analysis.sentiment}</p>
+                              <p className="text-slate-800">{modalCallForTransition.call_analysis.sentiment}</p>
                             </div>
                           )}
-                          {selectedCallModal.call_analysis.topics && selectedCallModal.call_analysis.topics.length > 0 && (
+                          {modalCallForTransition.call_analysis.topics && modalCallForTransition.call_analysis.topics.length > 0 && (
                             <div>
                               <p className="text-sm text-slate-600">Temas</p>
                               <div className="flex flex-wrap gap-2 mt-1">
-                                {selectedCallModal.call_analysis.topics.map((topic, index) => (
+                                {modalCallForTransition.call_analysis.topics.map((topic, index) => (
                                   <Badge key={index} variant="secondary">{topic}</Badge>
                                 ))}
                               </div>
                             </div>
                           )}
                           {/* Datos de análisis personalizados (si existen) */}
-                          {selectedCallModal.call_analysis?.custom_analysis_data && Object.keys(selectedCallModal.call_analysis.custom_analysis_data).length > 0 && (
+                          {modalCallForTransition.call_analysis?.custom_analysis_data && Object.keys(modalCallForTransition.call_analysis.custom_analysis_data).length > 0 && (
                             <div>
                               <p className="text-sm text-slate-600">Datos de Análisis Personalizados</p>
                               <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
-                                {Object.entries(selectedCallModal.call_analysis.custom_analysis_data).map(([key, value]) => (
+                                {Object.entries(modalCallForTransition.call_analysis.custom_analysis_data).map(([key, value]) => (
                                   <div key={key} className="flex justify-between border-b border-slate-200 py-2 last:border-0">
                                     <span className="text-slate-700 font-medium capitalize">{key}:</span>
                                     <span className="text-slate-800">{String(value)}</span>
@@ -2078,14 +2118,14 @@ export function Recordings({ onNavigate }: RecordingsProps) {
               )}
               
               {/* Sección de la transcripción con formato mejorado */}
-              {selectedCallModal.transcript && (
+              {modalCallForTransition.transcript && (
                 <Card className="mb-6 bg-white shadow-sm border-slate-200">
                   <CardHeader className="pb-2">
                     <h3 className="text-lg font-semibold text-slate-800">Transcripción</h3>
                   </CardHeader>
                   <CardContent className="p-4">
                     <div className="space-y-3">
-                      {selectedCallModal.transcript.split('\n').map((line, index) => {
+                      {modalCallForTransition.transcript.split('\n').map((line, index) => {
                         const isAssistant = line.toLowerCase().startsWith('asistente:') || 
                                            line.toLowerCase().startsWith('agente:') || 
                                            line.toLowerCase().startsWith('ai:') ||
@@ -2113,14 +2153,14 @@ export function Recordings({ onNavigate }: RecordingsProps) {
               )}
               
               {/* Metadata de la llamada */}
-              {selectedCallModal.metadata && Object.keys(selectedCallModal.metadata).length > 0 && (
+              {modalCallForTransition.metadata && Object.keys(modalCallForTransition.metadata).length > 0 && (
                 <Card className="mb-6 bg-white shadow-sm border-slate-200">
                   <CardHeader className="pb-2">
                     <h3 className="text-lg font-semibold text-slate-800">Metadata de la Llamada</h3>
                   </CardHeader>
                   <CardContent className="p-4">
                     <pre className="bg-slate-50 p-4 rounded-lg text-slate-800 text-xs overflow-auto max-h-96">
-                      {JSON.stringify(selectedCallModal.metadata, null, 2)}
+                      {JSON.stringify(modalCallForTransition.metadata, null, 2)}
                     </pre>
                   </CardContent>
                 </Card>
@@ -2128,14 +2168,14 @@ export function Recordings({ onNavigate }: RecordingsProps) {
 
 
               {/* Variables dinámicas */}
-              {selectedCallModal.metadata?.retell_llm_dynamic_variables && Object.keys(selectedCallModal.metadata.retell_llm_dynamic_variables).length > 0 && (
+              {modalCallForTransition.metadata?.retell_llm_dynamic_variables && Object.keys(modalCallForTransition.metadata.retell_llm_dynamic_variables).length > 0 && (
                 <Card className="mb-6 bg-white shadow-sm border-slate-200">
                   <CardHeader className="pb-2">
                     <h3 className="text-lg font-semibold text-slate-800">Variables Dinámicas</h3>
                   </CardHeader>
                   <CardContent className="p-4">
                     <pre className="bg-slate-50 p-4 rounded-lg text-slate-800 text-xs overflow-auto max-h-96">
-                      {JSON.stringify(selectedCallModal.metadata.retell_llm_dynamic_variables, null, 2)}
+                      {JSON.stringify(modalCallForTransition.metadata.retell_llm_dynamic_variables, null, 2)}
                     </pre>
                   </CardContent>
                 </Card>
