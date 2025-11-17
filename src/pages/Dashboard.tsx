@@ -12,15 +12,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../components/ui/dialog";
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend
-} from "recharts";
 
 // Helpers de zona horaria (Europa/Madrid)
 function getMadridYmdParts(date: Date = new Date()): { year: number; month: number; day: number } {
@@ -383,8 +374,10 @@ export function Dashboard({
     if (dashboardData) {
       console.log('Dashboard - estadisticas:', dashboardData.estadisticas);
       console.log('Dashboard - razones_desconexion:', dashboardData.razones_desconexion);
+      console.log('Dashboard - tipos_vivienda:', dashboardData.dashboard_data?.tipos_vivienda);
+      console.log('Dashboard - timePeriod:', timePeriod);
     }
-  }, [dashboardData]);
+  }, [dashboardData, timePeriod]);
 
   // Persistir selección de período para evitar que vuelva al anterior por remounts
   React.useEffect(() => {
@@ -1355,51 +1348,180 @@ export function Dashboard({
           )}
           
           {/* Resumen detallado de tipos de vivienda */}
-          {agendaEnabled && dashboardData?.dashboard_data?.tipos_vivienda && (
-            <Card className="mb-8">
-              <CardHeader>
-                <CardTitle>Resumen Detallado de Tipos de Vivienda</CardTitle>
-                <CardDescription>
-                  Estadísticas completas de distribución de viviendas (excluyendo no identificados)
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {dashboardData.dashboard_data.tipos_vivienda
-                    .filter((item: any) => item.tipo !== 'no_identificado')
-                    .map((item: any, index: number) => {
-                      // Calcular porcentaje basado en datos filtrados
-                      const totalFiltered = dashboardData.dashboard_data.tipos_vivienda
-                        .filter((filterItem: any) => filterItem.tipo !== 'no_identificado')
-                        .reduce((sum: number, filterItem: any) => sum + (filterItem.cantidad || 0), 0);
-                      const porcentaje = totalFiltered > 0 ? ((item.cantidad || 0) / totalFiltered * 100).toFixed(2) : '0';
+          {agendaEnabled && (() => {
+            const tiposVivienda = dashboardData?.dashboard_data?.tipos_vivienda;
+            const filteredTiposVivienda = tiposVivienda?.filter((item: any) => item.tipo !== 'no_identificado') || [];
+            const hasData = filteredTiposVivienda.length > 0 && filteredTiposVivienda.some((item: any) => (item.cantidad || 0) > 0);
+            
+            return (
+              <Card className="mb-8">
+                <CardHeader>
+                  <CardTitle>Resumen Detallado de Tipos de Vivienda</CardTitle>
+                  <CardDescription>
+                    Estadísticas completas de distribución de viviendas (excluyendo no identificados)
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {hasData ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {filteredTiposVivienda.map((item: any, index: number) => {
+                        // Calcular porcentaje basado en datos filtrados
+                        const totalFiltered = filteredTiposVivienda
+                          .reduce((sum: number, filterItem: any) => sum + (filterItem.cantidad || 0), 0);
+                        const porcentaje = totalFiltered > 0 ? ((item.cantidad || 0) / totalFiltered * 100).toFixed(2) : '0';
+                        
+                        return (
+                          <div key={`${item.tipo}-${index}`} className="bg-gradient-to-br from-orange-50 to-amber-100 p-4 rounded-lg border border-orange-200">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm font-medium text-orange-700">
+                                {translateHousingType(item.tipo)}
+                              </span>
+                              <span className="text-xs text-orange-600">
+                                {porcentaje}%
+                              </span>
+                            </div>
+                            <div className="text-2xl font-bold text-orange-900 mb-2">
+                              {item.cantidad.toLocaleString()}
+                            </div>
+                            <div className="w-full bg-orange-200 rounded-full h-2">
+                              <div 
+                                className="bg-gradient-to-r from-orange-600 to-amber-600 h-2 rounded-full transition-all duration-500"
+                                style={{ width: `${porcentaje}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <p className="text-slate-500 text-sm">
+                        {tiposVivienda && tiposVivienda.length === 0 
+                          ? 'No hay datos de tipos de vivienda disponibles para este período. Los datos de tipos de vivienda solo están disponibles cuando hay llamadas efectivas con información de vivienda.'
+                          : 'No hay datos de tipos de vivienda disponibles para este período.'}
+                      </p>
+                      <p className="text-slate-400 text-xs mt-2">
+                        Intenta seleccionar un período más amplio (mes o personalizado) para ver los datos.
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })()}
+          
+          {/* Resumen detallado de duración de llamadas efectivas */}
+          {dashboardData?.dashboard_data?.duracion_llamadas_efectivas && (() => {
+            const duracion = dashboardData.dashboard_data.duracion_llamadas_efectivas;
+            const total = (duracion.rango_0_30 || 0) + (duracion.rango_30_50 || 0) + (duracion.rango_50_plus || 0);
+            
+            const ranges = [
+              {
+                label: '0 - 30 segundos',
+                cantidad: duracion.rango_0_30 || 0,
+                color: 'blue',
+                gradientFrom: 'from-blue-50',
+                gradientTo: 'to-cyan-100',
+                borderColor: 'border-blue-200',
+                textColor: 'text-blue-700',
+                textColorDark: 'text-blue-900',
+                bgColor: 'bg-blue-200',
+                barGradient: 'from-blue-600 to-cyan-600'
+              },
+              {
+                label: '30 - 50 segundos',
+                cantidad: duracion.rango_30_50 || 0,
+                color: 'green',
+                gradientFrom: 'from-green-50',
+                gradientTo: 'to-emerald-100',
+                borderColor: 'border-green-200',
+                textColor: 'text-green-700',
+                textColorDark: 'text-green-900',
+                bgColor: 'bg-green-200',
+                barGradient: 'from-green-600 to-emerald-600'
+              },
+              {
+                label: '50 segundos o más',
+                cantidad: duracion.rango_50_plus || 0,
+                color: 'purple',
+                gradientFrom: 'from-purple-50',
+                gradientTo: 'to-violet-100',
+                borderColor: 'border-purple-200',
+                textColor: 'text-purple-700',
+                textColorDark: 'text-purple-900',
+                bgColor: 'bg-purple-200',
+                barGradient: 'from-purple-600 to-violet-600'
+              }
+            ];
+
+            // Preparar datos para el gráfico (formato similar a effectiveCallsData)
+            const chartData = ranges.map(range => ({
+              label: range.label,
+              cantidad: range.cantidad,
+              porcentaje: total > 0 ? ((range.cantidad / total) * 100).toFixed(2) : '0'
+            }));
+
+            return (
+              <Card className="mb-8 shadow-lg border border-slate-200">
+                <CardHeader>
+                  <CardTitle className="text-base font-semibold text-slate-800">Resumen Detallado de Duración de Llamadas Efectivas</CardTitle>
+                  <CardDescription className="text-slate-500">
+                    Distribución de llamadas efectivas por rangos de duración
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-0 md:p-6">
+                  {/* Gráfico de distribución */}
+                  {total > 0 && (
+                    <div className="mb-6">
+                      <div className="h-[300px] bg-white rounded-xl p-4 md:p-6">
+                        <Chart 
+                          data={chartData}
+                          type="line"
+                          xKey="label"
+                          yKey="cantidad"
+                          height={300}
+                          colors={["#3b82f6"]}
+                          showLegend={false}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Cards individuales */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {ranges.map((range, index) => {
+                      const porcentaje = total > 0 ? ((range.cantidad / total) * 100).toFixed(2) : '0';
                       
                       return (
-                        <div key={`${item.tipo}-${index}`} className="bg-gradient-to-br from-orange-50 to-amber-100 p-4 rounded-lg border border-orange-200">
+                        <div 
+                          key={`duracion-${index}`} 
+                          className={`bg-gradient-to-br ${range.gradientFrom} ${range.gradientTo} p-4 rounded-lg border ${range.borderColor}`}
+                        >
                           <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm font-medium text-orange-700">
-                              {translateHousingType(item.tipo)}
+                            <span className={`text-sm font-medium ${range.textColor}`}>
+                              {range.label}
                             </span>
-                            <span className="text-xs text-orange-600">
+                            <span className={`text-xs ${range.textColor}`}>
                               {porcentaje}%
                             </span>
                           </div>
-                          <div className="text-2xl font-bold text-orange-900 mb-2">
-                            {item.cantidad.toLocaleString()}
+                          <div className={`text-2xl font-bold ${range.textColorDark} mb-2`}>
+                            {range.cantidad.toLocaleString()}
                           </div>
-                          <div className="w-full bg-orange-200 rounded-full h-2">
+                          <div className={`w-full ${range.bgColor} rounded-full h-2`}>
                             <div 
-                              className="bg-gradient-to-r from-orange-600 to-amber-600 h-2 rounded-full transition-all duration-500"
+                              className={`bg-gradient-to-r ${range.barGradient} h-2 rounded-full transition-all duration-500`}
                               style={{ width: `${porcentaje}%` }}
                             />
                           </div>
                         </div>
                       );
                     })}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
           
           {/* Resumen detallado de desconexiones */}
           {dashboardData?.dashboard_data?.razones_desconexion && (
@@ -1510,78 +1632,93 @@ export function Dashboard({
           )}
           
           {/* Tabla detallada de tipos de vivienda */}
-          {agendaEnabled && dashboardData?.dashboard_data?.tipos_vivienda && (
-            <Card className="mb-8">
-              <CardHeader>
-                <CardTitle>Análisis Detallado de Tipos de Vivienda</CardTitle>
-                <CardDescription>
-                  Distribución completa de los tipos de vivienda de los clientes (excluyendo no identificados)
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-slate-200">
-                        <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Tipo de Vivienda</th>
-                        <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">Cantidad</th>
-                        <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">Porcentaje</th>
-                        <th className="py-3 px-4 text-sm font-medium text-slate-600">Distribución</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {dashboardData.dashboard_data.tipos_vivienda
-                        .filter((item: any) => item.tipo !== 'no_identificado')
-                        .map((item: any, index: number) => {
-                          // Calcular porcentaje basado en datos filtrados
-                          const totalFiltered = dashboardData.dashboard_data.tipos_vivienda
-                            .filter((filterItem: any) => filterItem.tipo !== 'no_identificado')
-                            .reduce((sum: number, filterItem: any) => sum + (filterItem.cantidad || 0), 0);
-                          const porcentaje = totalFiltered > 0 ? ((item.cantidad || 0) / totalFiltered * 100).toFixed(2) : '0';
-                          
-                          return (
-                            <tr key={`${item.tipo}-${index}`} className="border-b border-slate-200 hover:bg-slate-50">
-                              <td className="py-3 px-4 text-sm text-slate-700 font-medium">
-                                {translateHousingType(item.tipo || 'Desconocido')}
-                              </td>
-                              <td className="py-3 px-4 text-sm text-slate-600 text-right">
-                                {(item.cantidad || 0).toLocaleString()}
-                              </td>
-                              <td className="py-3 px-4 text-sm text-slate-600 text-right">
-                                {porcentaje}%
-                              </td>
-                              <td className="py-3 px-4">
-                                <div className="w-full bg-slate-200 rounded-full h-2">
-                                  <div 
-                                    className="bg-gradient-to-r from-orange-600 to-amber-600 h-2 rounded-full transition-all duration-500"
-                                    style={{ width: `${porcentaje}%` }}
-                                  />
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                    </tbody>
-                    <tfoot>
-                      <tr className="border-t border-slate-200 bg-slate-50">
-                        <td className="py-3 px-4 text-sm font-medium text-slate-600">Total</td>
-                        <td className="py-3 px-4 text-sm font-medium text-slate-800 text-right">
-                          {dashboardData.dashboard_data.tipos_vivienda
-                            .filter((item: any) => item.tipo !== 'no_identificado')
-                            .reduce((sum: number, item: any) => sum + (item.cantidad || 0), 0)
-                            .toLocaleString()}
-                        </td>
-                        <td className="py-3 px-4 text-sm font-medium text-slate-600 text-right">
-                          100%
-                        </td>
-                        <td></td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          {agendaEnabled && (() => {
+            const tiposVivienda = dashboardData?.dashboard_data?.tipos_vivienda;
+            const filteredTiposVivienda = tiposVivienda?.filter((item: any) => item.tipo !== 'no_identificado') || [];
+            const hasData = filteredTiposVivienda.length > 0 && filteredTiposVivienda.some((item: any) => (item.cantidad || 0) > 0);
+            
+            return (
+              <Card className="mb-8">
+                <CardHeader>
+                  <CardTitle>Análisis Detallado de Tipos de Vivienda</CardTitle>
+                  <CardDescription>
+                    Distribución completa de los tipos de vivienda de los clientes (excluyendo no identificados)
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {hasData ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b border-slate-200">
+                            <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Tipo de Vivienda</th>
+                            <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">Cantidad</th>
+                            <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">Porcentaje</th>
+                            <th className="py-3 px-4 text-sm font-medium text-slate-600">Distribución</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredTiposVivienda.map((item: any, index: number) => {
+                            // Calcular porcentaje basado en datos filtrados
+                            const totalFiltered = filteredTiposVivienda
+                              .reduce((sum: number, filterItem: any) => sum + (filterItem.cantidad || 0), 0);
+                            const porcentaje = totalFiltered > 0 ? ((item.cantidad || 0) / totalFiltered * 100).toFixed(2) : '0';
+                            
+                            return (
+                              <tr key={`${item.tipo}-${index}`} className="border-b border-slate-200 hover:bg-slate-50">
+                                <td className="py-3 px-4 text-sm text-slate-700 font-medium">
+                                  {translateHousingType(item.tipo || 'Desconocido')}
+                                </td>
+                                <td className="py-3 px-4 text-sm text-slate-600 text-right">
+                                  {(item.cantidad || 0).toLocaleString()}
+                                </td>
+                                <td className="py-3 px-4 text-sm text-slate-600 text-right">
+                                  {porcentaje}%
+                                </td>
+                                <td className="py-3 px-4">
+                                  <div className="w-full bg-slate-200 rounded-full h-2">
+                                    <div 
+                                      className="bg-gradient-to-r from-orange-600 to-amber-600 h-2 rounded-full transition-all duration-500"
+                                      style={{ width: `${porcentaje}%` }}
+                                    />
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot>
+                          <tr className="border-t border-slate-200 bg-slate-50">
+                            <td className="py-3 px-4 text-sm font-medium text-slate-600">Total</td>
+                            <td className="py-3 px-4 text-sm font-medium text-slate-800 text-right">
+                              {filteredTiposVivienda
+                                .reduce((sum: number, item: any) => sum + (item.cantidad || 0), 0)
+                                .toLocaleString()}
+                            </td>
+                            <td className="py-3 px-4 text-sm font-medium text-slate-600 text-right">
+                              100%
+                            </td>
+                            <td></td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <p className="text-slate-500 text-sm">
+                        {tiposVivienda && tiposVivienda.length === 0 
+                          ? 'No hay datos de tipos de vivienda disponibles para este período. Los datos de tipos de vivienda solo están disponibles cuando hay llamadas efectivas con información de vivienda.'
+                          : 'No hay datos de tipos de vivienda disponibles para este período.'}
+                      </p>
+                      <p className="text-slate-400 text-xs mt-2">
+                        Intenta seleccionar un período más amplio (mes o personalizado) para ver los datos.
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })()}
           
           {/* Tabla detallada de razones de desconexión */}
           {dashboardData?.dashboard_data?.razones_desconexion && (

@@ -809,7 +809,13 @@ function transformDashboardData(data: any): any {
           hora: item.hora,
           hora_label: `${item.hora.toString().padStart(2, '0')}:00`,
           cantidad_llamadas: item.cantidad_llamadas || 0
-        })) : []
+        })) : [],
+        // Transformar duracion_llamadas_efectivas
+        duracion_llamadas_efectivas: data.duracion_llamadas_efectivas ? {
+          rango_0_30: data.duracion_llamadas_efectivas.rango_0_30 || 0,
+          rango_30_50: data.duracion_llamadas_efectivas.rango_30_50 || 0,
+          rango_50_plus: data.duracion_llamadas_efectivas.rango_50_plus || 0
+        } : null
       }
     };
     
