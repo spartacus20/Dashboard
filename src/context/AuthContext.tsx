@@ -33,6 +33,32 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    // Función para recuperar datos del usuario (incluyendo permissions)
+    const restoreUserData = async (email: string) => {
+      try {
+        // Siempre recuperar los datos del servidor cuando hay una sesión activa
+        // Esto asegura que los permissions estén siempre actualizados y correctos
+        // especialmente importante después de un refresh donde sessionStorage puede estar vacío o incorrecto
+        console.log('🔄 Recuperando datos del usuario desde el servidor (sesión activa detectada)...')
+        await getClientId(email)
+        
+        // Verificar que se guardaron correctamente
+        const savedPermissions = sessionStorage.getItem('permissions')
+        if (savedPermissions) {
+          try {
+            const parsed = JSON.parse(savedPermissions)
+            console.log('✅ Permissions recuperados y guardados correctamente:', parsed)
+          } catch (e) {
+            console.warn('⚠️ Error parseando permissions guardados:', e)
+          }
+        } else {
+          console.warn('⚠️ No se pudieron guardar permissions en sessionStorage')
+        }
+      } catch (err) {
+        console.warn('No se pudo recuperar los datos del usuario:', err)
+      }
+    }
+
     // Obtener la sesión inicial
     const getInitialSession = async () => {
       const { data: { session }, error } = await supabase.auth.getSession()
@@ -41,6 +67,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       } else {
         setSession(session)
         setUser(session?.user ?? null)
+        
+        // Si hay una sesión activa, recuperar los datos del usuario (incluyendo permissions)
+        if (session?.user?.email) {
+          await restoreUserData(session.user.email)
+        }
       }
       setLoading(false)
     }
@@ -54,18 +85,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setUser(session?.user ?? null)
         setLoading(false)
         
-        // Si hay una nueva sesión (login exitoso), obtener el client_id
-        if (event === 'SIGNED_IN' && session?.user?.email) {
+        // Si hay una nueva sesión (login exitoso o sesión restaurada), obtener el client_id
+        if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user?.email) {
           try {
             await getClientId(session.user.email)
           } catch (err) {
             console.warn('No se pudo obtener el client_id de get-client:', err)
           }
 
-          // Establecer filtro por defecto del dashboard a "today"
-          try {
-            localStorage.setItem('dashboard_time_period', 'today')
-          } catch {}
+          // Establecer filtro por defecto del dashboard a "today" solo en nuevo login
+          if (event === 'SIGNED_IN') {
+            try {
+              localStorage.setItem('dashboard_time_period', 'today')
+            } catch {}
+          }
+        }
+        
+        // Si se cerró sesión, limpiar datos
+        if (event === 'SIGNED_OUT') {
+          clearSessionData()
         }
       }
     )

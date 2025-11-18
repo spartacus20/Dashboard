@@ -453,7 +453,7 @@ export async function deleteBatchCall(
 }
 
 // Función para obtener la API key del cliente
-export async function getClientApiKey(identifier: string): Promise<{ apiKey: string | null; clientId: string | null; config?: Record<string, any> }> {
+export async function getClientApiKey(identifier: string): Promise<{ apiKey: string | null; clientId: string | null; permissions?: Record<string, any> | null; config?: Record<string, any> }> {
   try {
     console.log('Solicitando API key para el identificador:', identifier);
     
@@ -491,8 +491,27 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
         console.log('✅ metadata_llamadas guardado en sessionStorage');
       }
       
+      // Guardar permissions en sessionStorage si está disponible y no está vacío
+      if (clientData.permissions && typeof clientData.permissions === 'object') {
+        const permissionsKeys = Object.keys(clientData.permissions);
+        if (permissionsKeys.length > 0) {
+          // Si tiene al menos una propiedad, guardarlo
+          sessionStorage.setItem('permissions', JSON.stringify(clientData.permissions));
+          console.log('✅ permissions guardado en sessionStorage:', clientData.permissions);
+        } else {
+          // Si es un objeto vacío, no guardar nada
+          sessionStorage.removeItem('permissions');
+          console.log('ℹ️ Permissions vacío del servidor, usuario sin limitaciones');
+        }
+      } else if (clientData.permissions === null || clientData.permissions === undefined) {
+        // Si es null o undefined, no guardar nada
+        sessionStorage.removeItem('permissions');
+        console.log('ℹ️ No hay permissions definidos, usuario sin limitaciones');
+      }
+      
       console.log('🔧 Configuración construida:', {
         metadata: clientData.metadata,
+        permissions: clientData.permissions,
         config: {
           sales: clientData.metadata?.sales,
           agenda: clientData.metadata?.agenda,
@@ -507,6 +526,7 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
       return {
         apiKey: clientData.api_key || null,
         clientId: clientData.client_id || null,
+        permissions: clientData.permissions || null,
         config: clientData.config ?? {
           agenda_enabled: clientData.agenda_enabled,
           calls_enabled: clientData.calls_enabled,
@@ -529,9 +549,28 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
         console.log('✅ metadata_llamadas guardado en sessionStorage (formato objeto)');
       }
       
+      // Guardar permissions en sessionStorage si está disponible y no está vacío
+      if (data.permissions && typeof data.permissions === 'object') {
+        const permissionsKeys = Object.keys(data.permissions);
+        if (permissionsKeys.length > 0) {
+          // Si tiene al menos una propiedad, guardarlo
+          sessionStorage.setItem('permissions', JSON.stringify(data.permissions));
+          console.log('✅ permissions guardado en sessionStorage (formato objeto):', data.permissions);
+        } else {
+          // Si es un objeto vacío, no guardar nada
+          sessionStorage.removeItem('permissions');
+          console.log('ℹ️ Permissions vacío del servidor (formato objeto), usuario sin limitaciones');
+        }
+      } else if (data.permissions === null || data.permissions === undefined) {
+        // Si es null o undefined, no guardar nada
+        sessionStorage.removeItem('permissions');
+        console.log('ℹ️ No hay permissions definidos (formato objeto), usuario sin limitaciones');
+      }
+      
       return {
         apiKey: data.api_key || data.apiKey || null,
         clientId: data.client_id || data.clientId || null,
+        permissions: data.permissions || null,
         config: data.config ?? {
           agenda_enabled: data.agenda_enabled,
           calls_enabled: data.calls_enabled,
@@ -547,10 +586,10 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
     }
     
     console.warn('No se encontró información del cliente');
-    return { apiKey: null, clientId: null };
+    return { apiKey: null, clientId: null, permissions: null };
   } catch (error) {
     console.error('Error al obtener API key del cliente:', error);
-    return { apiKey: null, clientId: null };
+    return { apiKey: null, clientId: null, permissions: null };
   }
 }
 

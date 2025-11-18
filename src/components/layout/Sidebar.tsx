@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { BarChart3, Mic, Menu, X, Key, Phone, PhoneOutgoing, Calendar, PhoneCall, LogOut, TrendingUp, Rocket, PhoneOff } from 'lucide-react';
 import { useCallsContext } from '../../context/CallsContext';
 import { useAuth } from '../../context/AuthContext';
-import { hasLaunchPermissions } from '../../lib/supabase';
+import { hasLaunchPermissions, canAccess, hasPermissionsDefined } from '../../lib/supabase';
 
 interface SidebarProps {
   currentPage: string;
@@ -18,8 +18,29 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [showBatchCall, setShowBatchCall] = useState(false);
   
+  // Verificar si el usuario tiene permissions definidos
+  const hasPermissions = hasPermissionsDefined();
+  
+  // Si tiene permissions, usar permissions. Si no, usar los flags del contexto (metadata)
+  const canAccessAgenda = hasPermissions ? canAccess('agenda') : agendaEnabled;
+  const canAccessRecords = hasPermissions ? canAccess('records') : recordsEnabled;
+  const canAccessNumTel = hasPermissions ? canAccess('num_tel') : numTelEnabled;
+  const canAccessCallbacks = hasPermissions ? canAccess('callbacks') : callbacksEnabled;
+  const canAccessSales = hasPermissions ? canAccess('sales') : salesEnabled;
+  const canAccessLaunch = hasPermissions ? canAccess('launch') : launchEnabled;
+  const canAccessDontCall = hasPermissions ? canAccess('dont_call') : dontCallEnabled;
+  
   // Debug: Log para verificar el estado
   console.log('🔧 Sidebar - Estado de permisos:', {
+    hasPermissions,
+    canAccessAgenda,
+    canAccessRecords,
+    canAccessNumTel,
+    canAccessCallbacks,
+    canAccessSales,
+    canAccessLaunch,
+    canAccessDontCall,
+    // Valores originales del contexto
     launchEnabled,
     agendaEnabled,
     salesEnabled,
@@ -163,7 +184,7 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
             <BarChart3 className="w-5 h-5" />
             Dashboard
           </button>
-          {agendaEnabled && (
+          {canAccessAgenda && (
             <button
               onClick={() => {
                 navigateWithParams('agendas');
@@ -178,7 +199,7 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
               Agendas
             </button>
           )}
-          {recordsEnabled && (
+          {canAccessRecords && (
             <button
               onClick={() => {
                 navigateWithParams('recordings');
@@ -193,7 +214,7 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
               Grabaciones
             </button>
           )}
-          {numTelEnabled && (
+          {canAccessNumTel && (
             <button
               onClick={() => {
                 navigateWithParams('phones');
@@ -208,7 +229,7 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
               Números de Teléfono
             </button>
           )}
-          {callbacksEnabled && (
+          {canAccessCallbacks && (
             <button
               onClick={() => {
                 navigateWithParams('callbacks');
@@ -238,7 +259,7 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
               Llamadas en Lote
             </button>
           )}
-          {salesEnabled && (
+          {canAccessSales && (
             <button
               onClick={() => {
                 navigateWithParams('ventas');
@@ -253,7 +274,7 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
               Ventas
             </button>
           )}
-          {launchEnabled && (
+          {canAccessLaunch && (
             <button
               onClick={() => {
                 navigateWithParams('lanzamiento');
@@ -268,7 +289,7 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
               Lanzamiento
             </button>
           )}
-          {dontCallEnabled && (
+          {canAccessDontCall && (
             <button
               onClick={() => {
                 navigateWithParams('no-llamar');

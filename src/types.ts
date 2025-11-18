@@ -220,6 +220,17 @@ export interface ClientData {
   records?: boolean;
   callbacks?: boolean;
   phone_filter?: string;
+  // Permisos del usuario desde la tabla users
+  permissions?: {
+    sales?: boolean;
+    agenda?: boolean;
+    num_tel?: boolean;
+    records?: boolean;
+    callbacks?: boolean;
+    launch?: boolean;
+    dont_call?: boolean;
+    [key: string]: any;
+  };
   // Objeto de metadata que viene del backend
   metadata?: {
     sales?: boolean;

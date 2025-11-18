@@ -15,17 +15,19 @@ export const GET_CLIENT_CONFIG = {
 // Variable para la clave del localStorage
 export const get_client_id = 'get_client_id'
 
+// Obtener la URL base según el entorno (mismo que en api.ts)
+const IS_PRODUCTION = import.meta.env.VITE_PRODUCTION_API === 'on'
+const BASE_URL = 'http://localhost:3000'
+const GET_CLIENT_WEBHOOK_URL = IS_PRODUCTION ? 'https://n8n.aiagencyusa.com/webhook/get-client' : `${BASE_URL}/get-client`
+
 // Función para obtener el client_id de get-client usando el endpoint local
 export const getClientId = async (email: string): Promise<string | null> => {
   try {
-    // Si ya tenemos el client_id almacenado, lo devolvemos
-    const storedClientId = getStoredClientId()
-    if (storedClientId) {
-      return storedClientId
-    }
-
-    // Hacer petición POST al endpoint público
-    const response = await fetch('https://api.iacreatorhub.com/get-client', {
+    // Siempre hacer la petición para obtener datos actualizados (incluyendo permissions)
+    console.log('🔍 Obteniendo datos del usuario desde:', GET_CLIENT_WEBHOOK_URL)
+    
+    // Hacer petición POST al endpoint correcto
+    const response = await fetch(GET_CLIENT_WEBHOOK_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -34,8 +36,23 @@ export const getClientId = async (email: string): Promise<string | null> => {
     })
 
     if (response.ok) {
-      const userData = await response.json()
-      const clientId = userData.clientId
+      const data = await response.json()
+      
+      // El endpoint puede devolver un array o un objeto directamente
+      let userData: any
+      if (Array.isArray(data) && data.length > 0) {
+        userData = data[0]
+      } else if (data && typeof data === 'object') {
+        userData = data
+      } else {
+        console.warn('Formato de respuesta inesperado:', data)
+        return null
+      }
+      
+      // Normalizar los nombres de campos (el backend puede devolver clientId o client_id)
+      const clientId = userData.clientId || userData.client_id
+      const apiKey = userData.apiKey || userData.api_key
+      const fullName = userData.fullName || userData.full_name || ''
       
       if (clientId) {
         // Guardar en localStorage (compatibilidad hacia atrás)
@@ -43,10 +60,14 @@ export const getClientId = async (email: string): Promise<string | null> => {
         
         // Guardar TODOS los datos en sessionStorage
         sessionStorage.setItem('userData', JSON.stringify(userData))
-        sessionStorage.setItem('apiKey', userData.apiKey)
-        sessionStorage.setItem('clientId', userData.clientId)
-        sessionStorage.setItem('email', userData.email)
-        sessionStorage.setItem('fullName', userData.fullName || '')
+        if (apiKey) {
+          sessionStorage.setItem('apiKey', apiKey)
+        }
+        sessionStorage.setItem('clientId', clientId)
+        if (userData.email) {
+          sessionStorage.setItem('email', userData.email)
+        }
+        sessionStorage.setItem('fullName', fullName)
         
         // Guardar metadatos
         if (userData.metadata) {
@@ -58,16 +79,44 @@ export const getClientId = async (email: string): Promise<string | null> => {
           sessionStorage.setItem('metadata_llamadas', JSON.stringify(userData.metadata_llamadas))
         }
         
+        // Guardar permissions (IMPORTANTE: siempre actualizar permissions)
+        // Solo guardar si permissions existe y no es un objeto vacío
+        if (userData.permissions && typeof userData.permissions === 'object') {
+          const permissionsKeys = Object.keys(userData.permissions)
+          if (permissionsKeys.length > 0) {
+            // Si tiene al menos una propiedad, guardarlo
+            sessionStorage.setItem('permissions', JSON.stringify(userData.permissions))
+            console.log('✅ Permissions guardados:', userData.permissions)
+          } else {
+            // Si es un objeto vacío, no guardar nada (o guardar null para indicar que no hay permissions)
+            sessionStorage.removeItem('permissions')
+            console.log('ℹ️ Permissions vacío del servidor, usuario sin limitaciones')
+          }
+        } else if (userData.permissions === null || userData.permissions === undefined) {
+          // Si es null o undefined, no guardar nada
+          sessionStorage.removeItem('permissions')
+          console.log('ℹ️ No hay permissions definidos, usuario sin limitaciones')
+        } else {
+          // Cualquier otro caso, guardar como está
+          sessionStorage.setItem('permissions', JSON.stringify(userData.permissions))
+          console.log('✅ Permissions guardados (formato no estándar):', userData.permissions)
+        }
+        
         console.log('✅ Datos del usuario guardados en sessionStorage:', {
-          clientId: userData.clientId,
+          clientId: clientId,
           email: userData.email,
-          fullName: userData.fullName,
+          fullName: fullName,
           hasMetadata: !!userData.metadata,
-          hasMetadataLlamadas: !!userData.metadata_llamadas
+          hasMetadataLlamadas: !!userData.metadata_llamadas,
+          hasPermissions: !!userData.permissions,
+          permissions: userData.permissions
         })
         
         return clientId
       }
+    } else {
+      const errorText = await response.text()
+      console.error('Error en la respuesta del servidor:', response.status, errorText)
     }
 
     // Si no se puede obtener de la API, devolvemos null
@@ -128,8 +177,49 @@ export const getMetadataLlamadas = () => {
   return metadata_llamadas ? JSON.parse(metadata_llamadas) : null
 }
 
-// Función para verificar si el usuario tiene permisos de lanzamiento
+export const getPermissions = () => {
+  const permissions = sessionStorage.getItem('permissions')
+  return permissions ? JSON.parse(permissions) : null
+}
+
+// Función para verificar si el usuario tiene permissions definidos (no vacío)
+export const hasPermissionsDefined = (): boolean => {
+  const permissions = getPermissions()
+  // Si permissions es null o undefined, no hay permissions definidos
+  if (!permissions) {
+    return false
+  }
+  // Si no es un objeto, no es válido
+  if (typeof permissions !== 'object') {
+    return false
+  }
+  // Verificar si tiene al menos una propiedad con valor
+  const keys = Object.keys(permissions)
+  return keys.length > 0
+}
+
+// Función para verificar si el usuario tiene acceso a una funcionalidad específica
+// Si tiene permissions definidos, usa permissions. Si no, permite todo (sin limitaciones)
+export const canAccess = (feature: 'agenda' | 'records' | 'num_tel' | 'callbacks' | 'sales' | 'launch' | 'dont_call'): boolean => {
+  const permissions = getPermissions()
+  
+  // Si no hay permissions definidos (o está vacío), permitir acceso (sin limitaciones)
+  if (!hasPermissionsDefined()) {
+    return true
+  }
+  
+  // Si hay permissions definidos, verificar el permiso específico
+  return permissions[feature] === true
+}
+
+// Función para verificar si el usuario tiene permisos de lanzamiento (compatibilidad hacia atrás)
 export const hasLaunchPermissions = (): boolean => {
+  // Primero verificar permissions
+  if (hasPermissionsDefined()) {
+    return canAccess('launch')
+  }
+  
+  // Si no hay permissions, usar metadata (comportamiento anterior)
   const metadata = getMetadata()
   console.log('🔍 Verificando permisos de lanzamiento:', {
     metadata,
@@ -147,5 +237,6 @@ export const clearSessionData = () => {
   sessionStorage.removeItem('fullName')
   sessionStorage.removeItem('metadata')
   sessionStorage.removeItem('metadata_llamadas')
+  sessionStorage.removeItem('permissions')
   console.log('🧹 Datos del sessionStorage limpiados')
 }
