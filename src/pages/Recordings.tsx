@@ -253,6 +253,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   
   // Estados para los dropdowns
   const [showItemsPerPageDropdown, setShowItemsPerPageDropdown] = React.useState(false);
+  const [showUnifiedFiltersDropdown, setShowUnifiedFiltersDropdown] = React.useState(false);
   
   // Estados para los filtros
   const [disconnectionReasonFilter, setDisconnectionReasonFilter] = React.useState<string | null>(null);
@@ -260,6 +261,26 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   const [statusFilter, setStatusFilter] = React.useState<string | null>(null);
   const [phoneNumberFilter, setPhoneNumberFilter] = React.useState<string>('');
   const [sortOrderFilter, setSortOrderFilter] = React.useState<'ASC' | 'DESC'>('DESC');
+  const [interestFilter, setInterestFilter] = React.useState<string | null>(null);
+  const [tipoViviendaFilter, setTipoViviendaFilter] = React.useState<string | null>(null);
+  const [agentIdFilter, setAgentIdFilter] = React.useState<string | null>(null);
+  
+  // Verificar si el usuario tiene permiso para ver filtros solares
+  const [hasFiltroSolar, setHasFiltroSolar] = React.useState(false);
+  
+  // Verificar permisos al montar el componente
+  React.useEffect(() => {
+    try {
+      const metadataStr = sessionStorage.getItem('metadata');
+      if (metadataStr) {
+        const metadata = JSON.parse(metadataStr);
+        setHasFiltroSolar(metadata?.filtro_solar === true);
+      }
+    } catch (error) {
+      console.error('Error al leer metadata del sessionStorage:', error);
+      setHasFiltroSolar(false);
+    }
+  }, []);
   
   // Estado para la personalización de columnas
   const [showColumnCustomizer, setShowColumnCustomizer] = React.useState(false);
@@ -399,12 +420,13 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   // Filtrar las llamadas según todos los criterios aplicados
   const filteredCalls = React.useMemo(() => {
     // Si hay datos filtrados de la API, aplicarlos primero
+    // Ya no necesitamos filtrar por disconnection_reason en frontend porque el backend lo hace
     let baseCalls: DetailedRetellCall[] = [];
     if (filteredCallsData.length > 0) {
       baseCalls = filteredCallsData;
     } else {
       // Si no hay filtros activos, usar las llamadas originales
-      const hasActiveFilters = searchTerm || statusFilter || durationFilter || startDate || endDate || phoneNumberFilter || sortOrderFilter !== 'DESC';
+      const hasActiveFilters = searchTerm || statusFilter || durationFilter || startDate || endDate || phoneNumberFilter || sortOrderFilter !== 'DESC' || interestFilter || tipoViviendaFilter || agentIdFilter || disconnectionReasonFilter;
       if (!hasActiveFilters) {
         baseCalls = allCalls;
       } else {
@@ -413,15 +435,8 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       }
     }
     
-    // Aplicar filtro de razones de desconexión solo a nivel de frontend
-    if (disconnectionReasonFilter && baseCalls.length > 0) {
-      baseCalls = baseCalls.filter(call => 
-        call.disconnection_reason === disconnectionReasonFilter
-      );
-    }
-    
     return baseCalls;
-  }, [filteredCallsData, allCalls, searchTerm, statusFilter, durationFilter, startDate, endDate, phoneNumberFilter, sortOrderFilter, disconnectionReasonFilter]);
+  }, [filteredCallsData, allCalls, searchTerm, statusFilter, durationFilter, startDate, endDate, phoneNumberFilter, sortOrderFilter, interestFilter, tipoViviendaFilter, agentIdFilter, disconnectionReasonFilter]);
 
   // Calcular llamadas para la página actual basándose en filteredCalls
   const currentPageCalls = React.useMemo(() => {
@@ -510,6 +525,9 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       }
       if (!target.closest('.column-customizer-dropdown') && !target.closest('.column-customizer-button')) {
         setShowColumnCustomizer(false);
+      }
+      if (!target.closest('.unified-filters-dropdown') && !target.closest('.unified-filters-button')) {
+        setShowUnifiedFiltersDropdown(false);
       }
     };
 
@@ -1051,6 +1069,21 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         params.to_number_norm = normalizedPhone;
       }
       
+      // Agregar filtro de interés
+      if (interestFilter) {
+        params.interest = interestFilter;
+      }
+      
+      // Agregar filtro de tipo de vivienda
+      if (tipoViviendaFilter) {
+        params.tipo_vivienda = tipoViviendaFilter;
+      }
+      
+      // Agregar filtro de motivo de desconexión (end_reason en la base de datos)
+      if (disconnectionReasonFilter) {
+        params.end_reason = disconnectionReasonFilter;
+      }
+      
       if (startISO) params.fecha_inicio = startISO;
       if (endISO) params.fecha_fin = endISO;
 
@@ -1058,10 +1091,8 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       const allResp = await exportCallsWithColumns(apiKey, params);
       const allForExport = allResp.calls;
 
-      // Aplicar filtro de disconnection_reason solo a nivel frontend si está seleccionado
-      const finalData = disconnectionReasonFilter
-        ? allForExport.filter(c => c.disconnection_reason === disconnectionReasonFilter)
-        : allForExport;
+      // Ya no necesitamos filtrar en frontend porque el backend lo hace
+      const finalData = allForExport;
 
       if (!finalData.length) {
         setExportError('No hay grabaciones en el rango seleccionado.');
@@ -1092,6 +1123,9 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     setDurationFilter(null);
     setPhoneNumberFilter('');
     setSortOrderFilter('DESC'); // Resetear a descendente por defecto
+    setInterestFilter(null);
+    setTipoViviendaFilter(null);
+    setAgentIdFilter(null);
     setCurrentPage(1);
     
     // Limpiar datos filtrados
@@ -1108,6 +1142,39 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     });
   };
 
+  // Obtener agentes únicos de las llamadas (incluir tanto allCalls como filteredCallsData)
+  const uniqueAgents = React.useMemo(() => {
+    const agents = new Set<string>();
+    // Agregar agentes de allCalls
+    allCalls.forEach(call => {
+      if (call.agent_id) {
+        agents.add(call.agent_id);
+      }
+    });
+    // Agregar agentes de filteredCallsData (cuando hay filtros aplicados)
+    if (filteredCallsData.length > 0) {
+      filteredCallsData.forEach(call => {
+        if (call.agent_id) {
+          agents.add(call.agent_id);
+        }
+      });
+    }
+    return Array.from(agents).sort();
+  }, [allCalls, filteredCallsData]);
+
+  // Calcular el recuento de filtros unificados activos
+  const activeUnifiedFiltersCount = React.useMemo(() => {
+    let count = 0;
+    if (statusFilter) count++;
+    if (disconnectionReasonFilter) count++;
+    if (durationFilter) count++;
+    if (sortOrderFilter !== 'DESC') count++; // Contar solo si no es el valor por defecto
+    if (interestFilter) count++;
+    if (tipoViviendaFilter) count++;
+    if (agentIdFilter) count++;
+    return count;
+  }, [statusFilter, disconnectionReasonFilter, durationFilter, sortOrderFilter, interestFilter, tipoViviendaFilter, agentIdFilter]);
+
   // Calcular el recuento total de filtros aplicados
   const activeFiltersCount = React.useMemo(() => {
     let count = 0;
@@ -1118,17 +1185,20 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     if (durationFilter) count++;
     if (phoneNumberFilter) count++;
     if (sortOrderFilter !== 'DESC') count++; // Contar solo si no es el valor por defecto
+    if (interestFilter) count++;
+    if (tipoViviendaFilter) count++;
+    if (agentIdFilter) count++;
     return count;
-  }, [searchTerm, startDate, endDate, statusFilter, disconnectionReasonFilter, durationFilter, phoneNumberFilter, sortOrderFilter]);
+  }, [searchTerm, startDate, endDate, statusFilter, disconnectionReasonFilter, durationFilter, phoneNumberFilter, sortOrderFilter, interestFilter, tipoViviendaFilter, agentIdFilter]);
 
 
   // Función para aplicar filtros usando la API list-calls
   const applyFilters = React.useCallback(async () => {
     if (!apiKey) return;
     
-    // Verificar si hay algún filtro activo (excluyendo disconnection_reason que se aplica solo en frontend)
+    // Verificar si hay algún filtro activo (ahora incluyendo disconnection_reason que se envía al backend)
     // Ahora también incluimos sortOrderFilter como filtro activo
-    const hasActiveFilters = searchTerm || statusFilter || durationFilter || startDate || endDate || phoneNumberFilter || sortOrderFilter !== 'DESC';
+    const hasActiveFilters = searchTerm || statusFilter || durationFilter || startDate || endDate || phoneNumberFilter || sortOrderFilter !== 'DESC' || interestFilter || tipoViviendaFilter || agentIdFilter || disconnectionReasonFilter;
     
     if (!hasActiveFilters) {
       // Si no hay filtros, usar las llamadas originales
@@ -1180,6 +1250,28 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         params.fecha_fin = endDate;
       }
       
+      // Agregar filtro de interés
+      if (interestFilter) {
+        params.interest = interestFilter;
+      }
+      
+      // Agregar filtro de tipo de vivienda
+      if (tipoViviendaFilter) {
+        params.tipo_vivienda = tipoViviendaFilter;
+      }
+      
+      // Agregar filtro de agent_id
+      if (agentIdFilter) {
+        params.agent_id = agentIdFilter;
+        console.log('🔍 Filtro de agente aplicado:', agentIdFilter);
+      }
+      
+      // Agregar filtro de motivo de desconexión (end_reason en la base de datos)
+      if (disconnectionReasonFilter) {
+        params.end_reason = disconnectionReasonFilter;
+        console.log('🔍 Filtro de motivo de desconexión aplicado:', disconnectionReasonFilter);
+      }
+      
       // Agregar filtros de número (si se implementan en el futuro)
       // if (fromNumber) params.from_number = fromNumber;
       // if (toNumber) params.to_number = toNumber;
@@ -1190,6 +1282,10 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       const response = await listCalls(apiKey, params);
       
       console.log('Respuesta de list-calls:', response);
+      console.log('🔍 Llamadas recibidas con filtro de agente:', response.calls.length);
+      if (agentIdFilter && response.calls.length > 0) {
+        console.log('🔍 Primeras llamadas filtradas por agente:', response.calls.slice(0, 3).map(c => ({ call_id: c.call_id, agent_id: c.agent_id })));
+      }
       
       // Actualizar estados con los resultados
       setFilteredCallsData(response.calls);
@@ -1208,12 +1304,12 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     } finally {
       setLoadingFilters(false);
     }
-  }, [apiKey, clientId, searchTerm, statusFilter, durationFilter, startDate, endDate, phoneNumberFilter, sortOrderFilter]);
+  }, [apiKey, clientId, searchTerm, statusFilter, durationFilter, startDate, endDate, phoneNumberFilter, sortOrderFilter, interestFilter, tipoViviendaFilter, agentIdFilter, disconnectionReasonFilter]);
 
   // Aplicar filtros automáticamente cuando cambien los criterios
   React.useEffect(() => {
-    // Solo aplicar filtros si hay algún filtro activo
-    const hasActiveFilters = searchTerm || statusFilter || durationFilter || startDate || endDate || phoneNumberFilter || sortOrderFilter !== 'DESC';
+    // Solo aplicar filtros si hay algún filtro activo (ahora incluyendo disconnection_reason)
+    const hasActiveFilters = searchTerm || statusFilter || durationFilter || startDate || endDate || phoneNumberFilter || sortOrderFilter !== 'DESC' || interestFilter || tipoViviendaFilter || agentIdFilter || disconnectionReasonFilter;
     
     if (hasActiveFilters) {
       applyFilters();
@@ -1223,7 +1319,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       setTotalFilteredCalls(0);
       setTotalFilteredPages(0);
     }
-  }, [searchTerm, statusFilter, durationFilter, startDate, endDate, phoneNumberFilter, sortOrderFilter, applyFilters]);
+  }, [searchTerm, statusFilter, durationFilter, startDate, endDate, phoneNumberFilter, sortOrderFilter, interestFilter, tipoViviendaFilter, agentIdFilter, disconnectionReasonFilter, applyFilters]);
 
   // Función para abrir el modal de filtros
   const openFiltersModal = () => {
@@ -1576,54 +1672,173 @@ export function Recordings({ onNavigate }: RecordingsProps) {
               </Button>
             </div>
 
-            {/* Filtro de estado */}
-            <div className="lg:col-span-2">
-              <Select
-                value={statusFilter || "all"}
-                onValueChange={(value) => {
-                  setStatusFilter(value === "all" ? null : value);
-                  setCurrentPage(1);
-                }}
-                className="w-full"
+            {/* Filtros unificados */}
+            <div className="lg:col-span-3 relative unified-filters-dropdown">
+              <Button
+                onClick={() => setShowUnifiedFiltersDropdown(!showUnifiedFiltersDropdown)}
+                variant="outline"
+                className="w-full h-10 flex items-center justify-center gap-2 text-xs unified-filters-button"
               >
-                <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="efectiva">Efectiva</SelectItem>
-                <SelectItem value="fallida">Fallida</SelectItem>
-              </Select>
-            </div>
+                <ListFilter className="w-4 h-4" />
+                <span className="text-xs">Filtros</span>
+                {activeUnifiedFiltersCount > 0 && (
+                  <Badge variant="default" className="ml-1 px-1.5 py-0.5 text-xs">
+                    {activeUnifiedFiltersCount}
+                  </Badge>
+                )}
+                {showUnifiedFiltersDropdown ? (
+                  <ChevronUp className="w-4 h-4" />
+                ) : (
+                  <ChevronDown className="w-4 h-4" />
+                )}
+              </Button>
+              
+              {showUnifiedFiltersDropdown && (
+                <div className="absolute top-full left-0 mt-2 w-80 bg-white rounded-md shadow-xl z-50 border border-slate-200">
+                  <div className="p-4 space-y-4">
+                    {/* Filtro de estado */}
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        Estado de la llamada
+                      </label>
+                      <Select
+                        value={statusFilter || "all"}
+                        onValueChange={(value) => {
+                          setStatusFilter(value === "all" ? null : value);
+                          setCurrentPage(1);
+                        }}
+                        className="w-full"
+                      >
+                        <SelectItem value="all">Todos</SelectItem>
+                        <SelectItem value="efectiva">Efectiva</SelectItem>
+                        <SelectItem value="fallida">Fallida</SelectItem>
+                      </Select>
+                    </div>
 
-            {/* Filtro de duración */}
-            <div className="lg:col-span-2">
-              <Select
-                value={durationFilter || "all"}
-                onValueChange={(value) => handleDurationFilter(value === "all" ? null : value)}
-                className="w-full"
-              >
-                <SelectItem value="all">Todas</SelectItem>
-                <SelectItem value="lt-60">{'<'} 1 min</SelectItem>
-                <SelectItem value="60-180">1-3 min</SelectItem>
-                <SelectItem value="180-300">3-5 min</SelectItem>
-                <SelectItem value="gt-300">{'>'} 5 min</SelectItem>
-              </Select>
-            </div>
-            
-            {/* Filtro de ordenamiento */}
-            <div className="lg:col-span-2">
-              <Select
-                value={sortOrderFilter}
-                onValueChange={(value) => {
-                  setSortOrderFilter(value as 'ASC' | 'DESC');
-                  setCurrentPage(1);
-                }}
-                className="w-full"
-              >
-                <SelectItem value="DESC">Más recientes</SelectItem>
-                <SelectItem value="ASC">Más antiguos</SelectItem>
-              </Select>
+                    {/* Filtro de duración */}
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        Duración de la llamada
+                      </label>
+                      <Select
+                        value={durationFilter || "all"}
+                        onValueChange={(value) => handleDurationFilter(value === "all" ? null : value)}
+                        className="w-full"
+                      >
+                        <SelectItem value="all">Todas</SelectItem>
+                        <SelectItem value="lt-60">{'<'} 1 min</SelectItem>
+                        <SelectItem value="60-180">1-3 min</SelectItem>
+                        <SelectItem value="180-300">3-5 min</SelectItem>
+                        <SelectItem value="gt-300">{'>'} 5 min</SelectItem>
+                      </Select>
+                    </div>
+
+                    {/* Filtro de ordenamiento */}
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        Ordenar por
+                      </label>
+                      <Select
+                        value={sortOrderFilter}
+                        onValueChange={(value) => {
+                          setSortOrderFilter(value as 'ASC' | 'DESC');
+                          setCurrentPage(1);
+                        }}
+                        className="w-full"
+                      >
+                        <SelectItem value="DESC">Más recientes</SelectItem>
+                        <SelectItem value="ASC">Más antiguos</SelectItem>
+                      </Select>
+                    </div>
+
+                    {/* Filtro de motivo de desconexión */}
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        Motivo de desconexión
+                      </label>
+                      <Select
+                        value={disconnectionReasonFilter || "all"}
+                        onValueChange={(value) => handleDisconnectionReasonFilter(value === "all" ? null : value)}
+                        className="w-full"
+                      >
+                        <SelectItem value="all">Todas</SelectItem>
+                        {contextDisconnectionReasons.map(reason => (
+                          <SelectItem key={reason} value={reason}>{reason}</SelectItem>
+                        ))}
+                      </Select>
+                    </div>
+
+                    {/* Filtro de Interés - Solo si tiene permiso filtro_solar */}
+                    {hasFiltroSolar && (
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">
+                          Interés
+                        </label>
+                        <Select
+                          value={interestFilter || "all"}
+                          onValueChange={(value) => {
+                            setInterestFilter(value === "all" ? null : value);
+                            setCurrentPage(1);
+                          }}
+                          className="w-full"
+                        >
+                          <SelectItem value="all">Todos</SelectItem>
+                          <SelectItem value="call_after">Call After</SelectItem>
+                          <SelectItem value="not_interested">No Interesado</SelectItem>
+                          <SelectItem value="yes_call">Sí Llamar</SelectItem>
+                        </Select>
+                      </div>
+                    )}
+
+                    {/* Filtro de Tipo de Vivienda - Solo si tiene permiso filtro_solar */}
+                    {hasFiltroSolar && (
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">
+                          Tipo de Vivienda
+                        </label>
+                        <Select
+                          value={tipoViviendaFilter || "all"}
+                          onValueChange={(value) => {
+                            setTipoViviendaFilter(value === "all" ? null : value);
+                            setCurrentPage(1);
+                          }}
+                          className="w-full"
+                        >
+                          <SelectItem value="all">Todos</SelectItem>
+                          <SelectItem value="piso">Piso</SelectItem>
+                          <SelectItem value="no_identificado">No Identificado</SelectItem>
+                          <SelectItem value="alquiler">Alquiler</SelectItem>
+                          <SelectItem value="casa">Casa</SelectItem>
+                        </Select>
+                      </div>
+                    )}
+
+                    {/* Filtro de Agente */}
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        Agente
+                      </label>
+                      <Select
+                        value={agentIdFilter || "all"}
+                        onValueChange={(value) => {
+                          setAgentIdFilter(value === "all" ? null : value);
+                          setCurrentPage(1);
+                        }}
+                        className="w-full"
+                      >
+                        <SelectItem value="all">Todos los agentes</SelectItem>
+                        {uniqueAgents.map(agentId => (
+                          <SelectItem key={agentId} value={agentId}>{agentId}</SelectItem>
+                        ))}
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
             
             {/* Filtro por número de teléfono */}
-            <div className="lg:col-span-2">
+            <div className="lg:col-span-3">
               <div className="relative">
                 <Phone className="w-5 h-5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 <Input
@@ -1650,22 +1865,8 @@ export function Recordings({ onNavigate }: RecordingsProps) {
               </div>
             </div>
             
-            {/* Filtro de disconnection_reason (solo frontend) */}
-            <div className="lg:col-span-2">
-              <Select
-                value={disconnectionReasonFilter || "all"}
-                onValueChange={(value) => handleDisconnectionReasonFilter(value === "all" ? null : value)}
-                className="w-full"
-              >
-                <SelectItem value="all">Todas</SelectItem>
-                {contextDisconnectionReasons.map(reason => (
-                  <SelectItem key={reason} value={reason}>{reason}</SelectItem>
-                ))}
-              </Select>
-            </div>
-            
             {/* Búsqueda */}
-            <div className="lg:col-span-12 md:col-span-2 relative">
+            <div className="lg:col-span-4 relative">
               <div className="relative">
                 <Search className="w-5 h-5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 <Input
@@ -1708,7 +1909,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
               <PhoneOff className="mx-auto h-12 w-12 text-slate-400 mb-4" />
               <h3 className="text-xl font-medium text-slate-800 mb-2">No se encontraron grabaciones</h3>
               <p className="text-slate-600 max-w-md mx-auto mb-6">
-                {searchTerm || startDate || endDate || statusFilter || disconnectionReasonFilter || durationFilter || phoneNumberFilter
+                {searchTerm || startDate || endDate || statusFilter || disconnectionReasonFilter || durationFilter || phoneNumberFilter || interestFilter || tipoViviendaFilter || agentIdFilter
                   ? "No hay grabaciones que coincidan con tus filtros. Intenta ajustar los criterios de búsqueda."
                   : "Aún no hay grabaciones disponibles en tu cuenta."}
               </p>
@@ -1756,7 +1957,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                           
                           {visibleColumns.agent && call.agent_id && (
                             <div className="text-sm text-slate-600">
-                              <span className="font-medium">Agente:</span> {call.agent_id}
+                              <span className="font-medium">Agente:</span> <span className="text-blue-600">{call.agent_id}</span>
                             </div>
                           )}
                           
@@ -1787,9 +1988,9 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                               </div>
                             )}
                             
-                            {visibleColumns.callType && call.call_type && (
+                            {visibleColumns.callType && call.tipo_vivienda && (
                               <div className="text-sm text-slate-600">
-                                Tipo: {call.call_type}
+                                Tipo: {call.tipo_vivienda}
                               </div>
                             )}
                           </div>
@@ -1839,7 +2040,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                         Mostrando {(currentPage - 1) * itemsPerPage + 1}-
                         {Math.min(currentPage * itemsPerPage, filteredCalls.length)} de {totalFilteredCalls} grabaciones filtradas
                       </>
-                    ) : searchTerm || statusFilter || durationFilter || startDate || endDate || phoneNumberFilter || sortOrderFilter !== 'DESC' ? (
+                    ) : searchTerm || statusFilter || durationFilter || startDate || endDate || phoneNumberFilter || sortOrderFilter !== 'DESC' || agentIdFilter ? (
                       <>
                         Mostrando {(currentPage - 1) * itemsPerPage + 1}-
                         {Math.min(currentPage * itemsPerPage, filteredCalls.length)} de {filteredCalls.length} grabaciones filtradas
@@ -1972,18 +2173,22 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                 <CardContent className="p-4">
                   <h3 className="text-lg font-semibold text-slate-800 mb-4">Información Básica</h3>
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                    <div>
-                      <p className="text-sm text-slate-600">ID del Agente</p>
-                      <p className="text-slate-800">{modalCallForTransition.agent_id}</p>
-                    </div>
+                    {modalCallForTransition.agent_id && (
+                      <div>
+                        <p className="text-sm text-slate-600">ID del Agente</p>
+                        <p className="text-slate-800 font-medium text-blue-600">{modalCallForTransition.agent_id}</p>
+                      </div>
+                    )}
                     <div>
                       <p className="text-sm text-slate-600">Estado de la Llamada</p>
                       <p className="text-slate-800">{modalCallForTransition.call_status}</p>
                     </div>
-                    <div>
-                      <p className="text-sm text-slate-600">Tipo de Llamada</p>
-                      <p className="text-slate-800">{modalCallForTransition.call_type}</p>
-                    </div>
+                    {(modalCallForTransition.tipo_vivienda || modalCallForTransition.call_type) && (
+                      <div>
+                        <p className="text-sm text-slate-600">Tipo de Llamada</p>
+                        <p className="text-slate-800">{modalCallForTransition.tipo_vivienda || modalCallForTransition.call_type}</p>
+                      </div>
+                    )}
                     <div>
                       <p className="text-sm text-slate-600">Fecha y Hora</p>
                       <p className="text-slate-800 text-xs">{(() => {

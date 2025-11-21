@@ -16,8 +16,13 @@ export const GET_CLIENT_CONFIG = {
 export const get_client_id = 'get_client_id'
 
 // Obtener la URL base según el entorno (mismo que en api.ts)
-const IS_PRODUCTION = import.meta.env.VITE_PRODUCTION_API === 'on'
-const BASE_URL = 'http://localhost:3000'
+const IS_PRODUCTION = import.meta.env.VITE_IS_PRODUCTION === 'true'
+const BASE_URL = import.meta.env.VITE_BASE_URL || ''
+
+if (!BASE_URL) {
+  console.error('❌ VITE_BASE_URL no está definido en el archivo .env')
+}
+
 const GET_CLIENT_WEBHOOK_URL = IS_PRODUCTION ? 'https://n8n.aiagencyusa.com/webhook/get-client' : `${BASE_URL}/get-client`
 
 // Función para obtener el client_id de get-client usando el endpoint local
@@ -79,27 +84,33 @@ export const getClientId = async (email: string): Promise<string | null> => {
           sessionStorage.setItem('metadata_llamadas', JSON.stringify(userData.metadata_llamadas))
         }
         
-        // Guardar permissions (IMPORTANTE: siempre actualizar permissions)
-        // Solo guardar si permissions existe y no es un objeto vacío
-        if (userData.permissions && typeof userData.permissions === 'object') {
-          const permissionsKeys = Object.keys(userData.permissions)
-          if (permissionsKeys.length > 0) {
-            // Si tiene al menos una propiedad, guardarlo
-            sessionStorage.setItem('permissions', JSON.stringify(userData.permissions))
-            console.log('✅ Permissions guardados:', userData.permissions)
-          } else {
-            // Si es un objeto vacío, no guardar nada (o guardar null para indicar que no hay permissions)
+        // Guardar permissions SOLO si no existen ya en sessionStorage (evitar sobrescribir en refresh)
+        // Esto previene problemas de seguridad donde se muestran páginas que el usuario no debería ver
+        const existingPermissions = sessionStorage.getItem('permissions')
+        if (!existingPermissions) {
+          // Solo actualizar si no existen permissions previos
+          if (userData.permissions && typeof userData.permissions === 'object') {
+            const permissionsKeys = Object.keys(userData.permissions)
+            if (permissionsKeys.length > 0) {
+              // Si tiene al menos una propiedad, guardarlo
+              sessionStorage.setItem('permissions', JSON.stringify(userData.permissions))
+              console.log('✅ Permissions guardados:', userData.permissions)
+            } else {
+              // Si es un objeto vacío, no guardar nada (o guardar null para indicar que no hay permissions)
+              sessionStorage.removeItem('permissions')
+              console.log('ℹ️ Permissions vacío del servidor, usuario sin limitaciones')
+            }
+          } else if (userData.permissions === null || userData.permissions === undefined) {
+            // Si es null o undefined, no guardar nada
             sessionStorage.removeItem('permissions')
-            console.log('ℹ️ Permissions vacío del servidor, usuario sin limitaciones')
+            console.log('ℹ️ No hay permissions definidos, usuario sin limitaciones')
+          } else {
+            // Cualquier otro caso, guardar como está
+            sessionStorage.setItem('permissions', JSON.stringify(userData.permissions))
+            console.log('✅ Permissions guardados (formato no estándar):', userData.permissions)
           }
-        } else if (userData.permissions === null || userData.permissions === undefined) {
-          // Si es null o undefined, no guardar nada
-          sessionStorage.removeItem('permissions')
-          console.log('ℹ️ No hay permissions definidos, usuario sin limitaciones')
         } else {
-          // Cualquier otro caso, guardar como está
-          sessionStorage.setItem('permissions', JSON.stringify(userData.permissions))
-          console.log('✅ Permissions guardados (formato no estándar):', userData.permissions)
+          console.log('ℹ️ Permissions ya existen en sessionStorage, no se sobrescriben para evitar problemas de seguridad')
         }
         
         console.log('✅ Datos del usuario guardados en sessionStorage:', {

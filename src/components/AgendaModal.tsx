@@ -104,6 +104,13 @@ export function AgendaModal({ agenda, isOpen, onClose }: AgendaModalProps) {
                 <span>{agenda.phone_number}</span>
               </div>
               
+              {agenda.agent_id && (
+                <div className="flex items-center space-x-2 text-slate-600">
+                  <User className="w-4 h-4" />
+                  <span>Agente: <span className="font-medium text-blue-600">{agenda.agent_id}</span></span>
+                </div>
+              )}
+              
               <div className="flex items-center space-x-2 text-slate-600">
                 <Calendar className="w-4 h-4" />
                 <span>Agendado: {agenda.fecha_agendamiento ? formatDate(agenda.fecha_agendamiento) : 'Sin fecha'}</span>
