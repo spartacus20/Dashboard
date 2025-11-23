@@ -19,6 +19,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
+  const [filterAgentId, setFilterAgentId] = useState('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
@@ -50,7 +51,8 @@ export function Agendas({ onNavigate }: AgendasProps) {
         undefined, // filterType
         dateFrom || undefined,
         dateTo || undefined,
-        sortOrder // sort_order
+        sortOrder, // sort_order
+        filterAgentId !== 'all' ? filterAgentId : undefined // agentId
       );
       
       // Asegurar que siempre trabajamos con un array
@@ -70,10 +72,10 @@ export function Agendas({ onNavigate }: AgendasProps) {
     }
   };
 
-  // Cargar agendas al montar el componente o cuando cambien los filtros de fecha o ordenamiento
+  // Cargar agendas al montar el componente o cuando cambien los filtros de fecha, ordenamiento o agente
   useEffect(() => {
     loadAgendas();
-  }, [clientId, dateFrom, dateTo, sortOrder]);
+  }, [clientId, dateFrom, dateTo, sortOrder, filterAgentId]);
 
   // Filtrar agendas (solo búsqueda y tipo, las fechas se filtran en la API)
   useEffect(() => {
@@ -106,6 +108,9 @@ export function Agendas({ onNavigate }: AgendasProps) {
 
   // Obtener tipos únicos para el filtro
   const uniqueTypes = [...new Set((Array.isArray(agendas) ? agendas : []).map(agenda => agenda.tipo_agenda))].filter(Boolean);
+  
+  // Obtener agentes únicos para el filtro
+  const uniqueAgents = [...new Set((Array.isArray(agendas) ? agendas : []).map(agenda => agenda.agent_id).filter(Boolean))].sort();
 
   // Paginación
   const totalPages = Math.ceil(filteredAgendas.length / itemsPerPage);
@@ -170,7 +175,8 @@ export function Agendas({ onNavigate }: AgendasProps) {
         filterType !== 'all' ? filterType : undefined,
         dateFrom || undefined,
         dateTo || undefined,
-        sortOrder
+        sortOrder,
+        filterAgentId !== 'all' ? filterAgentId : undefined
       );
 
       if (allAgendas.length === 0) {
@@ -365,7 +371,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
             <div className="mb-6">
               <p className="text-slate-600">
                 {filteredAgendas.length} de {agendas.length} agendas
-                {(searchTerm || filterType !== 'all' || dateFrom || dateTo) && (
+                {(searchTerm || filterType !== 'all' || filterAgentId !== 'all' || dateFrom || dateTo) && (
                   <span className="text-blue-600 ml-2 font-medium">(filtradas)</span>
                 )}
                 {(dateFrom || dateTo) && (
@@ -374,7 +380,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
               </p>
               
               {/* Mostrar filtros activos */}
-              {(searchTerm || filterType !== 'all' || dateFrom || dateTo) && (
+              {(searchTerm || filterType !== 'all' || filterAgentId !== 'all' || dateFrom || dateTo) && (
                 <div className="flex flex-wrap gap-2 mt-2">
                   {searchTerm && (
                     <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full border border-blue-200">
@@ -384,6 +390,11 @@ export function Agendas({ onNavigate }: AgendasProps) {
                   {filterType !== 'all' && (
                     <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full border border-blue-200">
                       Tipo: {filterType}
+                    </span>
+                  )}
+                  {filterAgentId !== 'all' && (
+                    <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full border border-blue-200">
+                      Agente: {filterAgentId}
                     </span>
                   )}
                   {dateFrom && (
@@ -402,7 +413,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
 
             {/* Filtros y búsqueda */}
             <div className="bg-white rounded-lg p-6 mb-6 shadow-lg border border-slate-200">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
                 {/* Búsqueda */}
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
@@ -426,6 +437,21 @@ export function Agendas({ onNavigate }: AgendasProps) {
                     <option value="all">Todos los tipos</option>
                     {uniqueTypes.map(type => (
                       <option key={type} value={type}>{type}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Filtro por agente */}
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
+                  <select
+                    value={filterAgentId}
+                    onChange={(e) => setFilterAgentId(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
+                  >
+                    <option value="all">Todos los agentes</option>
+                    {uniqueAgents.map(agentId => (
+                      <option key={agentId} value={agentId}>{agentId}</option>
                     ))}
                   </select>
                 </div>
@@ -555,6 +581,12 @@ export function Agendas({ onNavigate }: AgendasProps) {
                               <Clock className="w-4 h-4" />
                               <span>Creado: {agenda?.created_at ? formatDate(agenda.created_at) : 'Sin fecha'}</span>
                             </div>
+                            {agenda?.agent_id && (
+                              <div className="flex items-center space-x-2 text-slate-600">
+                                <User className="w-4 h-4" />
+                                <span>Agente: <span className="font-medium text-blue-600">{agenda.agent_id}</span></span>
+                              </div>
+                            )}
                           </div>
 
                           {/* Información de ubicación */}

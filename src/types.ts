@@ -30,6 +30,7 @@ export interface RetellCall {
   call_analysis?: CallAnalysis;
   call_cost?: CallCost;
   agent_id?: string;
+  tipo_vivienda?: string; // Tipo de vivienda de la base de datos
   metadata?: Record<string, any>;
 }
 
@@ -262,6 +263,7 @@ export interface Agenda {
   tipo_agenda: string;
   recordings?: string;
   transcript?: string;
+  agent_id?: string;
 }
 
 export interface Callback {

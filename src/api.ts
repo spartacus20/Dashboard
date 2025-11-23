@@ -492,22 +492,28 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
         console.log('✅ metadata_llamadas guardado en sessionStorage');
       }
       
-      // Guardar permissions en sessionStorage si está disponible y no está vacío
-      if (clientData.permissions && typeof clientData.permissions === 'object') {
-        const permissionsKeys = Object.keys(clientData.permissions);
-        if (permissionsKeys.length > 0) {
-          // Si tiene al menos una propiedad, guardarlo
-          sessionStorage.setItem('permissions', JSON.stringify(clientData.permissions));
-          console.log('✅ permissions guardado en sessionStorage:', clientData.permissions);
-        } else {
-          // Si es un objeto vacío, no guardar nada
+      // Guardar permissions SOLO si no existen ya en sessionStorage (evitar sobrescribir en refresh)
+      const existingPermissions = sessionStorage.getItem('permissions');
+      if (!existingPermissions) {
+        // Solo actualizar si no existen permissions previos
+        if (clientData.permissions && typeof clientData.permissions === 'object') {
+          const permissionsKeys = Object.keys(clientData.permissions);
+          if (permissionsKeys.length > 0) {
+            // Si tiene al menos una propiedad, guardarlo
+            sessionStorage.setItem('permissions', JSON.stringify(clientData.permissions));
+            console.log('✅ permissions guardado en sessionStorage:', clientData.permissions);
+          } else {
+            // Si es un objeto vacío, no guardar nada
+            sessionStorage.removeItem('permissions');
+            console.log('ℹ️ Permissions vacío del servidor, usuario sin limitaciones');
+          }
+        } else if (clientData.permissions === null || clientData.permissions === undefined) {
+          // Si es null o undefined, no guardar nada
           sessionStorage.removeItem('permissions');
-          console.log('ℹ️ Permissions vacío del servidor, usuario sin limitaciones');
+          console.log('ℹ️ No hay permissions definidos, usuario sin limitaciones');
         }
-      } else if (clientData.permissions === null || clientData.permissions === undefined) {
-        // Si es null o undefined, no guardar nada
-        sessionStorage.removeItem('permissions');
-        console.log('ℹ️ No hay permissions definidos, usuario sin limitaciones');
+      } else {
+        console.log('ℹ️ Permissions ya existen en sessionStorage, no se sobrescriben para evitar problemas de seguridad');
       }
       
       console.log('🔧 Configuración construida:', {
@@ -550,22 +556,28 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
         console.log('✅ metadata_llamadas guardado en sessionStorage (formato objeto)');
       }
       
-      // Guardar permissions en sessionStorage si está disponible y no está vacío
-      if (data.permissions && typeof data.permissions === 'object') {
-        const permissionsKeys = Object.keys(data.permissions);
-        if (permissionsKeys.length > 0) {
-          // Si tiene al menos una propiedad, guardarlo
-          sessionStorage.setItem('permissions', JSON.stringify(data.permissions));
-          console.log('✅ permissions guardado en sessionStorage (formato objeto):', data.permissions);
-        } else {
-          // Si es un objeto vacío, no guardar nada
+      // Guardar permissions SOLO si no existen ya en sessionStorage (evitar sobrescribir en refresh)
+      const existingPermissions = sessionStorage.getItem('permissions');
+      if (!existingPermissions) {
+        // Solo actualizar si no existen permissions previos
+        if (data.permissions && typeof data.permissions === 'object') {
+          const permissionsKeys = Object.keys(data.permissions);
+          if (permissionsKeys.length > 0) {
+            // Si tiene al menos una propiedad, guardarlo
+            sessionStorage.setItem('permissions', JSON.stringify(data.permissions));
+            console.log('✅ permissions guardado en sessionStorage (formato objeto):', data.permissions);
+          } else {
+            // Si es un objeto vacío, no guardar nada
+            sessionStorage.removeItem('permissions');
+            console.log('ℹ️ Permissions vacío del servidor (formato objeto), usuario sin limitaciones');
+          }
+        } else if (data.permissions === null || data.permissions === undefined) {
+          // Si es null o undefined, no guardar nada
           sessionStorage.removeItem('permissions');
-          console.log('ℹ️ Permissions vacío del servidor (formato objeto), usuario sin limitaciones');
+          console.log('ℹ️ No hay permissions definidos (formato objeto), usuario sin limitaciones');
         }
-      } else if (data.permissions === null || data.permissions === undefined) {
-        // Si es null o undefined, no guardar nada
-        sessionStorage.removeItem('permissions');
-        console.log('ℹ️ No hay permissions definidos (formato objeto), usuario sin limitaciones');
+      } else {
+        console.log('ℹ️ Permissions ya existen en sessionStorage, no se sobrescriben para evitar problemas de seguridad');
       }
       
       return {
@@ -844,6 +856,12 @@ function transformDashboardData(data: any): any {
           cantidad: item.cantidad,
           porcentaje: ((item.cantidad / (data.total_llamadas || 1)) * 100).toFixed(2)
         })) : [],
+        // Transformar interes
+        interes: data.interes ? data.interes.map((item: any) => ({
+          interes: item.interes,
+          cantidad: item.cantidad,
+          porcentaje: ((item.cantidad / (data.total_llamadas || 1)) * 100).toFixed(2)
+        })) : [],
         // Transformar llamadas_efectivas_por_hora
         llamadas_efectivas_por_hora: data.llamadas_efectivas_por_hora ? data.llamadas_efectivas_por_hora.map((item: any) => ({
           hora: item.hora,
@@ -855,7 +873,12 @@ function transformDashboardData(data: any): any {
           rango_0_30: data.duracion_llamadas_efectivas.rango_0_30 || 0,
           rango_30_50: data.duracion_llamadas_efectivas.rango_30_50 || 0,
           rango_50_plus: data.duracion_llamadas_efectivas.rango_50_plus || 0
-        } : null
+        } : null,
+        // Transformar agentes_por_agendas
+        agentes_por_agendas: data.agentes_por_agendas ? data.agentes_por_agendas.map((item: any) => ({
+          agent_id: item.agent_id,
+          cantidad_agendas: item.cantidad_agendas || 0
+        })) : []
       }
     };
     
@@ -874,7 +897,8 @@ export async function fetchAllAgendas(
   filterType?: string, 
   dateFrom?: string, 
   dateTo?: string,
-  sortOrder?: 'ASC' | 'DESC'
+  sortOrder?: 'ASC' | 'DESC',
+  agentId?: string
 ): Promise<Agenda[]> {
   try {
     // Usar el client_id proporcionado o el del localStorage
@@ -885,7 +909,7 @@ export async function fetchAllAgendas(
     }
     
     console.log('Solicitando TODAS las agendas para client_id:', actualClientId);
-    console.log('Filtros aplicados:', { searchTerm, filterType, dateFrom, dateTo, sortOrder });
+    console.log('Filtros aplicados:', { searchTerm, filterType, dateFrom, dateTo, sortOrder, agentId });
     
     let allAgendas: Agenda[] = [];
     let page = 1;
@@ -917,6 +941,10 @@ export async function fetchAllAgendas(
       
       if (sortOrder) {
         requestBody.sort_order = sortOrder;
+      }
+      
+      if (agentId) {
+        requestBody.agent_id = agentId;
       }
       
       console.log(`Página ${page}:`, requestBody);
@@ -1186,6 +1214,11 @@ export async function listCalls(
     sort_order?: 'ASC' | 'DESC';
     page?: number;
     per_page?: number;
+    agent_id?: string;
+    end_reason?: string;
+    interest?: string;
+    tipo_vivienda?: string;
+    to_number_norm?: string;
   }
 ): Promise<{
   calls: RetellCall[];
@@ -1239,6 +1272,8 @@ export async function listCalls(
       recording_url: call.recordings || call.recording_url,
       to_number: call.phone_number || call.to_number,
       from_number: call.from_number,
+      agent_id: call.agent_id, // Incluir agent_id del backend
+      tipo_vivienda: call.tipo_vivienda, // Incluir tipo_vivienda del backend
       metadata: call.metadata || {}
     }));
     
@@ -1960,6 +1995,9 @@ export async function exportCallsWithColumns(
     to_number?: string;
     to_number_norm?: string;
     status?: string;
+    interest?: string;
+    tipo_vivienda?: string;
+    end_reason?: string;
     sort_order?: 'ASC' | 'DESC';
   }
 ): Promise<{ calls: any[]; total_llamadas: number; columns_selected: string[] }> {
@@ -1999,6 +2037,50 @@ export async function exportCallsWithColumns(
     };
   } catch (error) {
     console.error('Error al exportar llamadas con columnas:', error);
+    throw error;
+  }
+}
+
+// Obtener todos los motivos de desconexión únicos
+export async function getDisconnectionReasons(
+  apiKey: string,
+  clientId: string
+): Promise<string[]> {
+  try {
+    if (!clientId) {
+      throw new Error('client_id es obligatorio para getDisconnectionReasons');
+    }
+    
+    console.log('🔍 Obteniendo motivos de desconexión para client_id:', clientId);
+    
+    const url = `${BASE_URL}/api/calls/get-disconnection-reasons`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ client_id: clientId }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error al obtener motivos de desconexión: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Motivos de desconexión obtenidos para client_id:', data.client_id || clientId);
+    console.log('📋 Total de motivos:', data.total || 0);
+    console.log('📋 Motivos:', data.disconnection_reasons || []);
+    
+    // Validar que los motivos pertenecen al client_id correcto
+    if (data.client_id && data.client_id !== clientId) {
+      console.warn('⚠️ Advertencia: El client_id de la respuesta no coincide con el solicitado');
+    }
+    
+    return data.disconnection_reasons || [];
+  } catch (error) {
+    console.error('❌ Error al obtener motivos de desconexión:', error);
     throw error;
   }
 }

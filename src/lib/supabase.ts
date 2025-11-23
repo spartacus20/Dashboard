@@ -84,27 +84,33 @@ export const getClientId = async (email: string): Promise<string | null> => {
           sessionStorage.setItem('metadata_llamadas', JSON.stringify(userData.metadata_llamadas))
         }
         
-        // Guardar permissions (IMPORTANTE: siempre actualizar permissions)
-        // Solo guardar si permissions existe y no es un objeto vacío
-        if (userData.permissions && typeof userData.permissions === 'object') {
-          const permissionsKeys = Object.keys(userData.permissions)
-          if (permissionsKeys.length > 0) {
-            // Si tiene al menos una propiedad, guardarlo
-            sessionStorage.setItem('permissions', JSON.stringify(userData.permissions))
-            console.log('✅ Permissions guardados:', userData.permissions)
-          } else {
-            // Si es un objeto vacío, no guardar nada (o guardar null para indicar que no hay permissions)
+        // Guardar permissions SOLO si no existen ya en sessionStorage (evitar sobrescribir en refresh)
+        // Esto previene problemas de seguridad donde se muestran páginas que el usuario no debería ver
+        const existingPermissions = sessionStorage.getItem('permissions')
+        if (!existingPermissions) {
+          // Solo actualizar si no existen permissions previos
+          if (userData.permissions && typeof userData.permissions === 'object') {
+            const permissionsKeys = Object.keys(userData.permissions)
+            if (permissionsKeys.length > 0) {
+              // Si tiene al menos una propiedad, guardarlo
+              sessionStorage.setItem('permissions', JSON.stringify(userData.permissions))
+              console.log('✅ Permissions guardados:', userData.permissions)
+            } else {
+              // Si es un objeto vacío, no guardar nada (o guardar null para indicar que no hay permissions)
+              sessionStorage.removeItem('permissions')
+              console.log('ℹ️ Permissions vacío del servidor, usuario sin limitaciones')
+            }
+          } else if (userData.permissions === null || userData.permissions === undefined) {
+            // Si es null o undefined, no guardar nada
             sessionStorage.removeItem('permissions')
-            console.log('ℹ️ Permissions vacío del servidor, usuario sin limitaciones')
+            console.log('ℹ️ No hay permissions definidos, usuario sin limitaciones')
+          } else {
+            // Cualquier otro caso, guardar como está
+            sessionStorage.setItem('permissions', JSON.stringify(userData.permissions))
+            console.log('✅ Permissions guardados (formato no estándar):', userData.permissions)
           }
-        } else if (userData.permissions === null || userData.permissions === undefined) {
-          // Si es null o undefined, no guardar nada
-          sessionStorage.removeItem('permissions')
-          console.log('ℹ️ No hay permissions definidos, usuario sin limitaciones')
         } else {
-          // Cualquier otro caso, guardar como está
-          sessionStorage.setItem('permissions', JSON.stringify(userData.permissions))
-          console.log('✅ Permissions guardados (formato no estándar):', userData.permissions)
+          console.log('ℹ️ Permissions ya existen en sessionStorage, no se sobrescriben para evitar problemas de seguridad')
         }
         
         console.log('✅ Datos del usuario guardados en sessionStorage:', {

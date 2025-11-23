@@ -120,6 +120,17 @@ function translateHousingType(type: string): string {
   return translations[type] || type;
 }
 
+// Función para traducir interés
+function translateInterest(interest: string): string {
+  const translations: Record<string, string> = {
+    'call_after': 'Call After',
+    'not_interested': 'No Interesado',
+    'yes_call': 'Sí Llamar'
+  };
+  
+  return translations[interest] || interest;
+}
+
 // Función para generar datos del gráfico de desconexión
 function generateDisconnectionData(calls: any[], dashboardData?: any) {
   // Si tenemos datos del dashboard, usarlos directamente
@@ -197,6 +208,40 @@ function generateHousingTypeData(dashboardData?: any) {
       cantidad: item.cantidad || 0,
       porcentaje: totalFiltered > 0 ? ((item.cantidad || 0) / totalFiltered * 100).toFixed(2) : '0',
       tipo: item.tipo
+    }));
+  }
+  
+  return [];
+}
+
+// Función para generar datos del gráfico de interés
+function generateInterestData(dashboardData?: any) {
+  if (dashboardData?.dashboard_data?.interes && Array.isArray(dashboardData.dashboard_data.interes)) {
+    // Calcular el total para recalcular porcentajes
+    const total = dashboardData.dashboard_data.interes.reduce((sum: number, item: any) => sum + (item.cantidad || 0), 0);
+    
+    return dashboardData.dashboard_data.interes.map((item: any) => ({
+      label: translateInterest(item.interes),
+      cantidad: item.cantidad || 0,
+      porcentaje: total > 0 ? ((item.cantidad || 0) / total * 100).toFixed(2) : '0',
+      interes: item.interes
+    }));
+  }
+  
+  return [];
+}
+
+// Función para generar datos del gráfico de agentes por agendas
+function generateAgentesPorAgendasData(dashboardData?: any) {
+  if (dashboardData?.dashboard_data?.agentes_por_agendas && Array.isArray(dashboardData.dashboard_data.agentes_por_agendas)) {
+    // Calcular el total para recalcular porcentajes
+    const total = dashboardData.dashboard_data.agentes_por_agendas.reduce((sum: number, item: any) => sum + (item.cantidad_agendas || 0), 0);
+    
+    return dashboardData.dashboard_data.agentes_por_agendas.map((item: any) => ({
+      label: item.agent_id || 'Sin agente',
+      cantidad: item.cantidad_agendas || 0,
+      porcentaje: total > 0 ? ((item.cantidad_agendas || 0) / total * 100).toFixed(2) : '0',
+      agent_id: item.agent_id
     }));
   }
   
@@ -638,7 +683,9 @@ export function Dashboard({
   
   const hourlyAgendasData = useMemo(() => generateHourlyAgendasData(dashboardData, hourRangeStart, hourRangeEnd), [dashboardData, hourRangeStart, hourRangeEnd]);
   const housingTypeData = useMemo(() => generateHousingTypeData(dashboardData), [dashboardData]);
+  const interestData = useMemo(() => generateInterestData(dashboardData), [dashboardData]);
   const effectiveCallsData = useMemo(() => generateEffectiveCallsData(dashboardData, effectiveCallsHourStart, effectiveCallsHourEnd), [dashboardData, effectiveCallsHourStart, effectiveCallsHourEnd]);
+  const agentesPorAgendasData = useMemo(() => generateAgentesPorAgendasData(dashboardData), [dashboardData]);
 
   // Log para verificar datos del gráfico
   React.useEffect(() => {
@@ -1197,6 +1244,56 @@ export function Dashboard({
                       height={300}
                       colors={["#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#ef4444"]}
                       showLegend={true}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            
+            {/* Gráfico de interés */}
+            {interestData && interestData.length > 0 && (
+              <Card className="mb-8 shadow-lg border border-slate-200">
+                <CardHeader>
+                  <CardTitle className="text-base font-semibold text-slate-800">Interés</CardTitle>
+                  <CardDescription className="text-slate-500">
+                    Distribución de interés de los clientes
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-0 md:p-6">
+                  <div className="h-[300px] bg-white rounded-xl p-4 md:p-6">
+                    <Chart 
+                      data={interestData}
+                      type="pie"
+                      xKey="label"
+                      yKey="cantidad"
+                      height={300}
+                      colors={["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444"]}
+                      showLegend={true}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            
+            {/* Gráfico de agentes por agendas */}
+            {agendaEnabled && agentesPorAgendasData && agentesPorAgendasData.length > 0 && (
+              <Card className="mb-8 shadow-lg border border-slate-200">
+                <CardHeader>
+                  <CardTitle className="text-base font-semibold text-slate-800">Agentes por Agendas</CardTitle>
+                  <CardDescription className="text-slate-500">
+                    Distribución de agendas por agente
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-0 md:p-6">
+                  <div className="h-[300px] bg-white rounded-xl p-4 md:p-6">
+                    <Chart 
+                      data={agentesPorAgendasData}
+                      type="bar"
+                      xKey="label"
+                      yKey="cantidad"
+                      height={300}
+                      colors={["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#ec4899", "#14b8a6", "#f97316"]}
+                      showLegend={false}
                     />
                   </div>
                 </CardContent>

@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { RetellCall, FilterCriteria, RetellPhoneNumber, RetellBatchCall } from '../types';
-import { fetchPhoneNumbers, fetchBatchCalls, listCalls, getClientApiKey, getDashboardData, getDashboardToday, getDashboardWeek, getDashboardMonth } from '../api';
+import { fetchPhoneNumbers, fetchBatchCalls, listCalls, getClientApiKey, getDashboardData, getDashboardToday, getDashboardWeek, getDashboardMonth, getDisconnectionReasons } from '../api';
 import { get_client_id, supabase, getClientId as fetchAndStoreClientId } from '../lib/supabase';
 
 interface CallsContextType {
@@ -361,13 +361,8 @@ export function CallsProvider({ children }: CallsProviderProps) {
         // Actualizar estadísticas
         setTotalCalls(updatedCalls.length);
         
-        // Extraer razones de desconexión únicas
-        const reasons = [...new Set(
-          updatedCalls
-            .map(call => call.disconnection_reason)
-            .filter((reason): reason is string => !!reason)
-        )].sort();
-        setDisconnectionReasons(reasons);
+        // No actualizar disconnectionReasons aquí, se cargarán desde el endpoint
+        // para obtener TODOS los motivos disponibles, no solo los de las llamadas cargadas
         
         return updatedCalls;
       });
@@ -629,6 +624,35 @@ export function CallsProvider({ children }: CallsProviderProps) {
       loadAllCalls();
     }
   }, [loadAllCalls, allCalls.length, loadingAllCalls, apiKey]);
+
+  // Función para cargar los motivos de desconexión desde el endpoint
+  const loadDisconnectionReasons = useCallback(async () => {
+    if (!apiKey || !clientId) {
+      console.log('⏳ Esperando apiKey y clientId para cargar motivos de desconexión...');
+      return;
+    }
+
+    try {
+      console.log('🔄 Cargando motivos de desconexión desde el endpoint para client_id:', clientId);
+      const reasons = await getDisconnectionReasons(apiKey, clientId);
+      
+      // Filtrar valores nulos o vacíos
+      const validReasons = reasons.filter(reason => reason && reason.trim() !== '' && reason !== 'null');
+      
+      setDisconnectionReasons(validReasons);
+      console.log(`✅ Motivos de desconexión cargados para client_id "${clientId}": ${validReasons.length} motivos`, validReasons);
+    } catch (err) {
+      console.error('❌ Error al cargar motivos de desconexión:', err);
+      // No establecer error global, solo loguear
+    }
+  }, [apiKey, clientId]);
+
+  // Cargar motivos de desconexión cuando tenemos clientId y apiKey disponibles
+  useEffect(() => {
+    if (clientId && apiKey && disconnectionReasons.length === 0) {
+      loadDisconnectionReasons();
+    }
+  }, [clientId, apiKey, disconnectionReasons.length, loadDisconnectionReasons]);
 
   // Cargar datos del dashboard cuando tenemos clientId y apiKey disponibles
   useEffect(() => {
