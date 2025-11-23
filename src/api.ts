@@ -2,13 +2,14 @@ import { RetellCall, FilterCriteria, CallStats, RetellPhoneNumber, RetellAgent, 
 import { get_client_id } from './lib/supabase';
 
 // Obtener la URL base según el entorno
-const IS_PRODUCTION = import.meta.env.VITE_PRODUCTION_API === 'on';
-//const BASE_URL = IS_PRODUCTION ? 'https://n8n.aiagencyusa.com/webhook/ed980be2-4957-44cf-8f61-8b8c4d4957e8' : 'https://api.iacreatorhub.com';
-const BASE_URL = 'http://localhost:3000';
+const IS_PRODUCTION = import.meta.env.VITE_PRODUCTION_API === 'true';
+const BASE_PROD = import.meta.env.VITE_BASE_PROD;
+const BASE_DEV = import.meta.env.VITE_BASE_DEV;
+const BASE_URL = IS_PRODUCTION ? BASE_PROD : BASE_DEV;
 
 
 const WEBHOOK_URL = BASE_URL;
-const GET_CLIENT_WEBHOOK_URL = IS_PRODUCTION ? 'https://n8n.aiagencyusa.com/webhook/get-client' : `${BASE_URL}/get-client`;
+const GET_CLIENT_WEBHOOK_URL = `${BASE_URL}/get-client`;
 const GET_DASHBOARD_WEBHOOK_URL = `${BASE_URL}/api/dashboard/get-dashboard`;
 const GET_DASHBOARD_CUSTOM_WEBHOOK_URL = `${BASE_URL}/api/dashboard/get-dashboard-custom`;
 const GET_AGENDAS_WEBHOOK_URL =  `${BASE_URL}/api/agenda/get-agenda`;

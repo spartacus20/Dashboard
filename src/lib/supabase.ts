@@ -15,14 +15,19 @@ export const GET_CLIENT_CONFIG = {
 // Variable para la clave del localStorage
 export const get_client_id = 'get_client_id'
 
-// Obtener la URL base según el entorno (mismo que en api.ts)
-const IS_PRODUCTION = import.meta.env.VITE_PRODUCTION_API === 'on'
-const BASE_URL = 'http://localhost:3000'
-const GET_CLIENT_WEBHOOK_URL = IS_PRODUCTION ? 'https://n8n.aiagencyusa.com/webhook/get-client' : `${BASE_URL}/get-client`
+// Obtener la URL base según el entorno
+export const IS_PRODUCTION = import.meta.env.VITE_PRODUCTION_API === 'true';
+const BASE_PROD = import.meta.env.VITE_BASE_PROD;
+const BASE_DEV = import.meta.env.VITE_BASE_DEV;
+export const BASE_URL = IS_PRODUCTION ? BASE_PROD : BASE_DEV;
+
+const GET_CLIENT_WEBHOOK_URL = `${BASE_URL}/get-client`
 
 // Función para obtener el client_id de get-client usando el endpoint local
 export const getClientId = async (email: string): Promise<string | null> => {
   try {
+    // Mostrar la URL base al cargar get-client
+    console.log('🌐 BASE_URL:', BASE_URL)
     // Siempre hacer la petición para obtener datos actualizados (incluyendo permissions)
     console.log('🔍 Obteniendo datos del usuario desde:', GET_CLIENT_WEBHOOK_URL)
     
