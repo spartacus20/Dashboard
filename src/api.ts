@@ -1418,7 +1418,9 @@ export async function fetchAllCallsWithListCalls(
 export async function fetchCallbacks(
   clientId?: string,
   page: number = 1,
-  limit: number = 100
+  limit: number = 100,
+  fechaInicio?: string,
+  fechaFin?: string
 ): Promise<CallbackResponse> {
   try {
     // Usar el client_id proporcionado o el del localStorage
@@ -1430,14 +1432,38 @@ export async function fetchCallbacks(
     
     console.log('Solicitando callbacks para client_id:', actualClientId);
     console.log('Página:', page, 'Límite:', limit);
+    console.log('Filtros de fecha:', { fechaInicio, fechaFin });
     
-    const requestBody = {
+    const requestBody: any = {
       client_id: actualClientId,
       page: page,
       limit: limit
     };
     
-    const response = await fetch('https://api.iacreatorhub.com/api/calls/list-callback', {
+    // Agregar filtros de fecha si están disponibles
+    if (fechaInicio) {
+      // Formatear fecha_inicio: si es solo fecha (YYYY-MM-DD), agregar hora 00:00:00Z
+      let fechaInicioFormatted = fechaInicio;
+      if (fechaInicio.length === 10 && /^\d{4}-\d{2}-\d{2}$/.test(fechaInicio)) {
+        fechaInicioFormatted = `${fechaInicio}T00:00:00Z`;
+      } else if (fechaInicio.length === 19 && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(fechaInicio)) {
+        fechaInicioFormatted = `${fechaInicio}Z`;
+      }
+      requestBody.fecha_inicio = fechaInicioFormatted;
+    }
+    
+    if (fechaFin) {
+      // Formatear fecha_fin: si es solo fecha (YYYY-MM-DD), agregar hora 23:59:59Z
+      let fechaFinFormatted = fechaFin;
+      if (fechaFin.length === 10 && /^\d{4}-\d{2}-\d{2}$/.test(fechaFin)) {
+        fechaFinFormatted = `${fechaFin}T23:59:59Z`;
+      } else if (fechaFin.length === 19 && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(fechaFin)) {
+        fechaFinFormatted = `${fechaFin}Z`;
+      }
+      requestBody.fecha_fin = fechaFinFormatted;
+    }
+    
+    const response = await fetch(`${BASE_URL}/api/calls/list-callback`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1517,10 +1543,13 @@ export async function fetchAllCallbacks(
 // Función para obtener callbacks con límite inicial (optimizada para carga rápida)
 export async function fetchCallbacksWithLimit(
   clientId: string,
-  limit: number = 500
+  limit: number = 500,
+  fechaInicio?: string,
+  fechaFin?: string
 ): Promise<{ callbacks: Callback[]; hasMore: boolean; totalCallbacks: number }> {
   try {
     console.log(`Obteniendo primeros ${limit} callbacks para client_id:`, clientId);
+    console.log('Filtros de fecha:', { fechaInicio, fechaFin });
     
     let allCallbacks: Callback[] = [];
     let page = 1;
@@ -1528,7 +1557,7 @@ export async function fetchCallbacksWithLimit(
     let totalCallbacks = 0;
     
     while (hasMore && allCallbacks.length < limit) {
-      const response = await fetchCallbacks(clientId, page, 100);
+      const response = await fetchCallbacks(clientId, page, 100, fechaInicio, fechaFin);
       
       // Si es la primera página, obtener el total de callbacks
       if (page === 1) {
@@ -1569,10 +1598,13 @@ export async function fetchCallbacksWithLimit(
 export async function loadMoreCallbacks(
   clientId: string,
   currentCallbacks: Callback[],
-  additionalLimit: number = 500
+  additionalLimit: number = 500,
+  fechaInicio?: string,
+  fechaFin?: string
 ): Promise<{ callbacks: Callback[]; hasMore: boolean; totalCallbacks: number }> {
   try {
     console.log(`Cargando ${additionalLimit} callbacks adicionales para client_id:`, clientId);
+    console.log('Filtros de fecha:', { fechaInicio, fechaFin });
     
     // Calcular desde qué página continuar
     const currentPage = Math.ceil(currentCallbacks.length / 100);
@@ -1585,7 +1617,7 @@ export async function loadMoreCallbacks(
     let loadedCount = 0;
     
     while (hasMore && loadedCount < additionalLimit) {
-      const response = await fetchCallbacks(clientId, page, 100);
+      const response = await fetchCallbacks(clientId, page, 100, fechaInicio, fechaFin);
       
       // Si es la primera página de esta carga, obtener el total
       if (page === startPage) {

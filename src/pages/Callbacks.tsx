@@ -14,7 +14,8 @@ import {
   Clock,
   CheckCircle,
   Download,
-  X
+  X,
+  Filter
 } from 'lucide-react';
 
 interface CallbacksProps {
@@ -34,6 +35,11 @@ export function Callbacks({}: CallbacksProps) {
   const [hasMoreCallbacks, setHasMoreCallbacks] = useState(false);
   const [totalCallbacks, setTotalCallbacks] = useState(0);
   const itemsPerPage = 25;
+  
+  // Estados para filtros de fecha
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
+  const [showDateFilterModal, setShowDateFilterModal] = useState(false);
 
   // Estados para exportación con filtros de fecha
   const [showExportModal, setShowExportModal] = useState(false);
@@ -56,8 +62,14 @@ export function Callbacks({}: CallbacksProps) {
 
     try {
       console.log('Cargando primeros 500 callbacks para client_id:', clientId);
+      console.log('Filtros de fecha aplicados:', { filterStartDate, filterEndDate });
       
-      const result = await fetchCallbacksWithLimit(clientId, 500);
+      const result = await fetchCallbacksWithLimit(
+        clientId, 
+        500,
+        filterStartDate || undefined,
+        filterEndDate || undefined
+      );
       
       console.log('Callbacks iniciales recibidos:', result.callbacks.length);
       console.log('Total de callbacks disponibles:', result.totalCallbacks);
@@ -91,8 +103,15 @@ export function Callbacks({}: CallbacksProps) {
 
     try {
       console.log('Cargando más callbacks...');
+      console.log('Filtros de fecha aplicados:', { filterStartDate, filterEndDate });
       
-      const result = await loadMoreCallbacks(clientId, callbacks, 500);
+      const result = await loadMoreCallbacks(
+        clientId, 
+        callbacks, 
+        500,
+        filterStartDate || undefined,
+        filterEndDate || undefined
+      );
       
       console.log('Callbacks adicionales cargados:', result.callbacks.length - callbacks.length);
       console.log('Total de callbacks ahora:', result.callbacks.length);
@@ -110,10 +129,10 @@ export function Callbacks({}: CallbacksProps) {
     }
   };
 
-  // Cargar callbacks al montar el componente
+  // Cargar callbacks al montar el componente o cuando cambien los filtros de fecha
   useEffect(() => {
     loadCallbacks();
-  }, [clientId]);
+  }, [clientId, filterStartDate, filterEndDate]);
 
   // Filtrar callbacks
   useEffect(() => {
@@ -389,35 +408,45 @@ export function Callbacks({}: CallbacksProps) {
                 (de {totalCallbacks} total disponibles)
               </span>
             )}
-            {(searchTerm || statusFilter !== 'all') && (
+            {(searchTerm || statusFilter !== 'all' || filterStartDate || filterEndDate) && (
               <span className="text-blue-600 ml-2 font-medium">(filtrados)</span>
             )}
           </p>
           
           {/* Mostrar filtros activos */}
-          {(searchTerm || statusFilter !== 'all') && (
-            <div className="flex flex-wrap gap-2 mt-2">
-              {searchTerm && (
-                <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full border border-blue-200">
-                  Búsqueda: "{searchTerm}"
-                </span>
-              )}
-              {statusFilter !== 'all' && (
-                <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full border border-blue-200">
-                  Estado: {
-                    statusFilter === 'llamado' ? 'Llamados' : 
-                    statusFilter === 'pendiente' ? 'Pendientes' : 
-                    'Programados'
-                  }
-                </span>
-              )}
-            </div>
-          )}
+            {(searchTerm || statusFilter !== 'all' || filterStartDate || filterEndDate) && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {searchTerm && (
+                  <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full border border-blue-200">
+                    Búsqueda: "{searchTerm}"
+                  </span>
+                )}
+                {statusFilter !== 'all' && (
+                  <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full border border-blue-200">
+                    Estado: {
+                      statusFilter === 'llamado' ? 'Llamados' : 
+                      statusFilter === 'pendiente' ? 'Pendientes' : 
+                      'Programados'
+                    }
+                  </span>
+                )}
+                {filterStartDate && (
+                  <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full border border-green-200">
+                    Desde: {new Date(filterStartDate).toLocaleDateString('es-ES')}
+                  </span>
+                )}
+                {filterEndDate && (
+                  <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full border border-green-200">
+                    Hasta: {new Date(filterEndDate).toLocaleDateString('es-ES')}
+                  </span>
+                )}
+              </div>
+            )}
         </div>
 
         {/* Filtros y búsqueda */}
         <div className="bg-white rounded-lg p-6 mb-6 shadow-lg border border-slate-200">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Búsqueda */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
@@ -443,6 +472,24 @@ export function Callbacks({}: CallbacksProps) {
                 <option value="programado">Programados</option>
               </select>
             </div>
+
+            {/* Botón para abrir modal de filtros de fecha */}
+            <button
+              onClick={() => setShowDateFilterModal(true)}
+              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 ${
+                filterStartDate || filterEndDate
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-indigo-600 hover:to-purple-700 text-white'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300'
+              }`}
+            >
+              <Filter className="w-4 h-4" />
+              <span>Filtrar por fecha</span>
+              {(filterStartDate || filterEndDate) && (
+                <span className="ml-1 px-2 py-0.5 bg-white/20 rounded-full text-xs">
+                  Activo
+                </span>
+              )}
+            </button>
           </div>
         </div>
 
@@ -634,6 +681,76 @@ export function Callbacks({}: CallbacksProps) {
           </div>
         )}
       </div>
+
+      {/* Modal de filtro de fechas */}
+      {showDateFilterModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Filtrar por fecha</h3>
+              <button
+                onClick={() => setShowDateFilterModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Fecha inicial</label>
+                  <input
+                    type="date"
+                    value={filterStartDate}
+                    onChange={(e) => setFilterStartDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Fecha final</label>
+                  <input
+                    type="date"
+                    value={filterEndDate}
+                    onChange={(e) => setFilterEndDate(e.target.value)}
+                    min={filterStartDate || undefined}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="text-sm text-gray-600">
+                <p>Selecciona un rango de fechas para filtrar los callbacks por fecha de creación.</p>
+                {(filterStartDate || filterEndDate) && (
+                  <p className="mt-2 text-blue-600">
+                    Filtro activo: {filterStartDate && `Desde ${new Date(filterStartDate).toLocaleDateString('es-ES')}`}
+                    {filterStartDate && filterEndDate && ' - '}
+                    {filterEndDate && `Hasta ${new Date(filterEndDate).toLocaleDateString('es-ES')}`}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setFilterStartDate('');
+                  setFilterEndDate('');
+                }}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Limpiar
+              </button>
+              <button
+                onClick={() => setShowDateFilterModal(false)}
+                className="flex-1 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-md hover:from-indigo-600 hover:to-purple-700 transition-colors"
+              >
+                Aplicar filtro
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal de exportación CSV (selección de rango de fechas) */}
       {showExportModal && (

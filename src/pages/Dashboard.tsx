@@ -361,9 +361,13 @@ export function Dashboard({
   });
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
+  const [customStartTime, setCustomStartTime] = useState<string>('00:00');
+  const [customEndTime, setCustomEndTime] = useState<string>('23:59');
   const [isCustomDateDialogOpen, setIsCustomDateDialogOpen] = useState<boolean>(false);
   const [tempStartDate, setTempStartDate] = useState<string>('');
   const [tempEndDate, setTempEndDate] = useState<string>('');
+  const [tempStartTime, setTempStartTime] = useState<string>('00:00');
+  const [tempEndTime, setTempEndTime] = useState<string>('23:59');
   
   // Estados para filtro de rango de horas (agendamientos)
   const [hourRangeStart, setHourRangeStart] = useState<string>('8');
@@ -446,7 +450,7 @@ export function Dashboard({
   }, [loadDashboardData]);
 
   // Función para calcular las fechas según el período seleccionado (zona horaria Madrid)
-  const calculateDatesForPeriod = (period: string, customStart?: string, customEnd?: string) => {
+  const calculateDatesForPeriod = (period: string, customStart?: string, customEnd?: string, customStartTime?: string, customEndTime?: string) => {
     const todayMadrid = getMadridMidnight();
     
     switch (period) {
@@ -471,12 +475,43 @@ export function Dashboard({
       
       case 'custom':
         if (customStart && customEnd) {
-          // Interpretar fechas YYYY-MM-DD en zona Madrid y convertir a rango [start, end+1)
+          // Interpretar fechas YYYY-MM-DD en zona Madrid y convertir a rango con horas y minutos
           const [yS, mS, dS] = customStart.split('-').map(Number);
           const [yE, mE, dE] = customEnd.split('-').map(Number);
-          const startMadrid = new Date(Date.UTC(yS, (mS || 1) - 1, dS || 1, 0, 0, 0, 0));
-          const endMadridPlusOne = addDaysUTC(new Date(Date.UTC(yE, (mE || 1) - 1, dE || 1, 0, 0, 0, 0)), 1);
-          return { fechaInicio: formatMadridDateYYYYMMDD(startMadrid), fechaFin: formatMadridDateYYYYMMDD(endMadridPlusOne) };
+          
+          // Parsear tiempo (HH:MM)
+          const startTimeParts = (customStartTime || '00:00').split(':');
+          const endTimeParts = (customEndTime || '23:59').split(':');
+          const startHour = parseInt(startTimeParts[0] || '0', 10);
+          const startMinute = parseInt(startTimeParts[1] || '0', 10);
+          const endHour = parseInt(endTimeParts[0] || '23', 10);
+          const endMinute = parseInt(endTimeParts[1] || '59', 10);
+          
+          // Crear fecha de inicio con hora y minuto específicos
+          const startMadrid = new Date(Date.UTC(yS, (mS || 1) - 1, dS || 1, startHour, startMinute, 0, 0));
+          
+          // Crear fecha de fin con hora y minuto específicos
+          // El backend usa rango semiabierto [inicio, fin), así que necesitamos el momento justo después del final
+          let endMadrid = new Date(Date.UTC(yE, (mE || 1) - 1, dE || 1, endHour, endMinute, 59, 999));
+          
+          // Si es el mismo día y la hora/minuto de fin es menor o igual que la de inicio, sumar un día
+          if (customStart === customEnd) {
+            const startTimeMinutes = startHour * 60 + startMinute;
+            const endTimeMinutes = endHour * 60 + endMinute;
+            if (endTimeMinutes <= startTimeMinutes) {
+              endMadrid = addDaysUTC(endMadrid, 1);
+            }
+          }
+          
+          // Agregar 1 milisegundo para que el rango semiabierto [inicio, fin) incluya hasta el último milisegundo
+          // Esto asegura que created_at < fechaFin incluya todos los registros hasta endHour:endMinute:59.999
+          endMadrid = new Date(endMadrid.getTime() + 1);
+          
+          // Convertir a formato ISO para enviar al backend
+          return { 
+            fechaInicio: startMadrid.toISOString(), 
+            fechaFin: endMadrid.toISOString() 
+          };
         }
         return null;
       
@@ -486,11 +521,13 @@ export function Dashboard({
   };
 
   // Función para manejar el cambio de período
-  const handleTimePeriodChange = (newPeriod: string) => {
+  const       handleTimePeriodChange = (newPeriod: string) => {
     if (newPeriod === 'custom') {
       // Si se selecciona personalizado, abrir el dialog
       setTempStartDate(customStartDate);
       setTempEndDate(customEndDate);
+      setTempStartTime(customStartTime);
+      setTempEndTime(customEndTime);
       setIsCustomDateDialogOpen(true);
       // Actualizar selectValue para que el Select muestre "custom" visualmente
       // pero no cambiar timePeriod hasta confirmar las fechas
@@ -507,12 +544,16 @@ export function Dashboard({
     if (tempStartDate && tempEndDate && tempStartDate <= tempEndDate) {
       setCustomStartDate(tempStartDate);
       setCustomEndDate(tempEndDate);
+      setCustomStartTime(tempStartTime);
+      setCustomEndTime(tempEndTime);
       setTimePeriod('custom');
       setSelectValue('custom');
       setIsCustomDateDialogOpen(false);
       // Resetear las fechas temporales
       setTempStartDate('');
       setTempEndDate('');
+      setTempStartTime('00:00');
+      setTempEndTime('23:59');
     }
   };
 
@@ -522,6 +563,8 @@ export function Dashboard({
     // Resetear las fechas temporales
     setTempStartDate('');
     setTempEndDate('');
+    setTempStartTime('00:00');
+    setTempEndTime('23:59');
     // Revertir el selectValue al período anterior si no había fechas confirmadas
     if (!customStartDate || !customEndDate) {
       setSelectValue(timePeriod);
@@ -537,8 +580,8 @@ export function Dashboard({
       console.log('Recargando datos del dashboard sin filtros de fecha');
       loadDashboardData(undefined, undefined, 'all');
     } else if (timePeriod === 'custom' && customStartDate && customEndDate) {
-      // Para período personalizado, usar fechas específicas
-      const dates = calculateDatesForPeriod(timePeriod, customStartDate, customEndDate);
+      // Para período personalizado, usar fechas específicas con horas
+      const dates = calculateDatesForPeriod(timePeriod, customStartDate, customEndDate, customStartTime, customEndTime);
       if (dates) {
         console.log('Recargando datos del dashboard con fechas personalizadas:', dates);
         loadDashboardData(dates.fechaInicio, dates.fechaFin, 'custom');
@@ -548,7 +591,7 @@ export function Dashboard({
       console.log('Recargando datos del dashboard para período:', timePeriod);
       loadDashboardData(undefined, undefined, timePeriod);
     }
-  }, [timePeriod, customStartDate, customEndDate, loadDashboardData]);
+  }, [timePeriod, customStartDate, customEndDate, customStartTime, customEndTime, loadDashboardData]);
 
   // Función para filtrar datos por período (usando medianoche en Madrid)
   const filterDataByPeriod = (data: any[], dateField: string = 'fecha') => {
@@ -778,11 +821,13 @@ export function Dashboard({
               onClick={() => {
                 setTempStartDate(customStartDate);
                 setTempEndDate(customEndDate);
+                setTempStartTime(customStartTime);
+                setTempEndTime(customEndTime);
                 setIsCustomDateDialogOpen(true);
               }}
               className="text-sm bg-blue-600 hover:bg-blue-700 text-white"
             >
-              Seleccionar rango de fechas
+              Seleccionar rango de fechas y horas
             </Button>
           )}
           
@@ -792,7 +837,7 @@ export function Dashboard({
             {timePeriod === 'week' && 'Mostrando datos de los últimos 7 días'}
             {timePeriod === 'month' && 'Mostrando datos del último mes'}
             {timePeriod === 'custom' && customStartDate && customEndDate && 
-              `Mostrando datos del ${customStartDate} al ${customEndDate}`}
+              `Mostrando datos del ${customStartDate} ${customStartTime} al ${customEndDate} ${customEndTime}`}
             {timePeriod === 'custom' && (!customStartDate || !customEndDate) && 
               'Selecciona un rango de fechas personalizado'}
           </div>
@@ -814,34 +859,77 @@ export function Dashboard({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="flex flex-col gap-2">
-              <label htmlFor="dialogStartDate" className="text-sm font-medium text-slate-700">
-                Fecha de inicio:
-              </label>
-              <input
-                type="date"
-                id="dialogStartDate"
-                value={tempStartDate}
-                onChange={(e) => setTempStartDate(e.target.value)}
-                className="px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-2">
+                <label htmlFor="dialogStartDate" className="text-sm font-medium text-slate-700">
+                  Fecha de inicio:
+                </label>
+                <input
+                  type="date"
+                  id="dialogStartDate"
+                  value={tempStartDate}
+                  onChange={(e) => setTempStartDate(e.target.value)}
+                  className="px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <label htmlFor="dialogStartTime" className="text-sm font-medium text-slate-700">
+                  Hora de inicio:
+                </label>
+                <input
+                  type="time"
+                  id="dialogStartTime"
+                  value={tempStartTime}
+                  onChange={(e) => {
+                    setTempStartTime(e.target.value || '00:00');
+                  }}
+                  className="px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
             </div>
-            <div className="flex flex-col gap-2">
-              <label htmlFor="dialogEndDate" className="text-sm font-medium text-slate-700">
-                Fecha de fin:
-              </label>
-              <input
-                type="date"
-                id="dialogEndDate"
-                value={tempEndDate}
-                onChange={(e) => setTempEndDate(e.target.value)}
-                min={tempStartDate || undefined}
-                className="px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-2">
+                <label htmlFor="dialogEndDate" className="text-sm font-medium text-slate-700">
+                  Fecha de fin:
+                </label>
+                <input
+                  type="date"
+                  id="dialogEndDate"
+                  value={tempEndDate}
+                  onChange={(e) => setTempEndDate(e.target.value)}
+                  min={tempStartDate || undefined}
+                  className="px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <label htmlFor="dialogEndTime" className="text-sm font-medium text-slate-700">
+                  Hora de fin:
+                </label>
+                <input
+                  type="time"
+                  id="dialogEndTime"
+                  value={tempEndTime}
+                  onChange={(e) => {
+                    setTempEndTime(e.target.value || '23:59');
+                  }}
+                  className="px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
             </div>
             {tempStartDate && tempEndDate && tempStartDate > tempEndDate && (
               <div className="text-sm text-red-600 bg-red-50 p-2 rounded border border-red-200">
                 La fecha de inicio no puede ser posterior a la fecha de fin
+              </div>
+            )}
+            {tempStartDate && tempEndDate && tempStartDate === tempEndDate && (() => {
+              const startTimeParts = tempStartTime.split(':');
+              const endTimeParts = tempEndTime.split(':');
+              const startMinutes = parseInt(startTimeParts[0] || '0', 10) * 60 + parseInt(startTimeParts[1] || '0', 10);
+              const endMinutes = parseInt(endTimeParts[0] || '23', 10) * 60 + parseInt(endTimeParts[1] || '59', 10);
+              return startMinutes >= endMinutes;
+            })() && (
+              <div className="text-sm text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
+                La hora de inicio es mayor o igual que la de fin. Se considerará hasta el final del día siguiente.
               </div>
             )}
           </div>
