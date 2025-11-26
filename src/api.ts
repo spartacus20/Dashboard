@@ -2259,6 +2259,22 @@ export async function fetchLanzamientoMetricsCustom(fechaInicio: string, fechaFi
   try {
     const url = `${BASE_URL}/api/lanzamiento/calls/metrics/`;
 
+    // Formatear fecha_inicio: si es solo fecha (YYYY-MM-DD), agregar hora 00:00:00Z
+    let fechaInicioFormatted = fechaInicio;
+    if (fechaInicio.length === 10 && /^\d{4}-\d{2}-\d{2}$/.test(fechaInicio)) {
+      fechaInicioFormatted = `${fechaInicio}T00:00:00Z`;
+    } else if (fechaInicio.length === 19 && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(fechaInicio)) {
+      fechaInicioFormatted = `${fechaInicio}Z`;
+    }
+
+    // Formatear fecha_fin: si es solo fecha (YYYY-MM-DD), agregar hora 23:59:59Z
+    let fechaFinFormatted = fechaFin;
+    if (fechaFin.length === 10 && /^\d{4}-\d{2}-\d{2}$/.test(fechaFin)) {
+      fechaFinFormatted = `${fechaFin}T23:59:59Z`;
+    } else if (fechaFin.length === 19 && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(fechaFin)) {
+      fechaFinFormatted = `${fechaFin}Z`;
+    }
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -2266,8 +2282,8 @@ export async function fetchLanzamientoMetricsCustom(fechaInicio: string, fechaFi
       },
       body: JSON.stringify({
         client_id: getClientId(),
-        fecha_inicio: fechaInicio,
-        fecha_fin: fechaFin
+        fecha_inicio: fechaInicioFormatted,
+        fecha_fin: fechaFinFormatted
       }),
     });
 

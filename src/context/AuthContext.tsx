@@ -139,6 +139,39 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       email,
       password,
     })
+    
+    // Si el registro es exitoso, guardar la contraseña encriptada en la tabla users
+    if (!error) {
+      try {
+        // Obtener la URL base del backend
+        const IS_PRODUCTION = import.meta.env.VITE_PRODUCTION_API === 'true';
+        const BASE_PROD = import.meta.env.VITE_BASE_PROD;
+        const BASE_DEV = import.meta.env.VITE_BASE_DEV;
+        const BASE_URL = IS_PRODUCTION ? BASE_PROD : BASE_DEV;
+        
+        // Llamar al endpoint para actualizar la contraseña en la tabla users
+        const response = await fetch(`${BASE_URL}/api/users/update-password`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ email, password })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.warn('⚠️ No se pudo guardar la contraseña en la tabla users:', errorData);
+          // No retornamos error aquí porque el usuario ya se creó en Supabase
+          // Solo registramos la advertencia
+        } else {
+          console.log('✅ Contraseña guardada exitosamente en la tabla users');
+        }
+      } catch (err) {
+        console.warn('⚠️ Error al guardar la contraseña en la tabla users:', err);
+        // No retornamos error aquí porque el usuario ya se creó en Supabase
+      }
+    }
+    
     return { error }
   }
 

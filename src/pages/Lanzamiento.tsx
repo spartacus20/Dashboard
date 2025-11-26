@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Phone, PhoneCall, PhoneOff, Link, MousePointer, Ban, RefreshCw, Calendar, TrendingUp, Globe, CalendarDays, Lock } from 'lucide-react';
@@ -50,6 +50,7 @@ const Lanzamiento: React.FC = () => {
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const requestCounterRef = useRef<number>(0);
 
   // Función helper para procesar los datos de la API y asegurar que siempre se muestren las 3 regiones
   const processApiData = (apiData: any): LanzamientoMetrics => {
@@ -88,6 +89,10 @@ const Lanzamiento: React.FC = () => {
   };
 
   const loadMetrics = async (range: 'today' | 'custom', fechaInicio?: string, fechaFin?: string) => {
+    // Incrementar contador de peticiones
+    requestCounterRef.current += 1;
+    const currentRequest = requestCounterRef.current;
+    
     setLoading(true);
     setError(null);
     
@@ -105,27 +110,45 @@ const Lanzamiento: React.FC = () => {
         throw new Error('Rango de tiempo no válido');
       }
       
+      // Verificar si esta es todavía la petición más reciente
+      if (currentRequest !== requestCounterRef.current) {
+        console.log('Petición obsoleta ignorada');
+        return;
+      }
+      
       // Procesar los datos de la API para asegurar que siempre se muestren las 3 regiones
       const data = processApiData(apiData);
       setMetrics(data);
     } catch (err) {
+      // Solo procesar errores si esta es la petición más reciente
+      if (currentRequest !== requestCounterRef.current) {
+        console.log('Error de petición obsoleta ignorado');
+        return;
+      }
       console.error('Error al cargar métricas:', err);
       setError(err instanceof Error ? err.message : 'Error al cargar las métricas');
     } finally {
-      setLoading(false);
+      // Solo actualizar loading si esta es la petición más reciente
+      if (currentRequest === requestCounterRef.current) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    if (timeRange === 'custom' && startDate && endDate) {
-      loadMetrics(timeRange, startDate, endDate);
-    } else if (timeRange !== 'custom') {
+    // Solo cargar automáticamente cuando cambia el timeRange
+    // Para 'custom', solo cargar cuando se aplican las fechas explícitamente
+    if (timeRange === 'today') {
       loadMetrics(timeRange);
     }
-  }, [timeRange, startDate, endDate]);
+    // No cargar automáticamente para 'custom' - esperar a que el usuario haga clic en "Aplicar"
+  }, [timeRange]);
 
   // Función para manejar el cambio de período
   const handleTimeRangeChange = (range: 'today' | 'custom') => {
+    // Invalidar peticiones anteriores incrementando el contador
+    requestCounterRef.current += 1;
+    
     setTimeRange(range);
     if (range === 'custom') {
       setShowDatePicker(true);
@@ -136,13 +159,23 @@ const Lanzamiento: React.FC = () => {
       setStartDate(weekAgo.toISOString().split('T')[0]);
     } else {
       setShowDatePicker(false);
+      // Limpiar fechas cuando se cambia a 'today' para evitar efectos secundarios
+      setStartDate('');
+      setEndDate('');
     }
   };
 
   // Función para aplicar las fechas seleccionadas
   const handleApplyCustomDates = () => {
     if (startDate && endDate) {
-      if (new Date(startDate) > new Date(endDate)) {
+      // Validar fechas usando UTC para evitar problemas de zona horaria
+      const [yearStart, monthStart, dayStart] = startDate.split('-').map(Number);
+      const [yearEnd, monthEnd, dayEnd] = endDate.split('-').map(Number);
+      
+      const start = new Date(Date.UTC(yearStart, monthStart - 1, dayStart));
+      const end = new Date(Date.UTC(yearEnd, monthEnd - 1, dayEnd));
+      
+      if (start > end) {
         setError('La fecha de inicio debe ser anterior a la fecha de fin');
         return;
       }
@@ -152,6 +185,46 @@ const Lanzamiento: React.FC = () => {
 
   const formatNumber = (num: number) => {
     return new Intl.NumberFormat('es-ES').format(num);
+  };
+
+  // Función helper para formatear fecha sin problemas de zona horaria
+  const formatDateForDisplay = (dateString: string) => {
+    // Si la fecha viene en formato YYYY-MM-DD, parsearla correctamente
+    if (dateString && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      const [year, month, day] = dateString.split('-').map(Number);
+      // Crear fecha en UTC para evitar problemas de zona horaria
+      const date = new Date(Date.UTC(year, month - 1, day));
+      return date.toLocaleDateString('es-ES', { 
+        year: 'numeric', 
+        month: '2-digit', 
+        day: '2-digit',
+        timeZone: 'UTC'
+      });
+    }
+    return dateString;
+  };
+
+  // Función helper para calcular diferencia de días sin problemas de zona horaria
+  const calculateDaysDifference = (startDate: string, endDate: string) => {
+    if (!startDate || !endDate) return 0;
+    
+    // Parsear fechas en formato YYYY-MM-DD como UTC
+    if (/^\d{4}-\d{2}-\d{2}$/.test(startDate) && /^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      const [yearStart, monthStart, dayStart] = startDate.split('-').map(Number);
+      const [yearEnd, monthEnd, dayEnd] = endDate.split('-').map(Number);
+      
+      const start = new Date(Date.UTC(yearStart, monthStart - 1, dayStart));
+      const end = new Date(Date.UTC(yearEnd, monthEnd - 1, dayEnd));
+      
+      const diffTime = end.getTime() - start.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      // Si es el mismo día, debería ser 1 día (no 0)
+      return diffDays === 0 ? 1 : diffDays + 1;
+    }
+    
+    // Fallback al método anterior si el formato no es el esperado
+    return Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24));
   };
 
   const calculatePercentage = (value: number, total: number) => {
@@ -364,8 +437,8 @@ const Lanzamiento: React.FC = () => {
             {startDate && endDate && (
               <div className="mt-3 text-sm text-gray-600">
                 <span className="font-medium">Período seleccionado:</span> 
-                {' '}{new Date(startDate).toLocaleDateString('es-ES')} - {new Date(endDate).toLocaleDateString('es-ES')}
-                {' '}({Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24))} días)
+                {' '}{formatDateForDisplay(startDate)} - {formatDateForDisplay(endDate)}
+                {' '}({calculateDaysDifference(startDate, endDate)} días)
               </div>
             )}
           </CardContent>
