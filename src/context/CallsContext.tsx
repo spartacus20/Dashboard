@@ -37,7 +37,7 @@ interface CallsContextType {
   filterCriteria: FilterCriteria;
   dashboardData: any;
   loadingDashboardData: boolean;
-  loadDashboardData: (fechaInicio?: string, fechaFin?: string, timePeriod?: string) => Promise<void>;
+  loadDashboardData: (fechaInicio?: string, fechaFin?: string, timePeriod?: string, bdd?: string) => Promise<void>;
   totalCallsFiltered: number | null;
   agendaEnabled: boolean;
   callsEnabled: boolean;
@@ -561,7 +561,7 @@ export function CallsProvider({ children }: CallsProviderProps) {
   }, [apiKey, phoneNumbersLoaded, phoneNumbersUpdated, loadingPhoneNumbers, noPhoneNumbersAvailable]);
 
   // Función para cargar los datos del dashboard
-  const loadDashboardData = useCallback(async (fechaInicio?: string, fechaFin?: string, timePeriod?: string) => {
+  const loadDashboardData = useCallback(async (fechaInicio?: string, fechaFin?: string, timePeriod?: string, bdd?: string) => {
     // No intentar cargar si no tenemos clientId o apiKey
     if (!clientId || !apiKey) {
       console.log('⏳ No se puede cargar dashboard: faltan clientId o apiKey');
@@ -571,7 +571,7 @@ export function CallsProvider({ children }: CallsProviderProps) {
     setLoadingDashboardData(true);
     
     try {
-      console.log('Cargando datos del dashboard con período:', { timePeriod, fechaInicio, fechaFin });
+      console.log('Cargando datos del dashboard con período:', { timePeriod, fechaInicio, fechaFin, bdd });
       
       // Salvaguarda: en personalizado, no llamar si no hay ambas fechas
       if (timePeriod === 'custom' && (!fechaInicio || !fechaFin)) {
@@ -584,14 +584,14 @@ export function CallsProvider({ children }: CallsProviderProps) {
       // Determinar qué endpoint usar según el período
       // Pasar clientId explícitamente para evitar depender del localStorage
       if (timePeriod === 'today') {
-        data = await getDashboardToday(clientId);
+        data = await getDashboardToday(clientId, bdd);
       } else if (timePeriod === 'week') {
-        data = await getDashboardWeek(clientId);
+        data = await getDashboardWeek(clientId, bdd);
       } else if (timePeriod === 'month') {
-        data = await getDashboardMonth(clientId);
+        data = await getDashboardMonth(clientId, bdd);
       } else {
         // Usar el endpoint genérico con fechas
-        data = await getDashboardData(clientId, fechaInicio, fechaFin);
+        data = await getDashboardData(clientId, fechaInicio, fechaFin, bdd);
       }
       
       setDashboardData(data);

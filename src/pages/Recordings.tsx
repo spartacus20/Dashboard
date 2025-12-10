@@ -265,6 +265,10 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   const [tipoViviendaFilter, setTipoViviendaFilter] = React.useState<string | null>(null);
   const [agentIdFilter, setAgentIdFilter] = React.useState<string | null>(null);
   
+  // Estados para filtro de base de datos
+  const [databaseFilter, setDatabaseFilter] = React.useState<string>('');
+  const [appliedDatabaseFilter, setAppliedDatabaseFilter] = React.useState<string>('');
+  
   // Verificar si el usuario tiene permiso para ver filtros solares
   const [hasFiltroSolar, setHasFiltroSolar] = React.useState(false);
   
@@ -447,13 +451,24 @@ export function Recordings({ onNavigate }: RecordingsProps) {
 
   // Calcular número total de páginas basado en las llamadas filtradas
   const totalPages = React.useMemo(() => {
-    // Si tenemos datos filtrados de la API, usar esos
-    if (filteredCallsData.length > 0) {
-      return totalFilteredPages || Math.ceil(filteredCallsData.length / itemsPerPage);
+    // Verificar si hay filtros activos
+    const hasActiveFilters = searchTerm || statusFilter || durationFilter || startDate || endDate || phoneNumberFilter || sortOrderFilter !== 'DESC' || interestFilter || tipoViviendaFilter || agentIdFilter || disconnectionReasonFilter || appliedDatabaseFilter;
+    
+    // Si tenemos datos filtrados de la API, usar totalFilteredCalls si está disponible
+    if (hasActiveFilters && totalFilteredCalls > 0) {
+      return Math.ceil(totalFilteredCalls / itemsPerPage);
+    }
+    
+    // Si tenemos datos filtrados pero no totalFilteredCalls, usar totalFilteredPages
+    if (hasActiveFilters && filteredCallsData.length > 0 && totalFilteredPages > 0) {
+      // Calcular basado en totalFilteredPages del API (cada página del API tiene 100 registros)
+      const apiPageSize = 100;
+      const totalItems = totalFilteredPages * apiPageSize;
+      return Math.ceil(totalItems / itemsPerPage);
     }
     
     // Si tenemos filtros aplicados pero aún no hay datos filtrados, calcular basado en las llamadas filtradas
-    if (searchTerm || statusFilter || durationFilter || startDate || endDate || phoneNumberFilter || sortOrderFilter !== 'DESC') {
+    if (hasActiveFilters) {
       return Math.ceil(filteredCalls.length / itemsPerPage);
     }
     
@@ -467,7 +482,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     
     // Fallback: calcular basado en las llamadas cargadas
     return Math.ceil(allCalls.length / itemsPerPage);
-  }, [filteredCallsData.length, totalFilteredPages, itemsPerPage, filteredCalls.length, searchTerm, statusFilter, durationFilter, startDate, endDate, phoneNumberFilter, sortOrderFilter, contextTotalPages, allCalls.length]);
+  }, [filteredCallsData.length, totalFilteredPages, totalFilteredCalls, itemsPerPage, filteredCalls.length, searchTerm, statusFilter, durationFilter, startDate, endDate, phoneNumberFilter, sortOrderFilter, interestFilter, tipoViviendaFilter, agentIdFilter, disconnectionReasonFilter, appliedDatabaseFilter, contextTotalPages, allCalls.length]);
 
   // Iniciar la carga de datos la primera vez que se monta el componente
   React.useEffect(() => {
@@ -1084,6 +1099,11 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         params.end_reason = disconnectionReasonFilter;
       }
       
+      // Agregar filtro de base de datos (bdd)
+      if (appliedDatabaseFilter && appliedDatabaseFilter.trim()) {
+        params.bdd = appliedDatabaseFilter.trim();
+      }
+      
       if (startISO) params.fecha_inicio = startISO;
       if (endISO) params.fecha_fin = endISO;
 
@@ -1126,6 +1146,8 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     setInterestFilter(null);
     setTipoViviendaFilter(null);
     setAgentIdFilter(null);
+    setDatabaseFilter('');
+    setAppliedDatabaseFilter('');
     setCurrentPage(1);
     
     // Limpiar datos filtrados
@@ -1188,17 +1210,18 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     if (interestFilter) count++;
     if (tipoViviendaFilter) count++;
     if (agentIdFilter) count++;
+    if (appliedDatabaseFilter) count++;
     return count;
-  }, [searchTerm, startDate, endDate, statusFilter, disconnectionReasonFilter, durationFilter, phoneNumberFilter, sortOrderFilter, interestFilter, tipoViviendaFilter, agentIdFilter]);
+  }, [searchTerm, startDate, endDate, statusFilter, disconnectionReasonFilter, durationFilter, phoneNumberFilter, sortOrderFilter, interestFilter, tipoViviendaFilter, agentIdFilter, appliedDatabaseFilter]);
 
 
   // Función para aplicar filtros usando la API list-calls
-  const applyFilters = React.useCallback(async () => {
+  const applyFilters = React.useCallback(async (pageToLoad: number = 1, appendData: boolean = false) => {
     if (!apiKey) return;
     
     // Verificar si hay algún filtro activo (ahora incluyendo disconnection_reason que se envía al backend)
     // Ahora también incluimos sortOrderFilter como filtro activo
-    const hasActiveFilters = searchTerm || statusFilter || durationFilter || startDate || endDate || phoneNumberFilter || sortOrderFilter !== 'DESC' || interestFilter || tipoViviendaFilter || agentIdFilter || disconnectionReasonFilter;
+    const hasActiveFilters = searchTerm || statusFilter || durationFilter || startDate || endDate || phoneNumberFilter || sortOrderFilter !== 'DESC' || interestFilter || tipoViviendaFilter || agentIdFilter || disconnectionReasonFilter || appliedDatabaseFilter;
     
     if (!hasActiveFilters) {
       // Si no hay filtros, usar las llamadas originales
@@ -1214,7 +1237,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     try {
       // Construir parámetros para la API (excluyendo disconnection_reason)
       const params: any = {
-        page: 1,
+        page: pageToLoad,
         per_page: 100,
         sort_order: sortOrderFilter // Usar el filtro de ordenamiento
       };
@@ -1272,6 +1295,12 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         console.log('🔍 Filtro de motivo de desconexión aplicado:', disconnectionReasonFilter);
       }
       
+      // Agregar filtro de base de datos (bdd)
+      if (appliedDatabaseFilter && appliedDatabaseFilter.trim()) {
+        params.bdd = appliedDatabaseFilter.trim();
+        console.log('🔍 Filtro de base de datos aplicado:', appliedDatabaseFilter.trim());
+      }
+      
       // Agregar filtros de número (si se implementan en el futuro)
       // if (fromNumber) params.from_number = fromNumber;
       // if (toNumber) params.to_number = toNumber;
@@ -1288,12 +1317,24 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       }
       
       // Actualizar estados con los resultados
-      setFilteredCallsData(response.calls);
-      setTotalFilteredCalls(response.total_calls || response.calls.length);
-      setTotalFilteredPages(response.total_pages || 1);
+      if (appendData && pageToLoad > 1) {
+        // Si estamos cargando una página adicional, agregar a los datos existentes
+        setFilteredCallsData(prev => [...prev, ...response.calls]);
+      } else {
+        // Si es la primera página o estamos recargando, reemplazar los datos
+        setFilteredCallsData(response.calls);
+      }
       
-      // Resetear a la primera página
-      setCurrentPage(1);
+      // Actualizar totales solo si es la primera página o si recibimos información actualizada
+      if (pageToLoad === 1 || response.total_calls) {
+        setTotalFilteredCalls(response.total_calls || response.calls.length);
+        setTotalFilteredPages(response.total_pages || 1);
+      }
+      
+      // Solo resetear a la primera página si no estamos cargando una página específica
+      if (!appendData && pageToLoad === 1) {
+        setCurrentPage(1);
+      }
       
     } catch (error) {
       console.error('Error al aplicar filtros:', error);
@@ -1304,22 +1345,122 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     } finally {
       setLoadingFilters(false);
     }
-  }, [apiKey, clientId, searchTerm, statusFilter, durationFilter, startDate, endDate, phoneNumberFilter, sortOrderFilter, interestFilter, tipoViviendaFilter, agentIdFilter, disconnectionReasonFilter]);
+  }, [apiKey, clientId, searchTerm, statusFilter, durationFilter, startDate, endDate, phoneNumberFilter, sortOrderFilter, interestFilter, tipoViviendaFilter, agentIdFilter, disconnectionReasonFilter, appliedDatabaseFilter]);
+
+  // Efecto para cargar la página correcta cuando hay filtros aplicados y cambia currentPage
+  React.useEffect(() => {
+    const hasActiveFilters = searchTerm || statusFilter || durationFilter || startDate || endDate || phoneNumberFilter || sortOrderFilter !== 'DESC' || interestFilter || tipoViviendaFilter || agentIdFilter || disconnectionReasonFilter || appliedDatabaseFilter;
+    
+    if (!hasActiveFilters || !apiKey || !clientId) return;
+    
+    // Calcular qué página del API necesitamos cargar basado en currentPage e itemsPerPage
+    // El API devuelve 100 registros por página, pero mostramos itemsPerPage (25, 50, 100) por página en el UI
+    const apiPageSize = 100;
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = currentPage * itemsPerPage;
+    
+    // Calcular qué páginas del API necesitamos cargar
+    const firstApiPage = Math.floor(startIndex / apiPageSize) + 1;
+    const lastApiPage = Math.floor((endIndex - 1) / apiPageSize) + 1;
+    
+    // Verificar si ya tenemos los datos necesarios en filteredCallsData
+    const currentDataLength = filteredCallsData.length;
+    const neededDataLength = endIndex;
+    
+    // Si necesitamos cargar más datos o si los datos están vacíos (primera carga con filtros)
+    if (currentDataLength < neededDataLength || filteredCallsData.length === 0) {
+      // Necesitamos cargar más datos
+      // Cargar todas las páginas necesarias desde la primera hasta la última
+      const loadPages = async () => {
+        setLoadingFilters(true);
+        try {
+          const allCalls: any[] = [];
+          let totalCallsFromApi = 0;
+          let totalPagesFromApi = 0;
+          
+          // Si ya tenemos algunos datos, empezar desde donde terminamos
+          const startApiPage = filteredCallsData.length === 0 ? 1 : Math.floor(filteredCallsData.length / apiPageSize) + 1;
+          
+          for (let apiPage = startApiPage; apiPage <= lastApiPage; apiPage++) {
+            // Construir parámetros para la API
+            const params: any = {
+              page: apiPage,
+              per_page: apiPageSize,
+              sort_order: sortOrderFilter,
+              client_id: clientId
+            };
+            
+            if (statusFilter) params.status = statusFilter;
+            if (phoneNumberFilter) {
+              const normalizedPhone = normalizePhoneNumber(phoneNumberFilter);
+              params.to_number_norm = normalizedPhone;
+            }
+            if (startDate) params.fecha_inicio = startDate;
+            if (endDate) params.fecha_fin = endDate;
+            if (interestFilter) params.interest = interestFilter;
+            if (tipoViviendaFilter) params.tipo_vivienda = tipoViviendaFilter;
+            if (agentIdFilter) params.agent_id = agentIdFilter;
+            if (disconnectionReasonFilter) params.end_reason = disconnectionReasonFilter;
+            if (appliedDatabaseFilter && appliedDatabaseFilter.trim()) {
+              params.bdd = appliedDatabaseFilter.trim();
+            }
+            
+            const response = await listCalls(apiKey, params);
+            allCalls.push(...response.calls);
+            
+            // Actualizar totales solo en la primera página
+            if (apiPage === 1) {
+              totalCallsFromApi = response.total_calls || 0;
+              totalPagesFromApi = response.total_pages || 1;
+              setTotalFilteredCalls(totalCallsFromApi);
+              setTotalFilteredPages(totalPagesFromApi);
+            }
+            
+            // Si esta página tiene menos de 100 resultados, no hay más páginas
+            if (response.calls.length < apiPageSize) {
+              break;
+            }
+          }
+          
+          // Si ya teníamos datos, agregar los nuevos; si no, reemplazar
+          if (filteredCallsData.length > 0 && startApiPage > 1) {
+            setFilteredCallsData(prev => [...prev, ...allCalls]);
+          } else {
+            setFilteredCallsData(allCalls);
+          }
+        } catch (error) {
+          console.error('Error al cargar páginas filtradas:', error);
+          setError(error instanceof Error ? error.message : 'Error al cargar datos filtrados');
+        } finally {
+          setLoadingFilters(false);
+        }
+      };
+      
+      loadPages();
+    }
+  }, [currentPage, itemsPerPage, searchTerm, statusFilter, durationFilter, startDate, endDate, phoneNumberFilter, sortOrderFilter, interestFilter, tipoViviendaFilter, agentIdFilter, disconnectionReasonFilter, appliedDatabaseFilter, apiKey, clientId, filteredCallsData.length]);
 
   // Aplicar filtros automáticamente cuando cambien los criterios
+  // Nota: Este efecto ahora solo limpia los datos cuando no hay filtros
+  // La carga de datos paginados se maneja en el efecto separado que detecta cambios en currentPage
   React.useEffect(() => {
     // Solo aplicar filtros si hay algún filtro activo (ahora incluyendo disconnection_reason)
-    const hasActiveFilters = searchTerm || statusFilter || durationFilter || startDate || endDate || phoneNumberFilter || sortOrderFilter !== 'DESC' || interestFilter || tipoViviendaFilter || agentIdFilter || disconnectionReasonFilter;
+    const hasActiveFilters = searchTerm || statusFilter || durationFilter || startDate || endDate || phoneNumberFilter || sortOrderFilter !== 'DESC' || interestFilter || tipoViviendaFilter || agentIdFilter || disconnectionReasonFilter || appliedDatabaseFilter;
     
-    if (hasActiveFilters) {
-      applyFilters();
-    } else {
+    if (!hasActiveFilters) {
       // Si no hay filtros, limpiar los datos filtrados
       setFilteredCallsData([]);
       setTotalFilteredCalls(0);
       setTotalFilteredPages(0);
+      setCurrentPage(1);
+    } else {
+      // Si hay filtros, resetear a la primera página y limpiar datos para que el efecto de paginación los recargue
+      setCurrentPage(1);
+      setFilteredCallsData([]);
+      setTotalFilteredCalls(0);
+      setTotalFilteredPages(0);
     }
-  }, [searchTerm, statusFilter, durationFilter, startDate, endDate, phoneNumberFilter, sortOrderFilter, interestFilter, tipoViviendaFilter, agentIdFilter, disconnectionReasonFilter, applyFilters]);
+  }, [searchTerm, statusFilter, durationFilter, startDate, endDate, phoneNumberFilter, sortOrderFilter, interestFilter, tipoViviendaFilter, agentIdFilter, disconnectionReasonFilter, appliedDatabaseFilter]);
 
   // Función para abrir el modal de filtros
   const openFiltersModal = () => {
@@ -1838,9 +1979,9 @@ export function Recordings({ onNavigate }: RecordingsProps) {
             </div>
             
             {/* Filtro por número de teléfono */}
-            <div className="lg:col-span-3">
+            <div className={`${hasFiltroSolar ? 'lg:col-span-2' : 'lg:col-span-3'}`}>
               <div className="relative">
-                <Phone className="w-5 h-5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Phone className="w-4 h-4 text-slate-500 absolute left-2 top-1/2 -translate-y-1/2" />
                 <Input
                   type="text"
                   placeholder="Número..."
@@ -1849,7 +1990,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                     setPhoneNumberFilter(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="pl-10"
+                  className="pl-8 text-sm"
                 />
                 {phoneNumberFilter && (
                   <button
@@ -1857,7 +1998,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                       setPhoneNumberFilter('');
                       setCurrentPage(1);
                     }}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -1866,9 +2007,9 @@ export function Recordings({ onNavigate }: RecordingsProps) {
             </div>
             
             {/* Búsqueda */}
-            <div className="lg:col-span-4 relative">
+            <div className={`relative ${hasFiltroSolar ? 'lg:col-span-2' : 'lg:col-span-4'}`}>
               <div className="relative">
-                <Search className="w-5 h-5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Search className="w-4 h-4 text-slate-500 absolute left-2 top-1/2 -translate-y-1/2" />
                 <Input
                   type="text"
                   placeholder="Buscar grabación..."
@@ -1877,7 +2018,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                     setSearchTerm(e.target.value);
                     setCurrentPage(1); // Reset to first page when search changes
                   }}
-                  className="pl-10"
+                  className="pl-8 text-sm"
                 />
                 {searchTerm && (
                   <button
@@ -1885,13 +2026,64 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                       setSearchTerm('');
                       setCurrentPage(1);
                     }}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 )}
               </div>
             </div>
+            
+            {/* Filtro de base de datos - Solo si tiene permiso */}
+            {hasFiltroSolar && (
+              <div className="lg:col-span-3">
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    type="text"
+                    placeholder="Base de datos..."
+                    value={databaseFilter}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                      setDatabaseFilter(e.target.value);
+                    }}
+                    onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                      if (e.key === 'Enter' && databaseFilter.trim()) {
+                        setAppliedDatabaseFilter(databaseFilter.trim());
+                        setCurrentPage(1);
+                      }
+                    }}
+                    className="flex-1 text-sm"
+                  />
+                  <Button
+                    onClick={() => {
+                      if (databaseFilter.trim()) {
+                        setAppliedDatabaseFilter(databaseFilter.trim());
+                        setCurrentPage(1);
+                      }
+                    }}
+                    disabled={!databaseFilter.trim()}
+                    variant="outline"
+                    size="sm"
+                    className="text-xs px-2 whitespace-nowrap h-10"
+                  >
+                    Filtrar
+                  </Button>
+                  {appliedDatabaseFilter && (
+                    <Button
+                      onClick={() => {
+                        setDatabaseFilter('');
+                        setAppliedDatabaseFilter('');
+                        setCurrentPage(1);
+                      }}
+                      variant="outline"
+                      size="sm"
+                      className="text-xs px-2 whitespace-nowrap h-10"
+                    >
+                      Limpiar
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Contenido principal */}
@@ -1909,7 +2101,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
               <PhoneOff className="mx-auto h-12 w-12 text-slate-400 mb-4" />
               <h3 className="text-xl font-medium text-slate-800 mb-2">No se encontraron grabaciones</h3>
               <p className="text-slate-600 max-w-md mx-auto mb-6">
-                {searchTerm || startDate || endDate || statusFilter || disconnectionReasonFilter || durationFilter || phoneNumberFilter || interestFilter || tipoViviendaFilter || agentIdFilter
+                {searchTerm || startDate || endDate || statusFilter || disconnectionReasonFilter || durationFilter || phoneNumberFilter || interestFilter || tipoViviendaFilter || agentIdFilter || appliedDatabaseFilter
                   ? "No hay grabaciones que coincidan con tus filtros. Intenta ajustar los criterios de búsqueda."
                   : "Aún no hay grabaciones disponibles en tu cuenta."}
               </p>
@@ -2040,7 +2232,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                         Mostrando {(currentPage - 1) * itemsPerPage + 1}-
                         {Math.min(currentPage * itemsPerPage, filteredCalls.length)} de {totalFilteredCalls} grabaciones filtradas
                       </>
-                    ) : searchTerm || statusFilter || durationFilter || startDate || endDate || phoneNumberFilter || sortOrderFilter !== 'DESC' || agentIdFilter ? (
+                    ) : searchTerm || statusFilter || durationFilter || startDate || endDate || phoneNumberFilter || sortOrderFilter !== 'DESC' || agentIdFilter || appliedDatabaseFilter ? (
                       <>
                         Mostrando {(currentPage - 1) * itemsPerPage + 1}-
                         {Math.min(currentPage * itemsPerPage, filteredCalls.length)} de {filteredCalls.length} grabaciones filtradas

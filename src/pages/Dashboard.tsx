@@ -290,7 +290,7 @@ interface DashboardProps {
   totalCalls: number;
   filteredCallsCount: number;
   dashboardData?: any;
-  loadDashboardData?: (fechaInicio?: string, fechaFin?: string, timePeriod?: string) => void;
+  loadDashboardData?: (fechaInicio?: string, fechaFin?: string, timePeriod?: string, bdd?: string) => void;
   agendaEnabled?: boolean;
 }
 
@@ -377,6 +377,26 @@ export function Dashboard({
   const [effectiveCallsHourStart, setEffectiveCallsHourStart] = useState<string>('0');
   const [effectiveCallsHourEnd, setEffectiveCallsHourEnd] = useState<string>('23');
   
+  // Estado para filtro de base de datos
+  const [databaseFilter, setDatabaseFilter] = useState<string>('');
+  const [appliedDatabaseFilter, setAppliedDatabaseFilter] = useState<string>('');
+  
+  // Verificar si el usuario tiene permiso para ver filtro de base de datos
+  const [hasFiltroSolar, setHasFiltroSolar] = React.useState(false);
+  
+  React.useEffect(() => {
+    try {
+      const metadataStr = sessionStorage.getItem('metadata');
+      if (metadataStr) {
+        const metadata = JSON.parse(metadataStr);
+        setHasFiltroSolar(metadata?.filtro_solar === true);
+      }
+    } catch (error) {
+      console.error('Error al leer metadata del sessionStorage:', error);
+      setHasFiltroSolar(false);
+    }
+  }, []);
+  
   // Función para validar y actualizar el rango de horas (agendamientos)
   const handleHourRangeChange = (type: 'start' | 'end', value: string) => {
     const startHour = parseInt(type === 'start' ? value : hourRangeStart);
@@ -445,7 +465,8 @@ export function Dashboard({
     // Solo cargar en el primer render
     if (timePeriod === 'today') {
       // Para 'today', usar el endpoint específico sin fechas
-      loadDashboardData(undefined, undefined, 'today');
+      const bddFilter = appliedDatabaseFilter || undefined;
+      loadDashboardData(undefined, undefined, 'today', bddFilter);
     }
   }, [loadDashboardData]);
 
@@ -571,27 +592,40 @@ export function Dashboard({
     }
   };
 
-  // Efecto para recargar datos cuando cambia el filtro de período
+  // Función para aplicar el filtro de base de datos
+  const applyDatabaseFilter = () => {
+    setAppliedDatabaseFilter(databaseFilter.trim());
+  };
+
+  // Función para limpiar el filtro de base de datos
+  const clearDatabaseFilter = () => {
+    setDatabaseFilter('');
+    setAppliedDatabaseFilter('');
+  };
+
+  // Efecto para recargar datos cuando cambia el filtro de período o base de datos aplicada
   React.useEffect(() => {
     if (!loadDashboardData) return;
     
+    const bddFilter = appliedDatabaseFilter || undefined;
+    
     if (timePeriod === 'all') {
       // Para "all", cargar sin fechas usando el endpoint genérico
-      console.log('Recargando datos del dashboard sin filtros de fecha');
-      loadDashboardData(undefined, undefined, 'all');
+      console.log('Recargando datos del dashboard sin filtros de fecha', bddFilter ? `con base de datos: ${bddFilter}` : '');
+      loadDashboardData(undefined, undefined, 'all', bddFilter);
     } else if (timePeriod === 'custom' && customStartDate && customEndDate) {
       // Para período personalizado, usar fechas específicas con horas
       const dates = calculateDatesForPeriod(timePeriod, customStartDate, customEndDate, customStartTime, customEndTime);
       if (dates) {
-        console.log('Recargando datos del dashboard con fechas personalizadas:', dates);
-        loadDashboardData(dates.fechaInicio, dates.fechaFin, 'custom');
+        console.log('Recargando datos del dashboard con fechas personalizadas:', dates, bddFilter ? `con base de datos: ${bddFilter}` : '');
+        loadDashboardData(dates.fechaInicio, dates.fechaFin, 'custom', bddFilter);
       }
     } else if (timePeriod === 'today' || timePeriod === 'week' || timePeriod === 'month') {
       // Para otros períodos (today, week, month), usar endpoints específicos
-      console.log('Recargando datos del dashboard para período:', timePeriod);
-      loadDashboardData(undefined, undefined, timePeriod);
+      console.log('Recargando datos del dashboard para período:', timePeriod, bddFilter ? `con base de datos: ${bddFilter}` : '');
+      loadDashboardData(undefined, undefined, timePeriod, bddFilter);
     }
-  }, [timePeriod, customStartDate, customEndDate, customStartTime, customEndTime, loadDashboardData]);
+  }, [timePeriod, customStartDate, customEndDate, customStartTime, customEndTime, appliedDatabaseFilter, loadDashboardData]);
 
   // Función para filtrar datos por período (usando medianoche en Madrid)
   const filterDataByPeriod = (data: any[], dateField: string = 'fecha') => {
@@ -816,6 +850,43 @@ export function Dashboard({
             </Select>
           </div>
           
+          {hasFiltroSolar && (
+            <div className="flex items-center gap-2">
+              <label htmlFor="databaseFilter" className="text-sm font-medium text-slate-700">
+                Base de datos:
+              </label>
+              <input
+                type="text"
+                id="databaseFilter"
+                value={databaseFilter}
+                onChange={(e) => setDatabaseFilter(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    applyDatabaseFilter();
+                  }
+                }}
+                placeholder="Nombre de la base de datos"
+                className="px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
+              />
+              <Button
+                onClick={applyDatabaseFilter}
+                className="text-sm bg-blue-600 hover:bg-blue-700 text-white"
+                disabled={!databaseFilter.trim()}
+              >
+                Filtrar
+              </Button>
+              {appliedDatabaseFilter && (
+                <Button
+                  onClick={clearDatabaseFilter}
+                  variant="outline"
+                  className="text-sm"
+                >
+                  Limpiar
+                </Button>
+              )}
+            </div>
+          )}
+          
           {timePeriod === 'custom' && customStartDate && customEndDate && (
             <Button
               onClick={() => {
@@ -840,6 +911,7 @@ export function Dashboard({
               `Mostrando datos del ${customStartDate} ${customStartTime} al ${customEndDate} ${customEndTime}`}
             {timePeriod === 'custom' && (!customStartDate || !customEndDate) && 
               'Selecciona un rango de fechas personalizado'}
+            {appliedDatabaseFilter && ` | Filtrado por base de datos: ${appliedDatabaseFilter}`}
           </div>
         </div>
       )}
@@ -960,7 +1032,10 @@ export function Dashboard({
         <div className="p-8 bg-yellow-50 rounded-xl border border-yellow-200">
           <p className="text-yellow-700 text-lg mb-4">⚠️ No se han cargado los datos del dashboard desde el servidor.</p>
           {loadDashboardData && (
-            <Button onClick={() => loadDashboardData && loadDashboardData(undefined, undefined, timePeriod)} variant="default">
+            <Button onClick={() => {
+              const bddFilter = appliedDatabaseFilter || undefined;
+              loadDashboardData && loadDashboardData(undefined, undefined, timePeriod, bddFilter);
+            }} variant="default">
               Cargar datos del servidor
             </Button>
           )}

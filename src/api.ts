@@ -610,7 +610,8 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
 export async function getDashboardData(
   clientId?: string, 
   fechaInicio?: string, 
-  fechaFin?: string
+  fechaFin?: string,
+  bdd?: string
 ): Promise<any> {
   try {
     // Usar el client_id proporcionado o el del localStorage
@@ -637,6 +638,11 @@ export async function getDashboardData(
     // Agregar fechas al body si se proporcionan (tras autocompletar)
     if (effectiveFechaInicio) requestBody.fecha_inicio = effectiveFechaInicio;
     if (effectiveFechaFin) requestBody.fecha_fin = effectiveFechaFin;
+    
+    // Agregar filtro de base de datos si se proporciona
+    if (bdd && bdd.trim()) {
+      requestBody.bdd = bdd.trim();
+    }
     
     // Usar endpoint custom cuando hay al menos fechaInicio
     const url = (effectiveFechaInicio)
@@ -669,7 +675,8 @@ export async function getDashboardData(
 export async function getDashboardCustom(
   clientId?: string,
   fechaInicio?: string,
-  fechaFin?: string
+  fechaFin?: string,
+  bdd?: string
 ): Promise<any> {
   try {
     const actualClientId = clientId || getClientId();
@@ -686,6 +693,11 @@ export async function getDashboardCustom(
       fecha_inicio: fechaInicio,
       fecha_fin: fechaFin
     };
+    
+    // Agregar filtro de base de datos si se proporciona
+    if (bdd && bdd.trim()) {
+      requestBody.bdd = bdd.trim();
+    }
 
     const response = await fetch(GET_DASHBOARD_CUSTOM_WEBHOOK_URL, {
       method: 'POST',
@@ -708,7 +720,7 @@ export async function getDashboardCustom(
 }
 
 // Función para obtener datos del dashboard de hoy
-export async function getDashboardToday(clientId?: string): Promise<any> {
+export async function getDashboardToday(clientId?: string, bdd?: string): Promise<any> {
   try {
     const actualClientId = clientId || getClientId();
     
@@ -718,12 +730,17 @@ export async function getDashboardToday(clientId?: string): Promise<any> {
     
     console.log('Solicitando datos del dashboard de HOY para client_id:', actualClientId);
     
+    const requestBody: any = { client_id: actualClientId };
+    if (bdd && bdd.trim()) {
+      requestBody.bdd = bdd.trim();
+    }
+    
     const response = await fetch(`${BASE_URL}/api/dashboard/get-dashboard-today`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ client_id: actualClientId }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
@@ -741,7 +758,7 @@ export async function getDashboardToday(clientId?: string): Promise<any> {
 }
 
 // Función para obtener datos del dashboard de la semana
-export async function getDashboardWeek(clientId?: string): Promise<any> {
+export async function getDashboardWeek(clientId?: string, bdd?: string): Promise<any> {
   try {
     const actualClientId = clientId || getClientId();
     
@@ -751,12 +768,17 @@ export async function getDashboardWeek(clientId?: string): Promise<any> {
     
     console.log('Solicitando datos del dashboard de la SEMANA para client_id:', actualClientId);
     
+    const requestBody: any = { client_id: actualClientId };
+    if (bdd && bdd.trim()) {
+      requestBody.bdd = bdd.trim();
+    }
+    
     const response = await fetch(`${BASE_URL}/api/dashboard/get-dashboard-week`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ client_id: actualClientId }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
@@ -774,7 +796,7 @@ export async function getDashboardWeek(clientId?: string): Promise<any> {
 }
 
 // Función para obtener datos del dashboard del mes
-export async function getDashboardMonth(clientId?: string): Promise<any> {
+export async function getDashboardMonth(clientId?: string, bdd?: string): Promise<any> {
   try {
     const actualClientId = clientId || getClientId();
     
@@ -784,12 +806,17 @@ export async function getDashboardMonth(clientId?: string): Promise<any> {
     
     console.log('Solicitando datos del dashboard del MES para client_id:', actualClientId);
     
+    const requestBody: any = { client_id: actualClientId };
+    if (bdd && bdd.trim()) {
+      requestBody.bdd = bdd.trim();
+    }
+    
     const response = await fetch(`${BASE_URL}/api/dashboard/get-dashboard-month`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ client_id: actualClientId }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
@@ -1219,6 +1246,7 @@ export async function listCalls(
     interest?: string;
     tipo_vivienda?: string;
     to_number_norm?: string;
+    bdd?: string;
   }
 ): Promise<{
   calls: RetellCall[];
@@ -2030,6 +2058,7 @@ export async function exportCallsWithColumns(
     interest?: string;
     tipo_vivienda?: string;
     end_reason?: string;
+    bdd?: string;
     sort_order?: 'ASC' | 'DESC';
   }
 ): Promise<{ calls: any[]; total_llamadas: number; columns_selected: string[] }> {
