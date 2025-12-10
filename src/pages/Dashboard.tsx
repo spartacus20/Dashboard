@@ -384,18 +384,67 @@ export function Dashboard({
   // Verificar si el usuario tiene permiso para ver filtro de base de datos
   const [hasFiltroSolar, setHasFiltroSolar] = React.useState(false);
   
-  React.useEffect(() => {
+  // Función para verificar el metadata
+  const checkMetadata = React.useCallback(() => {
     try {
       const metadataStr = sessionStorage.getItem('metadata');
       if (metadataStr) {
         const metadata = JSON.parse(metadataStr);
-        setHasFiltroSolar(metadata?.filtro_solar === true);
+        const hasFiltro = metadata?.filtro_solar === true;
+        setHasFiltroSolar(hasFiltro);
+        console.log('✅ Metadata verificado, filtro_solar:', hasFiltro);
+        return hasFiltro;
       }
+      return false;
     } catch (error) {
       console.error('Error al leer metadata del sessionStorage:', error);
       setHasFiltroSolar(false);
+      return false;
     }
   }, []);
+  
+  // Verificar metadata inmediatamente y escuchar eventos de actualización
+  React.useEffect(() => {
+    // Verificar inmediatamente
+    checkMetadata();
+    
+    // Escuchar evento personalizado cuando se actualiza el metadata
+    const handleMetadataUpdate = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      if (customEvent.detail?.metadata) {
+        const hasFiltro = customEvent.detail.metadata.filtro_solar === true;
+        setHasFiltroSolar(hasFiltro);
+        console.log('✅ Metadata actualizado desde evento, filtro_solar:', hasFiltro);
+      } else {
+        // Si no viene el metadata en el evento, verificar desde sessionStorage
+        checkMetadata();
+      }
+    };
+    
+    // Verificar periódicamente durante los primeros 5 segundos (cada 500ms)
+    // Esto asegura que si el metadata se guarda después del montaje, se detecte
+    const intervalId = setInterval(() => {
+      const found = checkMetadata();
+      // Si encontramos el metadata, detener el intervalo
+      if (found) {
+        clearInterval(intervalId);
+      }
+    }, 500);
+    
+    // Limpiar el intervalo después de 5 segundos
+    const timeoutId = setTimeout(() => {
+      clearInterval(intervalId);
+    }, 5000);
+    
+    // Escuchar el evento personalizado de actualización de metadata
+    window.addEventListener('metadataUpdated', handleMetadataUpdate);
+    
+    return () => {
+      clearInterval(intervalId);
+      clearTimeout(timeoutId);
+      window.removeEventListener('metadataUpdated', handleMetadataUpdate);
+    };
+  }, [checkMetadata]);
   
   // Función para validar y actualizar el rango de horas (agendamientos)
   const handleHourRangeChange = (type: 'start' | 'end', value: string) => {

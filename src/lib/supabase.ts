@@ -77,6 +77,10 @@ export const getClientId = async (email: string): Promise<string | null> => {
         // Guardar metadatos
         if (userData.metadata) {
           sessionStorage.setItem('metadata', JSON.stringify(userData.metadata))
+          // Disparar evento personalizado para notificar que el metadata se guardó
+          window.dispatchEvent(new CustomEvent('metadataUpdated', { 
+            detail: { metadata: userData.metadata } 
+          }))
         }
         
         // Guardar metadata_llamadas
