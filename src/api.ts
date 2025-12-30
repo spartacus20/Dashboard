@@ -757,6 +757,48 @@ export async function getDashboardToday(clientId?: string, bdd?: string): Promis
   }
 }
 
+// Obtener distribución de clicks de asistencia por hora
+export async function fetchAsistenciaClicksByHour(
+  fechaInicio?: string,
+  fechaFin?: string
+): Promise<{ hora: number; clicks_totales: number }[]> {
+  try {
+    const url = `${BASE_URL}/api/asistencia/clicks-by-hour`;
+    const body: any = {
+      client_id: getClientId()
+    };
+
+    if (fechaInicio) body.fecha_inicio = fechaInicio;
+    if (fechaFin) body.fecha_fin = fechaFin;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `Error en fetchAsistenciaClicksByHour: ${response.status} ${response.statusText} - ${errorText}`
+      );
+    }
+
+    const data = await response.json();
+
+    if (!data.success) {
+      throw new Error(data.error || 'Error al obtener métricas de asistencia por hora');
+    }
+
+    return data.data || [];
+  } catch (error) {
+    console.error('Error al obtener métricas de asistencia por hora:', error);
+    throw error;
+  }
+}
+
 // Función para obtener datos del dashboard de la semana
 export async function getDashboardWeek(clientId?: string, bdd?: string): Promise<any> {
   try {

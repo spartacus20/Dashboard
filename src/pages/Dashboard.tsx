@@ -12,6 +12,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../components/ui/dialog";
+import {
+  fetchLanzamientoMetrics,
+  fetchLanzamientoMetricsToday,
+  fetchLanzamientoMetricsCustom,
+  fetchAsistenciaClicksByHour
+} from "../api";
 
 // Helpers de zona horaria (Europa/Madrid)
 function getMadridYmdParts(date: Date = new Date()): { year: number; month: number; day: number } {
@@ -292,6 +298,7 @@ interface DashboardProps {
   dashboardData?: any;
   loadDashboardData?: (fechaInicio?: string, fechaFin?: string, timePeriod?: string, bdd?: string) => void;
   agendaEnabled?: boolean;
+  launchEnabled?: boolean;
 }
 
 export function Dashboard({
@@ -306,7 +313,8 @@ export function Dashboard({
   filteredCallsCount,
   dashboardData,
   loadDashboardData,
-  agendaEnabled = true
+  agendaEnabled = true,
+  launchEnabled = false
 }: DashboardProps) {
   // Error boundary simple
   const [hasError, setHasError] = React.useState(false);
@@ -381,8 +389,69 @@ export function Dashboard({
   const [databaseFilter, setDatabaseFilter] = useState<string>('');
   const [appliedDatabaseFilter, setAppliedDatabaseFilter] = useState<string>('');
   
+  // Estado para métricas de lanzamiento por región
+  const [launchRegionMetrics, setLaunchRegionMetrics] = useState<{
+    europa: { total_llamadas: number; llamadas_contestadas: number; llamadas_fallidas: number };
+    latam: { total_llamadas: number; llamadas_contestadas: number; llamadas_fallidas: number };
+    espana: { total_llamadas: number; llamadas_contestadas: number; llamadas_fallidas: number };
+  } | null>(null);
+  const [launchRegionLoading, setLaunchRegionLoading] = useState<boolean>(false);
+  const [launchRegionError, setLaunchRegionError] = useState<string | null>(null);
+  
   // Verificar si el usuario tiene permiso para ver filtro de base de datos
   const [hasFiltroSolar, setHasFiltroSolar] = React.useState(false);
+
+  // Helpers para métricas de lanzamiento por región
+  const normalizeLaunchRegionFromMetrics = React.useCallback((metrics: any) => {
+    const porRegion = metrics?.porRegion || {};
+    const getRegion = (key: 'europa' | 'latam' | 'espana') => {
+      const r = porRegion[key] || {};
+      return {
+        total_llamadas: r.total_llamadas ?? r.totalLlamadas ?? 0,
+        llamadas_contestadas: r.llamadas_contestadas ?? r.llamadasContestadas ?? 0,
+        llamadas_fallidas: r.llamadas_fallidas ?? r.llamadasFallidas ?? 0
+      };
+    };
+    return {
+      europa: getRegion('europa'),
+      latam: getRegion('latam'),
+      espana: getRegion('espana')
+    };
+  }, []);
+
+  const normalizeLaunchRegionFromMetricsByRegion = React.useCallback((apiData: any) => {
+    const regionMap = new Map<string, any>();
+    (apiData?.metrics_by_region || []).forEach((region: any) => {
+      if (region?.region) {
+        regionMap.set(String(region.region).toLowerCase(), region);
+      }
+    });
+    const getRegion = (name: string) => {
+      const r = regionMap.get(name.toLowerCase()) || {};
+      return {
+        total_llamadas: r.total_llamadas ?? r.totalLlamadas ?? 0,
+        llamadas_contestadas: r.llamadas_contestadas ?? r.llamadasContestadas ?? 0,
+        llamadas_fallidas: r.llamadas_fallidas ?? r.llamadasFallidas ?? 0
+      };
+    };
+    return {
+      europa: getRegion('europa'),
+      latam: getRegion('latam'),
+      espana: getRegion('españa')
+    };
+  }, []);
+
+  const calculateLaunchPercentage = (value: number, total: number) => {
+    if (!total || total <= 0) return 0;
+    return Math.round((value / total) * 100);
+  };
+
+  // Estado para métricas de asistencia por hora (clicks)
+  const [asistenciaByHour, setAsistenciaByHour] = useState<
+    { label: string; clicks: number; hour: number }[]
+  >([]);
+  const [asistenciaLoading, setAsistenciaLoading] = useState<boolean>(false);
+  const [asistenciaError, setAsistenciaError] = useState<string | null>(null);
   
   // Función para verificar el metadata
   const checkMetadata = React.useCallback(() => {
@@ -531,17 +600,41 @@ export function Dashboard({
         return { fechaInicio: todayStr, fechaFin: tomorrowStr };
       
       case 'week':
-        const weekStart = addDaysUTC(todayMadrid, -7);
-        const weekStartStr = formatMadridDateYYYYMMDD(weekStart);
-        const tomorrowStr2 = addDaysUTC(todayMadrid, 1);
-        return { fechaInicio: weekStartStr, fechaFin: formatMadridDateYYYYMMDD(tomorrowStr2) };
+        // Calcular igual que el backend: desde el lunes de esta semana hasta el lunes siguiente
+        // Obtener fecha actual en zona horaria de Madrid
+        const { year: yearWeek, month: monthWeek, day: dayWeek } = getMadridYmdParts();
+        const todayMadridWeek = new Date(Date.UTC(yearWeek, monthWeek - 1, dayWeek, 0, 0, 0, 0));
+        
+        // Calcular el día de la semana (0 = domingo, 1 = lunes, ..., 6 = sábado)
+        // Usar UTC para obtener el día de la semana correcto
+        const dayOfWeek = todayMadridWeek.getUTCDay();
+        const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        
+        // Calcular inicio de semana (lunes)
+        const startOfWeek = new Date(todayMadridWeek);
+        startOfWeek.setUTCDate(todayMadridWeek.getUTCDate() - daysToMonday);
+        startOfWeek.setUTCHours(0, 0, 0, 0);
+        
+        // Calcular fin de semana (lunes siguiente)
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setUTCDate(startOfWeek.getUTCDate() + 7);
+        endOfWeek.setUTCHours(0, 0, 0, 0);
+        
+        return { 
+          fechaInicio: startOfWeek.toISOString(), 
+          fechaFin: endOfWeek.toISOString() 
+        };
       
       case 'month':
-        // Restar 30 días como aproximación a "último mes" respecto a Madrid
-        const monthStart = addDaysUTC(todayMadrid, -30);
-        const monthStartStr = formatMadridDateYYYYMMDD(monthStart);
-        const tomorrowStr3 = addDaysUTC(todayMadrid, 1);
-        return { fechaInicio: monthStartStr, fechaFin: formatMadridDateYYYYMMDD(tomorrowStr3) };
+        // Calcular igual que el backend: desde el día 1 del mes actual hasta el día 1 del mes siguiente
+        const { year: yearMonth, month: monthMonth } = getMadridYmdParts();
+        const startOfMonth = new Date(Date.UTC(yearMonth, monthMonth - 1, 1, 0, 0, 0, 0));
+        const endOfMonth = new Date(Date.UTC(yearMonth, monthMonth, 1, 0, 0, 0, 0));
+        
+        return { 
+          fechaInicio: startOfMonth.toISOString(), 
+          fechaFin: endOfMonth.toISOString() 
+        };
       
       case 'custom':
         if (customStart && customEnd) {
@@ -675,6 +768,140 @@ export function Dashboard({
       loadDashboardData(undefined, undefined, timePeriod, bddFilter);
     }
   }, [timePeriod, customStartDate, customEndDate, customStartTime, customEndTime, appliedDatabaseFilter, loadDashboardData]);
+
+  // Cargar métricas de lanzamiento por región cuando el usuario tiene permiso y cambia el período
+  React.useEffect(() => {
+    const loadLaunchRegionMetrics = async () => {
+      if (!launchEnabled) {
+        setLaunchRegionMetrics(null);
+        return;
+      }
+      try {
+        setLaunchRegionLoading(true);
+        setLaunchRegionError(null);
+
+        // Seleccionar endpoint según período
+        if (timePeriod === 'today') {
+          const data = await fetchLanzamientoMetricsToday();
+          const normalized = normalizeLaunchRegionFromMetricsByRegion(data);
+          setLaunchRegionMetrics(normalized);
+        } else if (timePeriod === 'week') {
+          // Calcular fechas para la semana y usar endpoint genérico
+          const dates = calculateDatesForPeriod('week');
+          if (dates) {
+            const data = await fetchLanzamientoMetricsCustom(dates.fechaInicio, dates.fechaFin);
+            const normalized = normalizeLaunchRegionFromMetricsByRegion(data);
+            setLaunchRegionMetrics(normalized);
+          } else {
+            setLaunchRegionMetrics(null);
+          }
+        } else if (timePeriod === 'month') {
+          // Calcular fechas para el mes y usar endpoint genérico
+          const dates = calculateDatesForPeriod('month');
+          if (dates) {
+            const data = await fetchLanzamientoMetricsCustom(dates.fechaInicio, dates.fechaFin);
+            const normalized = normalizeLaunchRegionFromMetricsByRegion(data);
+            setLaunchRegionMetrics(normalized);
+          } else {
+            setLaunchRegionMetrics(null);
+          }
+        } else if (timePeriod === 'custom' && customStartDate && customEndDate) {
+          const data = await fetchLanzamientoMetricsCustom(customStartDate, customEndDate);
+          const normalized = normalizeLaunchRegionFromMetricsByRegion(data);
+          setLaunchRegionMetrics(normalized);
+        } else if (timePeriod === 'all') {
+          const metrics = await fetchLanzamientoMetrics();
+          const normalized = normalizeLaunchRegionFromMetrics(metrics);
+          setLaunchRegionMetrics(normalized);
+        } else {
+          setLaunchRegionMetrics(null);
+        }
+      } catch (error: any) {
+        console.error('Error al cargar métricas de lanzamiento por región en Dashboard:', error);
+        setLaunchRegionError(error?.message || 'Error al cargar métricas de lanzamiento por región');
+        setLaunchRegionMetrics(null);
+      } finally {
+        setLaunchRegionLoading(false);
+      }
+    };
+
+    loadLaunchRegionMetrics();
+  }, [
+    launchEnabled,
+    timePeriod,
+    customStartDate,
+    customEndDate,
+    normalizeLaunchRegionFromMetrics,
+    normalizeLaunchRegionFromMetricsByRegion
+  ]);
+
+  // Cargar métricas de asistencia por hora (clicks) según el período seleccionado
+  React.useEffect(() => {
+    const loadAsistenciaByHour = async () => {
+      if (!launchEnabled) {
+        setAsistenciaByHour([]);
+        return;
+      }
+      try {
+        setAsistenciaLoading(true);
+        setAsistenciaError(null);
+
+        let fechaInicio: string | undefined;
+        let fechaFin: string | undefined;
+
+        if (timePeriod === 'all') {
+          // Sin filtros de fecha: backend devolverá todos los datos
+          fechaInicio = undefined;
+          fechaFin = undefined;
+        } else if (timePeriod === 'custom' && customStartDate && customEndDate) {
+          const dates = calculateDatesForPeriod(
+            'custom',
+            customStartDate,
+            customEndDate,
+            customStartTime,
+            customEndTime
+          );
+          fechaInicio = dates?.fechaInicio;
+          fechaFin = dates?.fechaFin;
+        } else {
+          const dates = calculateDatesForPeriod(timePeriod, customStartDate, customEndDate);
+          fechaInicio = dates?.fechaInicio;
+          fechaFin = dates?.fechaFin;
+        }
+
+        const raw = await fetchAsistenciaClicksByHour(fechaInicio, fechaFin);
+
+        const processed =
+          raw
+            ?.filter((item: any) => (item.clicks_totales || 0) > 0)
+            .map((item: any) => {
+              const hour = typeof item.hora === 'number' ? item.hora : parseInt(item.hora || '0', 10);
+              return {
+                label: `${hour.toString().padStart(2, '0')}:00`,
+                clicks: item.clicks_totales || 0,
+                hour
+              };
+            }) || [];
+
+        setAsistenciaByHour(processed);
+      } catch (error: any) {
+        console.error('Error al cargar métricas de asistencia por hora:', error);
+        setAsistenciaError(error?.message || 'Error al cargar métricas de asistencia por hora');
+        setAsistenciaByHour([]);
+      } finally {
+        setAsistenciaLoading(false);
+      }
+    };
+
+    loadAsistenciaByHour();
+  }, [
+    launchEnabled,
+    timePeriod,
+    customStartDate,
+    customEndDate,
+    customStartTime,
+    customEndTime
+  ]);
 
   // Función para filtrar datos por período (usando medianoche en Madrid)
   const filterDataByPeriod = (data: any[], dateField: string = 'fecha') => {
@@ -1353,6 +1580,66 @@ export function Dashboard({
               </CardContent>
             </Card>
           </div>
+
+          {/* Métricas de lanzamiento por región (si el cliente tiene launch habilitado) */}
+          {launchEnabled && (
+            <Card className="mb-8">
+              <CardHeader>
+                <CardTitle className="text-base font-semibold text-slate-800">
+                  Tasa de Contestación por Región
+                </CardTitle>
+                <CardDescription className="text-slate-500">
+                  Comparación de rendimiento de las campañas de lanzamiento por región
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {launchRegionLoading ? (
+                  <div className="py-4 text-sm text-slate-500">
+                    Cargando métricas de lanzamiento por región...
+                  </div>
+                ) : launchRegionError ? (
+                  <div className="py-4 text-sm text-red-600">
+                    {launchRegionError}
+                  </div>
+                ) : launchRegionMetrics ? (
+                  <div className="grid gap-4 md:grid-cols-3">
+                    {(['europa', 'latam', 'espana'] as const).map((key) => {
+                      const data = launchRegionMetrics[key];
+                      const label =
+                        key === 'europa' ? 'Europa' :
+                        key === 'latam' ? 'Latam' :
+                        'España';
+                      const tasa = calculateLaunchPercentage(
+                        data.llamadas_contestadas,
+                        data.total_llamadas
+                      );
+                      return (
+                        <div
+                          key={key}
+                          className="bg-slate-50 rounded-lg border border-slate-200 p-4 flex flex-col items-center text-center"
+                        >
+                          <div className="text-sm font-medium text-slate-700 mb-1">
+                            {label}
+                          </div>
+                          <div className="text-2xl font-bold text-blue-700 mb-1">
+                            {tasa}%
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            {data.llamadas_contestadas.toLocaleString()} contestadas de{' '}
+                            {data.total_llamadas.toLocaleString()} llamadas
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="py-4 text-sm text-slate-500">
+                    No hay métricas de lanzamiento por región disponibles para este período.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
           
           {/* Gráfico de llamadas por día */}
           {/* Eliminar la Card y el contenido del gráfico de llamadas por día */}
@@ -1589,6 +1876,43 @@ export function Dashboard({
                       showLegend={false}
                     />
                   </div>
+                </CardContent>
+              </Card>
+            )}
+            
+            {/* Gráfico de clicks de asistencia por hora (si el cliente tiene launch habilitado) */}
+            {launchEnabled && asistenciaByHour && asistenciaByHour.length > 0 && (
+              <Card className="mb-8 shadow-lg border border-slate-200">
+                <CardHeader>
+                  <CardTitle className="text-base font-semibold text-slate-800">
+                    Clicks de Asistencia por Hora
+                  </CardTitle>
+                  <CardDescription className="text-slate-500">
+                    Hora del día en la que las personas hacen click - Total: <span className="font-bold">{asistenciaByHour.reduce((sum, item) => sum + (item.clicks || 0), 0).toLocaleString()}</span> clicks
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-0 md:p-6">
+                  {asistenciaLoading ? (
+                    <div className="py-4 text-sm text-slate-500">
+                      Cargando métricas de asistencia por hora...
+                    </div>
+                  ) : asistenciaError ? (
+                    <div className="py-4 text-sm text-red-600">
+                      {asistenciaError}
+                    </div>
+                  ) : (
+                    <div className="h-[300px] bg-white rounded-xl p-4 md:p-6">
+                      <Chart 
+                        data={asistenciaByHour}
+                        type="line"
+                        xKey="label"
+                        yKey="clicks"
+                        height={300}
+                        colors={["#16a34a"]}
+                        showLegend={false}
+                      />
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}

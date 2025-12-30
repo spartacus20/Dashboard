@@ -1265,6 +1265,7 @@ function DashboardApp() {
             dashboardData={dashboardData}
             loadDashboardData={loadDashboardData}
             agendaEnabled={agendaEnabled}
+            launchEnabled={launchEnabled}
           />
         )}
         {currentPage === 'recordings' && (
