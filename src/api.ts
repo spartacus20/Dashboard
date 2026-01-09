@@ -492,6 +492,26 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
         console.log('✅ metadata_llamadas guardado en sessionStorage');
       }
       
+      // Guardar client_test SOLO si se está obteniendo por email (no por client_id)
+      // Esto preserva el client_test original del usuario cuando se cambia el client_id
+      const isEmail = identifier.includes('@');
+      if (isEmail && clientData.client_test) {
+        sessionStorage.setItem('client_test', JSON.stringify(clientData.client_test));
+        // También guardar en localStorage para persistencia
+        localStorage.setItem('user_client_test', JSON.stringify(clientData.client_test));
+        console.log('✅ client_test guardado en sessionStorage y localStorage (obtenido por email):', clientData.client_test);
+      } else if (!isEmail) {
+        // Si se está obteniendo por client_id, NO sobrescribir el client_test original
+        // Restaurar desde localStorage si existe
+        const savedClientTest = localStorage.getItem('user_client_test');
+        if (savedClientTest) {
+          sessionStorage.setItem('client_test', savedClientTest);
+          console.log('✅ client_test restaurado desde localStorage (no sobrescribir al cambiar client_id)');
+        } else {
+          console.log('ℹ️ No hay client_test guardado, manteniendo el actual');
+        }
+      }
+      
       // Guardar permissions SOLO si no existen ya en sessionStorage (evitar sobrescribir en refresh)
       const existingPermissions = sessionStorage.getItem('permissions');
       if (!existingPermissions) {
@@ -554,6 +574,26 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
       if (data.metadata_llamadas) {
         sessionStorage.setItem('metadata_llamadas', JSON.stringify(data.metadata_llamadas));
         console.log('✅ metadata_llamadas guardado en sessionStorage (formato objeto)');
+      }
+      
+      // Guardar client_test SOLO si se está obteniendo por email (no por client_id)
+      // Esto preserva el client_test original del usuario cuando se cambia el client_id
+      const isEmail = identifier.includes('@');
+      if (isEmail && data.client_test) {
+        sessionStorage.setItem('client_test', JSON.stringify(data.client_test));
+        // También guardar en localStorage para persistencia
+        localStorage.setItem('user_client_test', JSON.stringify(data.client_test));
+        console.log('✅ client_test guardado en sessionStorage y localStorage (formato objeto, obtenido por email):', data.client_test);
+      } else if (!isEmail) {
+        // Si se está obteniendo por client_id, NO sobrescribir el client_test original
+        // Restaurar desde localStorage si existe
+        const savedClientTest = localStorage.getItem('user_client_test');
+        if (savedClientTest) {
+          sessionStorage.setItem('client_test', savedClientTest);
+          console.log('✅ client_test restaurado desde localStorage (formato objeto, no sobrescribir al cambiar client_id)');
+        } else {
+          console.log('ℹ️ No hay client_test guardado, manteniendo el actual');
+        }
       }
       
       // Guardar permissions SOLO si no existen ya en sessionStorage (evitar sobrescribir en refresh)

@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { BarChart3, Mic, Menu, X, Key, Phone, PhoneOutgoing, Calendar, PhoneCall, LogOut, TrendingUp, Rocket, PhoneOff } from 'lucide-react';
 import { useCallsContext } from '../../context/CallsContext';
 import { useAuth } from '../../context/AuthContext';
-import { hasLaunchPermissions, canAccess, hasPermissionsDefined } from '../../lib/supabase';
+import { hasLaunchPermissions, canAccess, hasPermissionsDefined, getClientTest, getClientIdFromSession } from '../../lib/supabase';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 
 interface SidebarProps {
   currentPage: string;
@@ -12,11 +13,14 @@ interface SidebarProps {
 }
 
 export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: SidebarProps) {
-  const { loadingProgress, totalCalls, loadingAllCalls, apiKey, agendaEnabled, salesEnabled, numTelEnabled, recordsEnabled, callbacksEnabled, launchEnabled, dontCallEnabled } = useCallsContext();
-  const { user, signOut } = useAuth();
+  const { loadingProgress, totalCalls, loadingAllCalls, apiKey, agendaEnabled, salesEnabled, numTelEnabled, recordsEnabled, callbacksEnabled, launchEnabled, dontCallEnabled, loadAllCalls, loadDashboardData, loadPhoneNumbers, loadBatchCalls } = useCallsContext();
+  const { user, signOut, changeClientId } = useAuth();
   const progressPercentage = totalCalls > 0 ? Math.min(100, Math.round((loadingProgress / totalCalls) * 100)) : 0;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [showBatchCall, setShowBatchCall] = useState(false);
+  const [availableClientIds, setAvailableClientIds] = useState<string[]>([]);
+  const [currentClientId, setCurrentClientId] = useState<string | null>(null);
+  const [isChangingClient, setIsChangingClient] = useState(false);
   
   // Verificar si el usuario tiene permissions definidos
   const hasPermissions = hasPermissionsDefined();
@@ -50,6 +54,137 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
     dontCallEnabled
   });
   
+  // Cargar client_ids disponibles desde client_test
+  useEffect(() => {
+    const loadClientIds = () => {
+      const clientTest = getClientTest();
+      const currentId = getClientIdFromSession();
+      
+      console.log('🔍 Sidebar - Cargando client_ids:', {
+        clientTest,
+        currentId,
+        clientTestType: typeof clientTest,
+        isArray: Array.isArray(clientTest)
+      });
+      
+      if (clientTest) {
+        // client_test es JSONB, puede ser un array o un objeto
+        let clientIds: string[] = [];
+        
+        if (Array.isArray(clientTest)) {
+          clientIds = clientTest.filter((v): v is string => typeof v === 'string' && v.trim() !== '');
+          console.log('📋 client_test es array:', clientIds);
+        } else if (typeof clientTest === 'object' && clientTest !== null) {
+          // Si es un objeto, intentar extraer los valores
+          clientIds = Object.values(clientTest).filter((v): v is string => typeof v === 'string' && v.trim() !== '');
+          console.log('📋 client_test es objeto, valores extraídos:', clientIds);
+        } else if (typeof clientTest === 'string') {
+          // Si es un string, intentar parsearlo como JSON
+          try {
+            const parsed = JSON.parse(clientTest);
+            if (Array.isArray(parsed)) {
+              clientIds = parsed.filter((v): v is string => typeof v === 'string' && v.trim() !== '');
+            } else if (typeof parsed === 'object' && parsed !== null) {
+              clientIds = Object.values(parsed).filter((v): v is string => typeof v === 'string' && v.trim() !== '');
+            }
+            console.log('📋 client_test parseado desde string:', clientIds);
+          } catch (e) {
+            console.warn('⚠️ No se pudo parsear client_test como JSON:', e);
+          }
+        }
+        
+        // Agregar el client_id actual si no está en la lista
+        if (currentId && !clientIds.includes(currentId)) {
+          clientIds.unshift(currentId);
+          console.log('📋 Agregado client_id actual a la lista:', currentId);
+        }
+        
+        setAvailableClientIds(clientIds);
+        setCurrentClientId(currentId);
+        console.log('✅ Client IDs finales disponibles:', clientIds, 'Actual:', currentId, 'Mostrar selector:', clientIds.length > 1);
+      } else {
+        // Si no hay client_test, solo mostrar el client_id actual
+        console.log('ℹ️ No hay client_test, usando solo client_id actual:', currentId);
+        if (currentId) {
+          setAvailableClientIds([currentId]);
+          setCurrentClientId(currentId);
+        } else {
+          setAvailableClientIds([]);
+          setCurrentClientId(null);
+        }
+      }
+    };
+    
+    loadClientIds();
+    
+    // Escuchar cambios en sessionStorage (para cuando cambie desde otra pestaña)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'clientId' || e.key === 'client_test') {
+        loadClientIds();
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    
+    // También escuchar el evento de cambio de client_id
+    const handleClientIdChanged = () => {
+      // Pequeño delay para asegurar que sessionStorage se haya actualizado
+      setTimeout(() => {
+        loadClientIds();
+      }, 100);
+    };
+    
+    window.addEventListener('clientIdChanged', handleClientIdChanged);
+    
+    // Verificar periódicamente si cambió el clientId (para cambios en la misma pestaña)
+    const interval = setInterval(() => {
+      const currentId = getClientIdFromSession();
+      if (currentId !== currentClientId) {
+        loadClientIds();
+      }
+    }, 1000);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('clientIdChanged', handleClientIdChanged);
+      clearInterval(interval);
+    };
+  }, [currentClientId]);
+  
+  // Manejar cambio de client_id
+  const handleClientIdChange = async (newClientId: string) => {
+    if (newClientId === currentClientId || isChangingClient) {
+      return;
+    }
+    
+    setIsChangingClient(true);
+    console.log('🔄 Cambiando client_id de', currentClientId, 'a', newClientId);
+    
+    try {
+      // Cambiar el client_id
+      const { error } = await changeClientId(newClientId);
+      
+      if (error) {
+        console.error('❌ Error al cambiar client_id:', error);
+        alert('Error al cambiar el client_id. Por favor, intenta nuevamente.');
+        return;
+      }
+      
+      // Actualizar el estado local
+      setCurrentClientId(newClientId);
+      
+      // El CallsContext escuchará el evento clientIdChanged y recargará los datos automáticamente
+      // No necesitamos recargar manualmente ni hacer refresh de la página
+      console.log('✅ Client_id cambiado, el CallsContext recargará los datos automáticamente');
+    } catch (err) {
+      console.error('❌ Error al refrescar datos:', err);
+      alert('Error al refrescar los datos. La página se recargará.');
+      window.location.reload();
+    } finally {
+      setIsChangingClient(false);
+    }
+  };
+
   // Verificar si debemos mostrar Batch Call basado en parámetros URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -126,6 +261,50 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-xl font-bold text-white">uMindsAI Dashboard</h1>
         </div>
+        
+        {/* Selector de Client ID */}
+        {(() => {
+          const hasClientTest = getClientTest() !== null;
+          const shouldShowSelector = availableClientIds.length > 1 || (hasClientTest && availableClientIds.length > 0);
+          
+          console.log('🔍 Sidebar - Decisión de mostrar selector:', {
+            availableClientIds: availableClientIds.length,
+            hasClientTest,
+            shouldShowSelector,
+            currentClientId
+          });
+          
+          return shouldShowSelector ? (
+            <div className="mb-4">
+              <label className="block text-xs text-gray-400 mb-2 px-1">Client ID:</label>
+              <Select
+                value={currentClientId || ''}
+                onValueChange={handleClientIdChange}
+                disabled={isChangingClient}
+              >
+                <SelectTrigger className="w-full bg-[#0a2a5a] border border-[#1e4a8a] text-white text-xs">
+                  <SelectValue placeholder="Seleccionar Client ID" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableClientIds.map((clientId) => (
+                    <SelectItem key={clientId} value={clientId}>
+                      {clientId}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {isChangingClient && (
+                <div className="mt-2 text-xs text-blue-400 flex items-center gap-1">
+                  <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Cambiando...
+                </div>
+              )}
+            </div>
+          ) : null;
+        })()}
         
         {/* Indicador de API key en uso */}
         <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-[#0a2a5a] rounded-md text-xs text-gray-300">

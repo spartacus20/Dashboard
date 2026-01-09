@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { User, Session, AuthError } from '@supabase/supabase-js'
-import { supabase, getClientId, get_client_id, clearSessionData } from '../lib/supabase'
+import { supabase, getClientId, get_client_id, selected_client_id, clearSessionData, setClientId } from '../lib/supabase'
+import { getClientApiKey } from '../api'
 
 interface AuthContextType {
   user: User | null
@@ -11,6 +12,7 @@ interface AuthContextType {
   signInWithProvider: (provider: 'google' | 'github') => Promise<{ error: AuthError | null }>
   signOut: () => Promise<{ error: AuthError | null }>
   resetPassword: (email: string) => Promise<{ error: AuthError | null }>
+  changeClientId: (newClientId: string) => Promise<{ error: Error | null }>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -191,6 +193,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // Limpiar el client_id del localStorage al cerrar sesión
     if (!error) {
       localStorage.removeItem(get_client_id)
+      localStorage.removeItem('selected_client_id') // También limpiar el client_id seleccionado
       // Limpiar todos los datos del sessionStorage
       clearSessionData()
       console.log('Client ID eliminado del localStorage y sessionStorage al cerrar sesión')
@@ -206,6 +209,52 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return { error }
   }
 
+  const changeClientId = async (newClientId: string) => {
+    try {
+      console.log('🔄 AuthContext - Cambiando client_id a:', newClientId)
+      
+      // Guardar el client_id seleccionado en localStorage (persistente)
+      localStorage.setItem('selected_client_id', newClientId)
+      
+      // Actualizar el client_id en localStorage y sessionStorage
+      setClientId(newClientId)
+      sessionStorage.setItem('clientId', newClientId)
+      console.log('✅ AuthContext - client_id seleccionado guardado en localStorage y sessionStorage')
+      
+      // Obtener la nueva API key y configuración para el nuevo client_id
+      console.log('🔄 AuthContext - Obteniendo API key para nuevo client_id...')
+      const result = await getClientApiKey(newClientId)
+      console.log('📋 AuthContext - Resultado de getClientApiKey:', { 
+        hasApiKey: !!result.apiKey, 
+        hasConfig: !!result.config,
+        clientId: result.clientId 
+      })
+      
+      if (result.apiKey) {
+        sessionStorage.setItem('apiKey', result.apiKey)
+        console.log('✅ AuthContext - API key actualizada para nuevo client_id')
+        
+        // Disparar evento personalizado para notificar el cambio de client_id
+        const eventDetail = { 
+          clientId: newClientId,
+          apiKey: result.apiKey,
+          config: result.config
+        }
+        console.log('📢 AuthContext - Disparando evento clientIdChanged con:', eventDetail)
+        window.dispatchEvent(new CustomEvent('clientIdChanged', { 
+          detail: eventDetail
+        }))
+        
+        return { error: null }
+      } else {
+        throw new Error('No se pudo obtener la API key para el nuevo client_id')
+      }
+    } catch (error) {
+      console.error('❌ AuthContext - Error al cambiar client_id:', error)
+      return { error: error instanceof Error ? error : new Error('Error desconocido al cambiar client_id') }
+    }
+  }
+
   const value = {
     user,
     session,
@@ -215,6 +264,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     signInWithProvider,
     signOut,
     resetPassword,
+    changeClientId,
   }
 
   return (

@@ -285,6 +285,83 @@ export function CallsProvider({ children }: CallsProviderProps) {
     };
   }, []);
 
+  // Escuchar cambios de client_id desde el selector
+  useEffect(() => {
+    const handleClientIdChanged = async (event: CustomEvent) => {
+      const { clientId: newClientId, apiKey: newApiKey, config } = event.detail;
+      
+      console.log('🔄 CallsContext: client_id cambiado a', newClientId);
+      
+      // Actualizar estados
+      setClientId(newClientId);
+      if (newApiKey) {
+        setApiKey(newApiKey);
+      }
+      
+      // Actualizar configuración si está disponible
+      if (config) {
+        setAgendaEnabled(config.agenda ?? true);
+        setCallsEnabled(config.calls_enabled ?? true);
+        setSalesEnabled(config.sales ?? false);
+        setNumTelEnabled(config.num_tel ?? false);
+        setRecordsEnabled(config.records ?? false);
+        setCallbacksEnabled(config.callbacks ?? false);
+        setLaunchEnabled(config.launch ?? false);
+        setDontCallEnabled(config.dont_call ?? false);
+      }
+      
+      // Limpiar datos anteriores
+      setAllCalls([]);
+      setDashboardData(null);
+      setPhoneNumbers([]);
+      setBatchCalls([]);
+      setAllCallsLoaded(false);
+      setPhoneNumbersLoaded(false);
+      setBatchCallsLoaded(false);
+      loadedPages.current.clear();
+      loadingPages.current.clear();
+      setCurrentPage(1);
+      setTotalPages(0);
+      setHasMorePages(true);
+      setError(null);
+      
+      console.log('✅ CallsContext: Estados limpiados, recargando datos...');
+      
+      // Recargar todos los datos con el nuevo client_id
+      // Usar un pequeño delay para asegurar que los estados se hayan actualizado
+      setTimeout(async () => {
+        if (!newApiKey || !newClientId) {
+          console.warn('⚠️ CallsContext: No se pueden recargar datos sin apiKey o clientId');
+          return;
+        }
+        
+        try {
+          console.log('🔄 CallsContext: Iniciando recarga de datos con nuevo client_id:', newClientId);
+          
+          // Recargar todos los datos en paralelo usando los valores del evento
+          // Las funciones usarán los estados actualizados (clientId y apiKey) que acabamos de setear
+          await Promise.all([
+            loadAllCalls(true), // Forzar refresh
+            loadDashboardData(undefined, undefined, 'today'), // Recargar dashboard
+            loadPhoneNumbers(true), // Forzar refresh
+            loadBatchCalls(true) // Forzar refresh
+          ]);
+          
+          console.log('✅ CallsContext: Todos los datos recargados exitosamente');
+        } catch (refreshError) {
+          console.error('⚠️ CallsContext: Error al recargar algunos datos:', refreshError);
+        }
+      }, 150); // Aumentar ligeramente el delay para asegurar que los estados se actualicen
+    };
+    
+    window.addEventListener('clientIdChanged', handleClientIdChanged as EventListener);
+    
+    return () => {
+      window.removeEventListener('clientIdChanged', handleClientIdChanged as EventListener);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // No incluir las funciones en las dependencias para evitar recrear el listener
+
   // Función para cargar una página específica de llamadas
   const loadCallsPage = useCallback(async (page: number, filterCriteria?: FilterCriteria): Promise<RetellCall[]> => {
     if (!apiKey) {

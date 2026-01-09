@@ -14,6 +14,8 @@ export const GET_CLIENT_CONFIG = {
 
 // Variable para la clave del localStorage
 export const get_client_id = 'get_client_id'
+// Clave para el client_id seleccionado por el usuario (persistente)
+export const selected_client_id = 'selected_client_id'
 
 // Obtener la URL base según el entorno
 export const IS_PRODUCTION = import.meta.env.VITE_PRODUCTION_API === 'true';
@@ -55,20 +57,55 @@ export const getClientId = async (email: string): Promise<string | null> => {
       }
       
       // Normalizar los nombres de campos (el backend puede devolver clientId o client_id)
-      const clientId = userData.clientId || userData.client_id
+      const defaultClientId = userData.clientId || userData.client_id
       const apiKey = userData.apiKey || userData.api_key
       const fullName = userData.fullName || userData.full_name || ''
       
-      if (clientId) {
-        // Guardar en localStorage (compatibilidad hacia atrás)
-        setClientId(clientId)
+      if (defaultClientId) {
+        // Verificar si hay un client_id seleccionado por el usuario
+        const selectedClientId = localStorage.getItem(selected_client_id)
+        const clientTest = userData.client_test ? (typeof userData.client_test === 'string' ? JSON.parse(userData.client_test) : userData.client_test) : null
+        
+        // Determinar qué client_id usar:
+        // 1. Si hay un client_id seleccionado Y está en la lista de client_test, usarlo
+        // 2. Si no, usar el client_id por defecto del usuario
+        let clientIdToUse = defaultClientId
+        
+        if (selectedClientId && clientTest) {
+          // Verificar si el client_id seleccionado está en la lista permitida
+          let allowedClientIds: string[] = []
+          if (Array.isArray(clientTest)) {
+            allowedClientIds = clientTest
+          } else if (typeof clientTest === 'object' && clientTest !== null) {
+            allowedClientIds = Object.values(clientTest).filter((v): v is string => typeof v === 'string')
+          }
+          
+          // También agregar el client_id por defecto a la lista permitida
+          if (!allowedClientIds.includes(defaultClientId)) {
+            allowedClientIds.push(defaultClientId)
+          }
+          
+          if (allowedClientIds.includes(selectedClientId)) {
+            clientIdToUse = selectedClientId
+            console.log('✅ Usando client_id seleccionado por el usuario:', selectedClientId)
+          } else {
+            console.log('⚠️ El client_id seleccionado no está en la lista permitida, usando el por defecto')
+            // Limpiar el client_id seleccionado si no es válido
+            localStorage.removeItem(selected_client_id)
+          }
+        } else {
+          console.log('ℹ️ No hay client_id seleccionado o no hay client_test, usando el por defecto:', defaultClientId)
+        }
+        
+        // Guardar el client_id que vamos a usar (puede ser el seleccionado o el por defecto)
+        setClientId(clientIdToUse)
         
         // Guardar TODOS los datos en sessionStorage
         sessionStorage.setItem('userData', JSON.stringify(userData))
         if (apiKey) {
           sessionStorage.setItem('apiKey', apiKey)
         }
-        sessionStorage.setItem('clientId', clientId)
+        sessionStorage.setItem('clientId', clientIdToUse)
         if (userData.email) {
           sessionStorage.setItem('email', userData.email)
         }
@@ -117,8 +154,22 @@ export const getClientId = async (email: string): Promise<string | null> => {
           console.log('ℹ️ Permissions ya existen en sessionStorage, no se sobrescriben para evitar problemas de seguridad')
         }
         
+        // Guardar client_test (JSONB) para el selector de client_id
+        // Guardar tanto en sessionStorage como en localStorage para persistencia
+        if (userData.client_test) {
+          const clientTestJson = JSON.stringify(userData.client_test)
+          sessionStorage.setItem('client_test', clientTestJson)
+          localStorage.setItem('user_client_test', clientTestJson)
+          console.log('✅ client_test guardado en sessionStorage y localStorage:', userData.client_test)
+        } else {
+          sessionStorage.removeItem('client_test')
+          localStorage.removeItem('user_client_test')
+        }
+        
         console.log('✅ Datos del usuario guardados en sessionStorage:', {
-          clientId: clientId,
+          clientId: clientIdToUse,
+          defaultClientId: defaultClientId,
+          selectedClientId: selectedClientId,
           email: userData.email,
           fullName: fullName,
           hasMetadata: !!userData.metadata,
@@ -127,7 +178,7 @@ export const getClientId = async (email: string): Promise<string | null> => {
           permissions: userData.permissions
         })
         
-        return clientId
+        return clientIdToUse
       }
     } else {
       const errorText = await response.text()
@@ -197,6 +248,23 @@ export const getPermissions = () => {
   return permissions ? JSON.parse(permissions) : null
 }
 
+export const getClientTest = () => {
+  // Primero intentar obtener desde sessionStorage
+  let clientTest = sessionStorage.getItem('client_test')
+  
+  // Si no está en sessionStorage, intentar desde localStorage (persistencia)
+  if (!clientTest) {
+    clientTest = localStorage.getItem('user_client_test')
+    if (clientTest) {
+      // Restaurar también en sessionStorage para consistencia
+      sessionStorage.setItem('client_test', clientTest)
+      console.log('✅ client_test restaurado desde localStorage a sessionStorage')
+    }
+  }
+  
+  return clientTest ? JSON.parse(clientTest) : null
+}
+
 // Función para verificar si el usuario tiene permissions definidos (no vacío)
 export const hasPermissionsDefined = (): boolean => {
   const permissions = getPermissions()
@@ -253,5 +321,9 @@ export const clearSessionData = () => {
   sessionStorage.removeItem('metadata')
   sessionStorage.removeItem('metadata_llamadas')
   sessionStorage.removeItem('permissions')
-  console.log('🧹 Datos del sessionStorage limpiados')
+  sessionStorage.removeItem('client_test')
+  // También limpiar el client_id seleccionado y el client_test del usuario al cerrar sesión
+  localStorage.removeItem('selected_client_id')
+  localStorage.removeItem('user_client_test')
+  console.log('🧹 Datos del sessionStorage, client_id seleccionado y client_test limpiados')
 }
