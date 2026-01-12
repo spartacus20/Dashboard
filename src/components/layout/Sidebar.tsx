@@ -262,49 +262,37 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
           <h1 className="text-xl font-bold text-white">uMindsAI Dashboard</h1>
         </div>
         
-        {/* Selector de Client ID */}
-        {(() => {
-          const hasClientTest = getClientTest() !== null;
-          const shouldShowSelector = availableClientIds.length > 1 || (hasClientTest && availableClientIds.length > 0);
-          
-          console.log('🔍 Sidebar - Decisión de mostrar selector:', {
-            availableClientIds: availableClientIds.length,
-            hasClientTest,
-            shouldShowSelector,
-            currentClientId
-          });
-          
-          return shouldShowSelector ? (
-            <div className="mb-4">
-              <label className="block text-xs text-gray-400 mb-2 px-1">Client ID:</label>
-              <Select
-                value={currentClientId || ''}
-                onValueChange={handleClientIdChange}
-                disabled={isChangingClient}
-              >
-                <SelectTrigger className="w-full bg-[#0a2a5a] border border-[#1e4a8a] text-white text-xs">
-                  <SelectValue placeholder="Seleccionar Client ID" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableClientIds.map((clientId) => (
-                    <SelectItem key={clientId} value={clientId}>
-                      {clientId}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {isChangingClient && (
-                <div className="mt-2 text-xs text-blue-400 flex items-center gap-1">
-                  <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Cambiando...
-                </div>
-              )}
-            </div>
-          ) : null;
-        })()}
+        {/* Selector de Client ID - Solo se muestra si hay más de un client_id disponible */}
+        {availableClientIds.length > 1 && (
+          <div className="mb-4">
+            <label className="block text-xs text-gray-400 mb-2 px-1">Client ID:</label>
+            <Select
+              value={currentClientId || ''}
+              onValueChange={handleClientIdChange}
+              disabled={isChangingClient}
+            >
+              <SelectTrigger className="w-full bg-[#0a2a5a] border border-[#1e4a8a] text-white text-xs">
+                <SelectValue placeholder="Seleccionar Client ID" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableClientIds.map((clientId) => (
+                  <SelectItem key={clientId} value={clientId}>
+                    {clientId}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {isChangingClient && (
+              <div className="mt-2 text-xs text-blue-400 flex items-center gap-1">
+                <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Cambiando...
+              </div>
+            )}
+          </div>
+        )}
         
         {/* Indicador de API key en uso */}
         <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-[#0a2a5a] rounded-md text-xs text-gray-300">
