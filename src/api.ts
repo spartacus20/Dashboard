@@ -461,7 +461,11 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
     // Determinar si el identificador es un email o un client_id
     const isEmail = identifier.includes('@');
     const requestBody = isEmail ? { email: identifier } : { client_id: identifier };
-    
+    console.log('🔍 DEBUG - Variables de entorno:');
+    console.log('VITE_PRODUCTION_API:', import.meta.env.VITE_PRODUCTION_API);
+    console.log('VITE_BASE_PROD:', import.meta.env.VITE_BASE_PROD);
+    console.log('VITE_BASE_DEV:', import.meta.env.VITE_BASE_DEV);
+    console.log('BASE_URL que se está usando:', BASE_URL); // si usas la config que te pasé
     const response = await fetch(GET_CLIENT_WEBHOOK_URL, {
       method: 'POST',
       headers: {
