@@ -13,6 +13,7 @@ const GET_CLIENT_WEBHOOK_URL = `${BASE_URL}/get-client`;
 const GET_DASHBOARD_WEBHOOK_URL = `${BASE_URL}/api/dashboard/get-dashboard`;
 const GET_DASHBOARD_CUSTOM_WEBHOOK_URL = `${BASE_URL}/api/dashboard/get-dashboard-custom`;
 const GET_AGENDAS_WEBHOOK_URL =  `${BASE_URL}/api/agenda/get-agenda`;
+const DELETE_AGENDA_WEBHOOK_URL = `${BASE_URL}/api/agenda/delete`;
 const API_URL = 'https://api.retellai.com/v2/list-calls';
 
 // Función helper para obtener el client_id del localStorage
@@ -260,7 +261,8 @@ export function calculateStats(calls: RetellCall[]): CallStats {
   };
 }
 
-export async function fetchPhoneNumbers(apiKey: string): Promise<RetellPhoneNumber[]> {
+// Función para obtener números de teléfono de una sola API key
+async function fetchPhoneNumbersFromSingleApiKey(apiKey: string): Promise<RetellPhoneNumber[]> {
   const response = await fetch('https://api.retellai.com/list-phone-numbers', {
     method: 'GET',
     headers: {
@@ -281,6 +283,36 @@ export async function fetchPhoneNumbers(apiKey: string): Promise<RetellPhoneNumb
   }
   
   return data;
+}
+
+// Función principal para obtener números de teléfono de una o múltiples API keys
+export async function fetchPhoneNumbers(apiKey: string | string[]): Promise<RetellPhoneNumber[]> {
+  // Si es un array, obtener números de todas las API keys y combinarlos
+  if (Array.isArray(apiKey)) {
+    console.log(`📞 Obteniendo números de teléfono de ${apiKey.length} API keys`);
+    
+    // Obtener números de todas las API keys en paralelo
+    const promises = apiKey.map(key => 
+      fetchPhoneNumbersFromSingleApiKey(key).catch(err => {
+        console.error(`❌ Error obteniendo números de teléfono para API key ${key.substring(0, 10)}...:`, err);
+        return []; // Devolver array vacío en caso de error para no romper el flujo
+      })
+    );
+    
+    const results = await Promise.all(promises);
+    
+    // Combinar todos los resultados y eliminar duplicados por phone_number
+    const allNumbers = results.flat();
+    const uniqueNumbers = Array.from(
+      new Map(allNumbers.map(phone => [phone.phone_number, phone])).values()
+    );
+    
+    console.log(`✅ Total de números únicos obtenidos: ${uniqueNumbers.length}`);
+    return uniqueNumbers;
+  }
+  
+  // Si es una sola API key, usar la función original
+  return fetchPhoneNumbersFromSingleApiKey(apiKey);
 }
 
 interface CreatePhoneCallParams {
@@ -454,7 +486,7 @@ export async function deleteBatchCall(
 }
 
 // Función para obtener la API key del cliente
-export async function getClientApiKey(identifier: string): Promise<{ apiKey: string | null; clientId: string | null; permissions?: Record<string, any> | null; config?: Record<string, any> }> {
+export async function getClientApiKey(identifier: string): Promise<{ apiKey: string | null; apiKeyTest?: string[] | null; clientId: string | null; permissions?: Record<string, any> | null; config?: Record<string, any> }> {
   try {
     console.log('Solicitando API key para el identificador:', identifier);
     
@@ -554,8 +586,14 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
         }
       });
       
+      // Determinar qué API keys usar: api_key_test si está disponible, sino api_key
+      const apiKeyTest = clientData.api_key_test && Array.isArray(clientData.api_key_test) && clientData.api_key_test.length > 0
+        ? clientData.api_key_test
+        : null;
+
       return {
         apiKey: clientData.api_key || null,
+        apiKeyTest: apiKeyTest,
         clientId: clientData.client_id || null,
         permissions: clientData.permissions || null,
         config: clientData.config ?? {
@@ -624,8 +662,14 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
         console.log('ℹ️ Permissions ya existen en sessionStorage, no se sobrescriben para evitar problemas de seguridad');
       }
       
+      // Determinar qué API keys usar: api_key_test si está disponible, sino api_key
+      const apiKeyTest = data.api_key_test && Array.isArray(data.api_key_test) && data.api_key_test.length > 0
+        ? data.api_key_test
+        : null;
+
       return {
         apiKey: data.api_key || data.apiKey || null,
+        apiKeyTest: apiKeyTest,
         clientId: data.client_id || data.clientId || null,
         permissions: data.permissions || null,
         config: data.config ?? {
@@ -643,7 +687,7 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
     }
     
     console.warn('No se encontró información del cliente');
-    return { apiKey: null, clientId: null, permissions: null };
+    return { apiKey: null, apiKeyTest: null, clientId: null, permissions: null };
   } catch (error) {
     console.error('Error al obtener API key del cliente:', error);
     return { apiKey: null, clientId: null, permissions: null };
@@ -1239,6 +1283,53 @@ export async function fetchAgendas(clientId?: string): Promise<Agenda[]> {
     console.error('Error al obtener agendas del webhook:', error);
     // En caso de error, devolver array vacío en lugar de lanzar la excepción
     return [];
+  }
+}
+
+// Función para eliminar una agenda
+export async function deleteAgenda(agendaId: number, clientId: string): Promise<void> {
+  try {
+    if (!agendaId) {
+      throw new Error('El ID de la agenda es requerido');
+    }
+
+    if (!clientId) {
+      throw new Error('El client_id es requerido');
+    }
+
+    console.log('Eliminando agenda:', { agendaId, clientId });
+    console.log('URL del endpoint:', `${DELETE_AGENDA_WEBHOOK_URL}/${agendaId}`);
+
+    const response = await fetch(`${DELETE_AGENDA_WEBHOOK_URL}/${agendaId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ client_id: clientId }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error en la respuesta:', response.status, response.statusText, errorText);
+      
+      let errorMessage = `Error al eliminar agenda: ${response.status} ${response.statusText}`;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.error || errorData.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    console.log('Agenda eliminada exitosamente:', data);
+    
+    return;
+  } catch (error) {
+    console.error('Error al eliminar agenda:', error);
+    throw error;
   }
 }
 

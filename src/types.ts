@@ -209,6 +209,7 @@ export interface ClientData {
   email: string;
   client_id: string;
   api_key: string;
+  api_key_test?: string[]; // Array de API keys para múltiples números de teléfono
   full_name?: string;
   created_at?: string;
   updated_at?: string;

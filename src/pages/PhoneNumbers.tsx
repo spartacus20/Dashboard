@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Phone, Copy, RefreshCw, ExternalLink, X, Send, Plus, ChevronDown, User, Trash2, AlertTriangle } from 'lucide-react';
 import { RetellPhoneNumber, RetellAgent } from '../types';
-import { fetchPhoneNumbers, createPhoneCall, fetchAgents, importPhoneNumber, deletePhoneNumber } from '../api';
+import { createPhoneCall, fetchAgents, importPhoneNumber, deletePhoneNumber } from '../api';
 import { useCallsContext } from '../context/CallsContext';
 
 interface PhoneNumbersProps {
@@ -668,9 +668,7 @@ function DeletePhoneModal({ phoneNumber, onClose, onSuccess, apiKey }: DeletePho
   );
 }
 
-export function PhoneNumbers({ onNavigate }: PhoneNumbersProps) {
-  const [phoneNumbers, setPhoneNumbers] = useState<RetellPhoneNumber[]>([]);
-  const [loading, setLoading] = useState(false);
+export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
   const [error, setError] = useState<string | null>(null);
   const [copiedNumber, setCopiedNumber] = useState<string | null>(null);
   const [selectedPhone, setSelectedPhone] = useState<RetellPhoneNumber | null>(null);
@@ -678,39 +676,29 @@ export function PhoneNumbers({ onNavigate }: PhoneNumbersProps) {
   const [showDeletePhoneModal, setShowDeletePhoneModal] = useState(false);
   const [phoneToDelete, setPhoneToDelete] = useState<RetellPhoneNumber | null>(null);
   
-  // Usar el contexto para obtener la API key y el estado de llamadas
-  const { apiKey, callsEnabled, phoneFilter } = useCallsContext();
+  // Usar el contexto para obtener la API key, números de teléfono y el estado de llamadas
+  const { 
+    apiKey, 
+    phoneNumbers: contextPhoneNumbers, 
+    loadingPhoneNumbers: contextLoadingPhoneNumbers,
+    loadPhoneNumbers: contextLoadPhoneNumbers,
+    callsEnabled, 
+    phoneFilter 
+  } = useCallsContext();
   
-  // Cargar los números de teléfono
-  const loadPhoneNumbers = async () => {
-    if (!apiKey) {
-      setError('API key no configurada. Añade ?apikey=TU_API_KEY a la URL.');
-      return;
-    }
-    
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const data = await fetchPhoneNumbers(apiKey);
-      setPhoneNumbers(data);
-    } catch (err) {
-      console.error('Error cargando números de teléfono:', err);
-      setError(err instanceof Error ? err.message : 'Error al cargar los números de teléfono');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Usar los números de teléfono del contexto en lugar de estado local
+  const phoneNumbers = contextPhoneNumbers;
+  const loading = contextLoadingPhoneNumbers;
   
   // Filtrar números de teléfono si hay un filtro activo
   const filteredPhoneNumbers = phoneFilter 
     ? phoneNumbers.filter(phone => phone.phone_number === phoneFilter)
     : phoneNumbers;
   
-  // Cargar los números al montar el componente
+  // Cargar los números al montar el componente usando la función del contexto
   useEffect(() => {
-    loadPhoneNumbers();
-  }, [apiKey]);
+    contextLoadPhoneNumbers();
+  }, [contextLoadPhoneNumbers]);
   
   // Función para copiar un número al portapapeles
   const copyToClipboard = (number: string) => {
@@ -754,7 +742,7 @@ export function PhoneNumbers({ onNavigate }: PhoneNumbersProps) {
             </button>
             
             <button
-              onClick={loadPhoneNumbers}
+              onClick={() => contextLoadPhoneNumbers(true)}
               disabled={loading}
               className={`px-4 py-2 rounded-lg text-white flex items-center ${
                 loading
@@ -947,7 +935,7 @@ export function PhoneNumbers({ onNavigate }: PhoneNumbersProps) {
       {showAddPhoneModal && (
         <AddPhoneModal
           onClose={() => setShowAddPhoneModal(false)}
-          onSuccess={loadPhoneNumbers}
+          onSuccess={() => contextLoadPhoneNumbers(true)}
           apiKey={apiKey}
         />
       )}
@@ -960,7 +948,7 @@ export function PhoneNumbers({ onNavigate }: PhoneNumbersProps) {
             setPhoneToDelete(null);
             setShowDeletePhoneModal(false);
           }}
-          onSuccess={loadPhoneNumbers}
+          onSuccess={() => contextLoadPhoneNumbers(true)}
           apiKey={apiKey}
         />
       )}
