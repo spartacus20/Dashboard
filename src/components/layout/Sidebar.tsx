@@ -13,7 +13,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: SidebarProps) {
-  const { loadingProgress, totalCalls, loadingAllCalls, apiKey, agendaEnabled, salesEnabled, numTelEnabled, recordsEnabled, callbacksEnabled, launchEnabled, dontCallEnabled, loadAllCalls, loadDashboardData, loadPhoneNumbers, loadBatchCalls } = useCallsContext();
+  const { loadingProgress, totalCalls, loadingAllCalls, apiKey, apiKeyTest, agendaEnabled, salesEnabled, numTelEnabled, recordsEnabled, callbacksEnabled, launchEnabled, dontCallEnabled, loadAllCalls, loadDashboardData, loadPhoneNumbers, loadBatchCalls } = useCallsContext();
   const { user, signOut, changeClientId } = useAuth();
   const progressPercentage = totalCalls > 0 ? Math.min(100, Math.round((loadingProgress / totalCalls) * 100)) : 0;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
@@ -217,9 +217,17 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
   };
   
   // Truncar la API key para mostrarla de forma segura
-  const truncatedApiKey = apiKey 
-    ? `${apiKey.substring(0, 6)}...${apiKey.substring(apiKey.length - 4)}` 
-    : 'No configurada';
+  const getApiKeyDisplay = () => {
+    if (apiKeyTest && apiKeyTest.length > 0) {
+      return `${apiKeyTest.length} API key${apiKeyTest.length > 1 ? 's' : ''} configurada${apiKeyTest.length > 1 ? 's' : ''}`;
+    } else if (apiKey) {
+      return `${apiKey.substring(0, 6)}...${apiKey.substring(apiKey.length - 4)}`;
+    } else {
+      return 'No configurada';
+    }
+  };
+  
+  const truncatedApiKey = getApiKeyDisplay();
   
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);

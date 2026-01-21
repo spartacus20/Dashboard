@@ -237,6 +237,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         console.log(`📞 AuthContext - Usando ${result.apiKeyTest.length} API keys de api_key_test`)
         // Guardar la primera API key en sessionStorage para compatibilidad
         sessionStorage.setItem('apiKey', result.apiKeyTest[0])
+        // Guardar el array completo de apiKeyTest en sessionStorage
+        sessionStorage.setItem('apiKeyTest', JSON.stringify(result.apiKeyTest))
         console.log('✅ AuthContext - API keys actualizadas para nuevo client_id')
         
         // Disparar evento personalizado para notificar el cambio de client_id
