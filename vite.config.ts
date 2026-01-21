@@ -18,6 +18,11 @@ export default defineConfig({
       }
     }
   },
+  // Configuración para `vite preview` / entorno de previsualización
+  // Necesaria para permitir el host devfront.iacreatorhub.com
+  preview: {
+    allowedHosts: ['devfront.iacreatorhub.com'],
+  },
   build: {
     rollupOptions: {
       input: {
