@@ -67,7 +67,7 @@ interface CallsProviderProps {
 export function CallsProvider({ children }: CallsProviderProps) {
   const [allCalls, setAllCalls] = useState<RetellCall[]>([]);
   const [loadingAllCalls, setLoadingAllCalls] = useState(false);
-  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingProgress] = useState(0); // setLoadingProgress reservado para uso futuro
   const [error, setError] = useState<string | null>(null);
   const [totalCalls, setTotalCalls] = useState(0);
   const [disconnectionReasons, setDisconnectionReasons] = useState<string[]>([]);
@@ -312,8 +312,9 @@ export function CallsProvider({ children }: CallsProviderProps) {
 
   // Escuchar cambios de client_id desde el selector
   useEffect(() => {
-    const handleClientIdChanged = async (event: CustomEvent) => {
-      const { clientId: newClientId, apiKey: newApiKey, apiKeyTest: newApiKeyTest, config } = event.detail;
+    const handleClientIdChanged = async (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const { clientId: newClientId, apiKey: newApiKey, apiKeyTest: newApiKeyTest, config } = customEvent.detail;
       
       console.log('🔄 CallsContext: client_id cambiado a', newClientId);
       
@@ -385,10 +386,10 @@ export function CallsProvider({ children }: CallsProviderProps) {
       }, 150); // Aumentar ligeramente el delay para asegurar que los estados se actualicen
     };
     
-    window.addEventListener('clientIdChanged', handleClientIdChanged as EventListener);
+    window.addEventListener('clientIdChanged', handleClientIdChanged);
     
     return () => {
-      window.removeEventListener('clientIdChanged', handleClientIdChanged as EventListener);
+      window.removeEventListener('clientIdChanged', handleClientIdChanged);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // No incluir las funciones en las dependencias para evitar recrear el listener

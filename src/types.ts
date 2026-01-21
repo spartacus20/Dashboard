@@ -246,6 +246,8 @@ export interface ClientData {
   metadata_llamadas?: Record<string, any>;
   // Objeto de configuración genérico por si el backend devuelve un blob
   config?: Record<string, any>;
+  // client_test para selector de client_id (JSONB)
+  client_test?: string | string[] | Record<string, string>;
 }
 
 export interface Agenda {
