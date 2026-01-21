@@ -8,7 +8,6 @@
   },
   "scripts": {
     "dev": "vite",
-    "prebuild": "rm -rf node_modules/.vite && npm install --include=optional --force",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
