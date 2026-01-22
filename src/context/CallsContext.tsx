@@ -17,13 +17,14 @@ interface CallsContextType {
   allCallsLoaded: boolean;
   lastUpdated: number | null;
   apiKey: string | null;
+  apiKeyTest: string[] | null;
   clientId: string | null;
   setApiKey: (key: string) => void;
   phoneNumbers: RetellPhoneNumber[];
   loadingPhoneNumbers: boolean;
   phoneNumbersLoaded: boolean;
   noPhoneNumbersAvailable: boolean;
-  loadPhoneNumbers: () => Promise<void>;
+  loadPhoneNumbers: (forceRefresh?: boolean) => Promise<void>;
   batchCalls: RetellBatchCall[];
   loadingBatchCalls: boolean;
   batchCallsLoaded: boolean;
@@ -67,13 +68,14 @@ interface CallsProviderProps {
 export function CallsProvider({ children }: CallsProviderProps) {
   const [allCalls, setAllCalls] = useState<RetellCall[]>([]);
   const [loadingAllCalls, setLoadingAllCalls] = useState(false);
-  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingProgress] = useState(0); // setLoadingProgress reservado para uso futuro
   const [error, setError] = useState<string | null>(null);
   const [totalCalls, setTotalCalls] = useState(0);
   const [disconnectionReasons, setDisconnectionReasons] = useState<string[]>([]);
   const [allCallsLoaded, setAllCallsLoaded] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [apiKey, setApiKey] = useState<string | null>(null);
+  const [apiKeyTest, setApiKeyTest] = useState<string[] | null>(null);
   const [clientId, setClientId] = useState<string | null>(null);
   
   // Estado para el total de llamadas filtrado
@@ -149,9 +151,23 @@ export function CallsProvider({ children }: CallsProviderProps) {
 
         try {
           const result = await getClientApiKey(storedClientId);
-          if (result.apiKey) {
+          if (result.apiKey || result.apiKeyTest) {
             console.log('API key obtenida exitosamente para client_id:', storedClientId);
-            setApiKey(result.apiKey);
+            // Usar apiKeyTest si está disponible, sino usar apiKey
+            if (result.apiKeyTest && result.apiKeyTest.length > 0) {
+              console.log(`📞 Usando ${result.apiKeyTest.length} API keys de api_key_test`);
+              setApiKeyTest(result.apiKeyTest);
+              // Establecer la primera API key en apiKey para compatibilidad con funciones que necesitan API key individual
+              const firstApiKey = result.apiKeyTest[0];
+              setApiKey(firstApiKey);
+              sessionStorage.setItem('apiKeyTest', JSON.stringify(result.apiKeyTest));
+              sessionStorage.setItem('apiKey', firstApiKey); // Guardar primera para compatibilidad
+            } else if (result.apiKey) {
+              setApiKey(result.apiKey);
+              sessionStorage.setItem('apiKey', result.apiKey);
+              sessionStorage.removeItem('apiKeyTest'); // Limpiar apiKeyTest si usamos apiKey individual
+              setApiKeyTest(null); // Limpiar apiKeyTest si usamos apiKey individual
+            }
             
             // Procesar configuración del cliente
             if (result.config) {
@@ -187,9 +203,23 @@ export function CallsProvider({ children }: CallsProviderProps) {
               setClientId(newClientId);
               try {
                 const result = await getClientApiKey(newClientId);
-                if (result.apiKey) {
+                if (result.apiKey || result.apiKeyTest) {
                   console.log('API key obtenida exitosamente para client_id:', newClientId);
-                  setApiKey(result.apiKey);
+                  // Usar apiKeyTest si está disponible, sino usar apiKey
+                  if (result.apiKeyTest && result.apiKeyTest.length > 0) {
+                    console.log(`📞 Usando ${result.apiKeyTest.length} API keys de api_key_test`);
+                    setApiKeyTest(result.apiKeyTest);
+                    // Establecer la primera API key en apiKey para compatibilidad con funciones que necesitan API key individual
+                    const firstApiKey = result.apiKeyTest[0];
+                    setApiKey(firstApiKey);
+                    sessionStorage.setItem('apiKeyTest', JSON.stringify(result.apiKeyTest));
+                    sessionStorage.setItem('apiKey', firstApiKey); // Guardar primera para compatibilidad
+                  } else if (result.apiKey) {
+                    setApiKey(result.apiKey);
+                    sessionStorage.setItem('apiKey', result.apiKey);
+                    sessionStorage.removeItem('apiKeyTest'); // Limpiar apiKeyTest si usamos apiKey individual
+                    setApiKeyTest(null); // Limpiar apiKeyTest si usamos apiKey individual
+                  }
                   
                   // Procesar configuración del cliente
                   if (result.config) {
@@ -246,8 +276,22 @@ export function CallsProvider({ children }: CallsProviderProps) {
             setClientId(newClientId);
             try {
               const result = await getClientApiKey(newClientId);
-              if (result.apiKey) {
-                setApiKey(result.apiKey);
+              if (result.apiKey || result.apiKeyTest) {
+                // Usar apiKeyTest si está disponible, sino usar apiKey
+                if (result.apiKeyTest && result.apiKeyTest.length > 0) {
+                  console.log(`📞 Usando ${result.apiKeyTest.length} API keys de api_key_test tras inicio de sesión`);
+                  setApiKeyTest(result.apiKeyTest);
+                  // Establecer la primera API key en apiKey para compatibilidad con funciones que necesitan API key individual
+                  const firstApiKey = result.apiKeyTest[0];
+                  setApiKey(firstApiKey);
+                  sessionStorage.setItem('apiKeyTest', JSON.stringify(result.apiKeyTest));
+                  sessionStorage.setItem('apiKey', firstApiKey); // Guardar primera para compatibilidad
+                } else if (result.apiKey) {
+                  setApiKey(result.apiKey);
+                  sessionStorage.setItem('apiKey', result.apiKey);
+                  sessionStorage.removeItem('apiKeyTest'); // Limpiar apiKeyTest si usamos apiKey individual
+                  setApiKeyTest(null); // Limpiar apiKeyTest si usamos apiKey individual
+                }
                 console.log('API key establecida tras inicio de sesión');
                 
                 // Procesar configuración del cliente
@@ -287,15 +331,28 @@ export function CallsProvider({ children }: CallsProviderProps) {
 
   // Escuchar cambios de client_id desde el selector
   useEffect(() => {
-    const handleClientIdChanged = async (event: CustomEvent) => {
-      const { clientId: newClientId, apiKey: newApiKey, config } = event.detail;
+    const handleClientIdChanged = async (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const { clientId: newClientId, apiKey: newApiKey, apiKeyTest: newApiKeyTest, config } = customEvent.detail;
       
       console.log('🔄 CallsContext: client_id cambiado a', newClientId);
       
       // Actualizar estados
       setClientId(newClientId);
-      if (newApiKey) {
+      // Usar apiKeyTest si está disponible, sino usar apiKey
+      if (newApiKeyTest && newApiKeyTest.length > 0) {
+        console.log(`📞 CallsContext: Usando ${newApiKeyTest.length} API keys de api_key_test`);
+        setApiKeyTest(newApiKeyTest);
+        // Establecer la primera API key en apiKey para compatibilidad con funciones que necesitan API key individual
+        const firstApiKey = newApiKeyTest[0];
+        setApiKey(firstApiKey);
+        sessionStorage.setItem('apiKeyTest', JSON.stringify(newApiKeyTest));
+        sessionStorage.setItem('apiKey', firstApiKey); // Guardar primera para compatibilidad
+      } else if (newApiKey) {
         setApiKey(newApiKey);
+        sessionStorage.setItem('apiKey', newApiKey);
+        sessionStorage.removeItem('apiKeyTest'); // Limpiar apiKeyTest si usamos apiKey individual
+        setApiKeyTest(null); // Limpiar apiKeyTest si usamos apiKey individual
       }
       
       // Actualizar configuración si está disponible
@@ -354,10 +411,10 @@ export function CallsProvider({ children }: CallsProviderProps) {
       }, 150); // Aumentar ligeramente el delay para asegurar que los estados se actualicen
     };
     
-    window.addEventListener('clientIdChanged', handleClientIdChanged as EventListener);
+    window.addEventListener('clientIdChanged', handleClientIdChanged);
     
     return () => {
-      window.removeEventListener('clientIdChanged', handleClientIdChanged as EventListener);
+      window.removeEventListener('clientIdChanged', handleClientIdChanged);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // No incluir las funciones en las dependencias para evitar recrear el listener
@@ -586,8 +643,11 @@ export function CallsProvider({ children }: CallsProviderProps) {
       return;
     }
     
-    // Esperar a que tengamos la API key
-    if (!apiKey) {
+    // Determinar qué API keys usar: apiKeyTest si está disponible, sino apiKey
+    const apiKeysToUse = apiKeyTest && apiKeyTest.length > 0 ? apiKeyTest : (apiKey ? [apiKey] : null);
+    
+    // Esperar a que tengamos al menos una API key
+    if (!apiKeysToUse || apiKeysToUse.length === 0) {
       console.log('Esperando API key para cargar números de teléfono...');
       return;
     }
@@ -613,8 +673,9 @@ export function CallsProvider({ children }: CallsProviderProps) {
     setLoadingPhoneNumbers(true);
     
     try {
-      console.log('Cargando números de teléfono desde la API');
-      const numbers = await fetchPhoneNumbers(apiKey);
+      console.log(`Cargando números de teléfono desde ${apiKeysToUse.length} API key(s)`);
+      // fetchPhoneNumbers ahora acepta un array de API keys
+      const numbers = await fetchPhoneNumbers(apiKeysToUse.length > 1 ? apiKeysToUse : apiKeysToUse[0]);
       
       setPhoneNumbers(numbers);
       setPhoneNumbersLoaded(true);
@@ -635,13 +696,18 @@ export function CallsProvider({ children }: CallsProviderProps) {
     } finally {
       setLoadingPhoneNumbers(false);
     }
-  }, [apiKey, phoneNumbersLoaded, phoneNumbersUpdated, loadingPhoneNumbers, noPhoneNumbersAvailable]);
+  }, [apiKey, apiKeyTest, phoneNumbersLoaded, phoneNumbersUpdated, loadingPhoneNumbers, noPhoneNumbersAvailable]);
 
   // Función para cargar los datos del dashboard
   const loadDashboardData = useCallback(async (fechaInicio?: string, fechaFin?: string, timePeriod?: string, bdd?: string) => {
-    // No intentar cargar si no tenemos clientId o apiKey
-    if (!clientId || !apiKey) {
-      console.log('⏳ No se puede cargar dashboard: faltan clientId o apiKey');
+    // No intentar cargar si no tenemos clientId o alguna API key (individual o array)
+    const hasApiKey = apiKey || (apiKeyTest && apiKeyTest.length > 0);
+    if (!clientId || !hasApiKey) {
+      console.log('⏳ No se puede cargar dashboard: faltan clientId o API key', { 
+        clientId: !!clientId, 
+        apiKey: !!apiKey, 
+        apiKeyTest: apiKeyTest?.length || 0 
+      });
       return;
     }
     
@@ -678,8 +744,9 @@ export function CallsProvider({ children }: CallsProviderProps) {
     } catch (err) {
       console.error('Error al cargar datos del dashboard:', err);
       // Solo establecer error si realmente falló y tenemos los datos necesarios
-      // No establecer error si es un problema de inicialización (clientId o apiKey faltantes)
-      if (clientId && apiKey) {
+      // No establecer error si es un problema de inicialización (clientId o API key faltantes)
+      const hasApiKey = apiKey || (apiKeyTest && apiKeyTest.length > 0);
+      if (clientId && hasApiKey) {
         const errorMessage = err instanceof Error ? err.message : String(err);
         // Solo establecer error si no es un error de "no se encontró client_id"
         if (!errorMessage.includes('No se encontró client_id') && !errorMessage.includes('client_id')) {
@@ -733,14 +800,19 @@ export function CallsProvider({ children }: CallsProviderProps) {
 
   // Cargar datos del dashboard cuando tenemos clientId y apiKey disponibles
   useEffect(() => {
-    // Solo cargar si tenemos clientId y apiKey, y no hay datos cargados ni se está cargando
-    if (clientId && apiKey && !dashboardData && !loadingDashboardData) {
-      console.log('🔄 Cargando datos del dashboard con clientId y apiKey disponibles');
+    // Solo cargar si tenemos clientId y alguna API key (individual o array), y no hay datos cargados ni se está cargando
+    const hasApiKey = apiKey || (apiKeyTest && apiKeyTest.length > 0);
+    if (clientId && hasApiKey && !dashboardData && !loadingDashboardData) {
+      console.log('🔄 Cargando datos del dashboard con clientId y API key disponibles');
       loadDashboardData(undefined, undefined, 'today');
-    } else if (!clientId || !apiKey) {
-      console.log('⏳ Esperando clientId y apiKey antes de cargar dashboard...', { clientId: !!clientId, apiKey: !!apiKey });
+    } else if (!clientId || !hasApiKey) {
+      console.log('⏳ Esperando clientId y API key antes de cargar dashboard...', { 
+        clientId: !!clientId, 
+        apiKey: !!apiKey, 
+        apiKeyTest: apiKeyTest?.length || 0 
+      });
     }
-  }, [clientId, apiKey, dashboardData, loadingDashboardData, loadDashboardData]);
+  }, [clientId, apiKey, apiKeyTest, dashboardData, loadingDashboardData, loadDashboardData]);
 
   // agendaEnabled y callsEnabled ahora vienen desde la configuración del cliente
 
@@ -773,6 +845,7 @@ export function CallsProvider({ children }: CallsProviderProps) {
     allCallsLoaded,
     lastUpdated,
     apiKey,
+    apiKeyTest,
     clientId,
     setApiKey,
     phoneNumbers,

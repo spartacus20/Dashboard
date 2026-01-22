@@ -6,6 +6,7 @@ const UserDataDisplay: React.FC = () => {
     userData, 
     loading, 
     apiKey, 
+    apiKeyTest,
     clientId, 
     email, 
     fullName, 
@@ -28,7 +29,23 @@ const UserDataDisplay: React.FC = () => {
           <p><strong>Email:</strong> {email || 'No disponible'}</p>
           <p><strong>Nombre:</strong> {fullName || 'No disponible'}</p>
           <p><strong>Client ID:</strong> {clientId || 'No disponible'}</p>
-          <p><strong>API Key:</strong> {apiKey ? `${apiKey.substring(0, 10)}...` : 'No disponible'}</p>
+          <div>
+            <strong>API Key:</strong>
+            {apiKeyTest && apiKeyTest.length > 0 ? (
+              <div className="mt-1 ml-4">
+                <p className="text-sm text-gray-600">API Keys de prueba ({apiKeyTest.length}):</p>
+                <ul className="list-disc list-inside text-xs text-gray-500">
+                  {apiKeyTest.map((key, index) => (
+                    <li key={index}>{key.substring(0, 10)}...</li>
+                  ))}
+                </ul>
+              </div>
+            ) : apiKey ? (
+              <span className="ml-2">{apiKey.substring(0, 10)}...</span>
+            ) : (
+              <span className="ml-2 text-red-500">No configurada</span>
+            )}
+          </div>
         </div>
 
         {/* Metadata general */}

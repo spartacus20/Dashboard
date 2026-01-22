@@ -216,6 +216,24 @@ export const getApiKey = (): string | null => {
   return sessionStorage.getItem('apiKey')
 }
 
+export const getApiKeyTest = (): string[] | null => {
+  const apiKeyTest = sessionStorage.getItem('apiKeyTest')
+  if (apiKeyTest) {
+    try {
+      return JSON.parse(apiKeyTest)
+    } catch (e) {
+      console.warn('Error parseando apiKeyTest:', e)
+      return null
+    }
+  }
+  // También verificar en userData por si acaso
+  const userData = getUserData()
+  if (userData && userData.api_key_test && Array.isArray(userData.api_key_test)) {
+    return userData.api_key_test
+  }
+  return null
+}
+
 export const getClientIdFromSession = (): string | null => {
   return sessionStorage.getItem('clientId')
 }

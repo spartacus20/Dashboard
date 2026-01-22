@@ -209,6 +209,7 @@ export interface ClientData {
   email: string;
   client_id: string;
   api_key: string;
+  api_key_test?: string[]; // Array de API keys para múltiples números de teléfono
   full_name?: string;
   created_at?: string;
   updated_at?: string;
@@ -245,6 +246,8 @@ export interface ClientData {
   metadata_llamadas?: Record<string, any>;
   // Objeto de configuración genérico por si el backend devuelve un blob
   config?: Record<string, any>;
+  // client_test para selector de client_id (JSONB)
+  client_test?: string | string[] | Record<string, string>;
 }
 
 export interface Agenda {

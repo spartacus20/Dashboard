@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { fetchAgendas, fetchAllAgendas } from '../api';
+import { fetchAgendas, fetchAllAgendas, deleteAgenda } from '../api';
 import { Agenda } from '../types';
 import { useCallsContext } from '../context/CallsContext';
-import { Calendar, Clock, MapPin, Phone, User, Building, Search, Filter, RefreshCw, AlertCircle, X, List, CalendarDays, Download } from 'lucide-react';
+import { Calendar, Clock, MapPin, Phone, User, Building, Search, Filter, RefreshCw, AlertCircle, X, List, CalendarDays, Download, Trash2 } from 'lucide-react';
 import { AgendaModal } from '../components/AgendaModal';
 import { AgendaCalendar } from '../components/AgendaCalendar';
 import { exportAgendasToCSV, generateCSVFilename } from '../lib/csvExport';
@@ -28,6 +28,9 @@ export function Agendas({ onNavigate }: AgendasProps) {
   const [selectedAgenda, setSelectedAgenda] = useState<Agenda | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [agendaToDelete, setAgendaToDelete] = useState<Agenda | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const itemsPerPage = 10;
 
   // Cargar agendas
@@ -149,6 +152,76 @@ export function Agendas({ onNavigate }: AgendasProps) {
   const closeAgendaModal = () => {
     setModalOpen(false);
     setSelectedAgenda(null);
+  };
+
+  // Abrir modal de confirmación de eliminación
+  const openDeleteModal = (agenda: Agenda, e?: React.MouseEvent) => {
+    e?.stopPropagation(); // Prevenir que se abra el modal de detalles
+    setAgendaToDelete(agenda);
+    setDeleteModalOpen(true);
+  };
+
+  // Cerrar modal de eliminación
+  const closeDeleteModal = () => {
+    setDeleteModalOpen(false);
+    setAgendaToDelete(null);
+  };
+
+  // Eliminar agenda
+  const handleDeleteAgenda = async () => {
+    if (!agendaToDelete || !clientId) {
+      setError('No se puede eliminar la agenda: datos incompletos');
+      return;
+    }
+
+    setDeleting(true);
+    setError(null);
+
+    try {
+      await deleteAgenda(agendaToDelete.id, clientId);
+      
+      // Eliminar de la lista local
+      setAgendas(prevAgendas => prevAgendas.filter(a => a.id !== agendaToDelete.id));
+      setFilteredAgendas(prevFiltered => prevFiltered.filter(a => a.id !== agendaToDelete.id));
+      
+      // Cerrar modal
+      closeDeleteModal();
+      
+      // Mostrar notificación de éxito
+      const notification = document.createElement('div');
+      notification.style.position = 'fixed';
+      notification.style.top = '16px';
+      notification.style.right = '16px';
+      notification.style.backgroundColor = 'rgba(6, 78, 59, 0.9)';
+      notification.style.color = 'white';
+      notification.style.padding = '12px 20px';
+      notification.style.borderRadius = '8px';
+      notification.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.1)';
+      notification.style.zIndex = '9999';
+      notification.style.opacity = '0';
+      notification.style.transition = 'opacity 0.3s ease-in-out';
+      notification.textContent = '✅ Agenda eliminada exitosamente';
+      document.body.appendChild(notification);
+      
+      setTimeout(() => {
+        notification.style.opacity = '1';
+      }, 10);
+      
+      setTimeout(() => {
+        notification.style.opacity = '0';
+        setTimeout(() => {
+          if (document.body.contains(notification)) {
+            document.body.removeChild(notification);
+          }
+        }, 300);
+      }, 3000);
+      
+    } catch (err) {
+      console.error('Error al eliminar agenda:', err);
+      setError(err instanceof Error ? err.message : 'Error al eliminar la agenda');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   // Exportar agendas a CSV
@@ -547,14 +620,25 @@ export function Agendas({ onNavigate }: AgendasProps) {
                     {currentAgendas.map((agenda) => (
                       <div
                         key={agenda.id}
-                        onClick={() => openAgendaModal(agenda)}
-                        className="bg-white rounded-lg p-6 hover:bg-slate-50 transition-colors shadow-lg border border-slate-200 cursor-pointer"
+                        className="bg-white rounded-lg p-6 hover:bg-slate-50 transition-colors shadow-lg border border-slate-200 relative"
                       >
+                        {/* Botón de eliminar en la esquina superior derecha */}
+                        <button
+                          onClick={(e) => openDeleteModal(agenda, e)}
+                          className="absolute top-4 right-4 p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors z-10"
+                          title="Eliminar agenda"
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                           {/* Información principal */}
                           <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-2">
+                            <div className="flex items-center justify-between pr-12">
+                              <div 
+                                className="flex items-center space-x-2 cursor-pointer flex-1"
+                                onClick={() => openAgendaModal(agenda)}
+                              >
                                 <User className="w-5 h-5 text-blue-600" />
                                 <h3 className="text-lg font-semibold text-slate-800">
                                   {agenda?.nombre || 'Sin nombre'}
@@ -714,6 +798,87 @@ export function Agendas({ onNavigate }: AgendasProps) {
           isOpen={modalOpen}
           onClose={closeAgendaModal}
         />
+
+        {/* Modal de confirmación de eliminación */}
+        {deleteModalOpen && agendaToDelete && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md">
+              <div className="flex justify-between items-center border-b border-slate-200 p-4 bg-gradient-to-r from-red-50 to-orange-50">
+                <div className="flex items-center">
+                  <AlertCircle className="w-6 h-6 text-red-600 mr-2" />
+                  <h3 className="text-lg font-medium text-slate-800">Confirmar eliminación</h3>
+                </div>
+                <button 
+                  onClick={closeDeleteModal}
+                  className="p-1 hover:bg-slate-200 rounded-full transition-colors"
+                  disabled={deleting}
+                >
+                  <X className="w-5 h-5 text-slate-500 hover:text-slate-700" />
+                </button>
+              </div>
+              
+              <div className="p-5 space-y-5 bg-white">
+                <div>
+                  <p className="text-slate-700 mb-3">
+                    ¿Estás seguro de que quieres eliminar la agenda de <span className="font-bold text-slate-800">{agendaToDelete.nombre || 'Sin nombre'}</span>?
+                  </p>
+                  <p className="text-slate-600 text-sm">
+                    Esta acción no se puede deshacer y eliminará permanentemente esta agenda y todos sus datos asociados.
+                  </p>
+                </div>
+
+                {agendaToDelete.phone_number && (
+                  <div className="bg-slate-50 p-3 rounded-lg">
+                    <p className="text-slate-600 text-sm">
+                      <span className="font-medium">Teléfono:</span> {agendaToDelete.phone_number}
+                    </p>
+                    {agendaToDelete.fecha_agendamiento && (
+                      <p className="text-slate-600 text-sm mt-1">
+                        <span className="font-medium">Fecha:</span> {formatDate(agendaToDelete.fecha_agendamiento)}
+                      </p>
+                    )}
+                  </div>
+                )}
+                
+                {error && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                    {error}
+                  </div>
+                )}
+                
+                <div className="flex justify-end pt-3 gap-2">
+                  <button
+                    onClick={closeDeleteModal}
+                    className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 mr-2 transition-colors"
+                    disabled={deleting}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleDeleteAgenda}
+                    disabled={deleting}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {deleting ? (
+                      <>
+                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Eliminando...
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        Eliminar
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

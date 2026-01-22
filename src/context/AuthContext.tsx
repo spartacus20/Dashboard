@@ -225,12 +225,36 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.log('🔄 AuthContext - Obteniendo API key para nuevo client_id...')
       const result = await getClientApiKey(newClientId)
       console.log('📋 AuthContext - Resultado de getClientApiKey:', { 
-        hasApiKey: !!result.apiKey, 
+        hasApiKey: !!result.apiKey,
+        hasApiKeyTest: !!result.apiKeyTest,
+        apiKeyTestLength: result.apiKeyTest?.length || 0,
         hasConfig: !!result.config,
         clientId: result.clientId 
       })
       
-      if (result.apiKey) {
+      // Usar apiKeyTest si está disponible, sino usar apiKey
+      if (result.apiKeyTest && result.apiKeyTest.length > 0) {
+        console.log(`📞 AuthContext - Usando ${result.apiKeyTest.length} API keys de api_key_test`)
+        // Guardar la primera API key en sessionStorage para compatibilidad
+        sessionStorage.setItem('apiKey', result.apiKeyTest[0])
+        // Guardar el array completo de apiKeyTest en sessionStorage
+        sessionStorage.setItem('apiKeyTest', JSON.stringify(result.apiKeyTest))
+        console.log('✅ AuthContext - API keys actualizadas para nuevo client_id')
+        
+        // Disparar evento personalizado para notificar el cambio de client_id
+        const eventDetail = { 
+          clientId: newClientId,
+          apiKey: result.apiKeyTest[0], // Usar la primera para compatibilidad
+          apiKeyTest: result.apiKeyTest, // Incluir el array completo
+          config: result.config
+        }
+        console.log('📢 AuthContext - Disparando evento clientIdChanged con:', eventDetail)
+        window.dispatchEvent(new CustomEvent('clientIdChanged', { 
+          detail: eventDetail
+        }))
+        
+        return { error: null }
+      } else if (result.apiKey) {
         sessionStorage.setItem('apiKey', result.apiKey)
         console.log('✅ AuthContext - API key actualizada para nuevo client_id')
         

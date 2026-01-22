@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { 
   getUserData, 
   getApiKey, 
+  getApiKeyTest,
   getClientIdFromSession, 
   getEmail, 
   getFullName, 
@@ -11,6 +12,7 @@ import {
 
 interface UserData {
   apiKey: string | null
+  apiKeyTest: string[] | null
   clientId: string | null
   email: string | null
   fullName: string | null
@@ -21,6 +23,7 @@ interface UserData {
 export const useUserData = () => {
   const [userData, setUserData] = useState<UserData>({
     apiKey: null,
+    apiKeyTest: null,
     clientId: null,
     email: null,
     fullName: null,
@@ -35,6 +38,7 @@ export const useUserData = () => {
     const loadUserData = () => {
       const data: UserData = {
         apiKey: getApiKey(),
+        apiKeyTest: getApiKeyTest(),
         clientId: getClientIdFromSession(),
         email: getEmail(),
         fullName: getFullName(),
@@ -66,6 +70,7 @@ export const useUserData = () => {
   const refreshUserData = () => {
     const data: UserData = {
       apiKey: getApiKey(),
+      apiKeyTest: getApiKeyTest(),
       clientId: getClientIdFromSession(),
       email: getEmail(),
       fullName: getFullName(),
@@ -82,6 +87,7 @@ export const useUserData = () => {
     refreshUserData,
     // Getters individuales para conveniencia
     apiKey: userData.apiKey,
+    apiKeyTest: userData.apiKeyTest,
     clientId: userData.clientId,
     email: userData.email,
     fullName: userData.fullName,
