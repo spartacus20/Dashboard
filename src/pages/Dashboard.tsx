@@ -143,7 +143,7 @@ function generateDisconnectionData(calls: any[], dashboardData?: any) {
   if (dashboardData?.dashboard_data?.razones_desconexion && Array.isArray(dashboardData.dashboard_data.razones_desconexion)) {
     return dashboardData.dashboard_data.razones_desconexion
       .map((item: any) => ({ 
-        reason: translateDisconnectionReason(item.razon || 'Desconocida'), 
+        reason: item.razon || 'Desconocida', 
         count: item.total || 0,
         percentage: item.porcentaje || 0
       }))
@@ -2171,7 +2171,7 @@ export function Dashboard({
                     <div key={`${item.razon}-${index}`} className="bg-gradient-to-br from-purple-50 to-violet-100 p-4 rounded-lg border border-purple-200">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-medium text-purple-700">
-                          {translateDisconnectionReason(item.razon)}
+                          {item.razon}
                         </span>
                         <span className="text-xs text-purple-600">
                           {item.porcentaje}%
@@ -2377,7 +2377,7 @@ export function Dashboard({
                       {dashboardData.dashboard_data.razones_desconexion.map((item: any, index: number) => (
                         <tr key={`${item.razon}-${index}`} className="border-b border-slate-200 hover:bg-slate-50">
                           <td className="py-3 px-4 text-sm text-slate-700 font-medium">
-                            {translateDisconnectionReason(item.razon || 'Desconocida')}
+                            {item.razon || 'Desconocida'}
                           </td>
                           <td className="py-3 px-4 text-sm text-slate-600 text-right">
                             {(item.total || 0).toLocaleString()}
