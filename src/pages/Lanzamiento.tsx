@@ -84,6 +84,27 @@ interface FunnelMetrics {
   no_match_records: NoMatchRecord[];
 }
 
+const REGION_OPTIONS = [
+  { region: 'España' },
+  { region: 'Europa' },
+  { region: 'Latam' },
+];
+
+const REGION_PAISES: { region: string; paises: string }[] = [
+  { region: 'España', paises: 'España' },
+  { region: 'Europa', paises: 'no_detectado' },
+  {
+    region: 'Latam',
+    paises:
+      'Argentina, Bolivia, Brasil, Chile, Colombia, Costa Rica, Cuba, Ecuador, El Salvador, México, Nicaragua, Panamá, Paraguay, Perú, República Dominicana, Uruguay, USA / Canadá, Venezuela',
+  },
+];
+
+function getPaisesByRegion(region: string): string[] {
+  const item = REGION_PAISES.find((r) => r.region === region);
+  if (!item) return [];
+  return item.paises.split(', ').map((p) => p.trim());
+}
 
 const Lanzamiento: React.FC = () => {
   const { launchEnabled } = useCallsContext();
@@ -100,6 +121,8 @@ const Lanzamiento: React.FC = () => {
   const [campaignFilter, setCampaignFilter] = useState<string>('');
   const [regionFilter, setRegionFilter] = useState<string>('');
   const [countryFilter, setCountryFilter] = useState<string>('');
+
+  const paisesOptions = regionFilter ? getPaisesByRegion(regionFilter) : [];
 
   // Función helper para procesar los datos de la API y asegurar que siempre se muestren las 3 regiones
   const processApiData = (apiData: any): LanzamientoMetrics => {
@@ -242,6 +265,18 @@ const Lanzamiento: React.FC = () => {
     }
     // No cargar automáticamente para 'custom' - esperar a que el usuario haga clic en "Aplicar"
   }, [timeRange]);
+
+  // Al cambiar la región, limpiar país si no pertenece a la nueva región
+  useEffect(() => {
+    if (!regionFilter) {
+      setCountryFilter('');
+      return;
+    }
+    const paises = getPaisesByRegion(regionFilter);
+    if (countryFilter && !paises.includes(countryFilter)) {
+      setCountryFilter('');
+    }
+  }, [regionFilter]);
 
   // Función para manejar el cambio de período
   const handleTimeRangeChange = (range: 'today' | 'custom') => {
@@ -502,25 +537,38 @@ const Lanzamiento: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Región
               </label>
-              <input
-                type="text"
+              <select
                 value={regionFilter}
                 onChange={(e) => setRegionFilter(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Europa / Latam / España"
-              />
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+              >
+                <option value="">Todas las regiones</option>
+                {REGION_OPTIONS.map((opt) => (
+                  <option key={opt.region} value={opt.region}>
+                    {opt.region}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 País (Webinar)
               </label>
-              <input
-                type="text"
+              <select
                 value={countryFilter}
                 onChange={(e) => setCountryFilter(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Ej: ES, MX..."
-              />
+                disabled={!regionFilter}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
+              >
+                <option value="">
+                  {regionFilter ? 'Todos los países' : 'Selecciona una región'}
+                </option>
+                {paisesOptions.map((pais) => (
+                  <option key={pais} value={pais}>
+                    {pais}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="flex justify-end">
               <Button
@@ -673,145 +721,59 @@ const Lanzamiento: React.FC = () => {
                   </div>
                 ) : (
                   <>
-                    <div className="grid gap-4 md:grid-cols-3 mb-6">
-                      <div className="text-center p-4 bg-blue-50 rounded-lg">
-                        <div className="text-sm text-gray-600 mb-1">Links únicos enviados</div>
-                        <div className="text-2xl font-bold text-blue-700">
-                          {formatNumber(funnel.totals.total_links_unique || 0)}
+                    {/* Embudo de conversión (formato tunnel): picos en ambos lados, texto y dato dentro */}
+                    <div className="flex flex-col items-center gap-0 max-w-xl mx-auto mb-6">
+                      {/* Links únicos enviados */}
+                      <div className="w-full flex flex-col items-center mt-1 first:mt-0">
+                        <div
+                          className="w-full flex items-center justify-between px-6 py-3 text-white"
+                          style={{
+                            background: 'linear-gradient(135deg, #4c1d95 0%, #5b21b6 100%)',
+                            clipPath: 'polygon(0 50%, 8% 0, 92% 0, 100% 50%, 92% 100%, 8% 100%)',
+                          }}
+                        >
+                          <span className="font-medium">Links únicos enviados</span>
+                          <span className="font-bold text-lg tabular-nums">
+                            {formatNumber(funnel.totals.total_links_unique || 0)}
+                          </span>
                         </div>
                       </div>
-                      <div className="text-center p-4 bg-purple-50 rounded-lg">
-                        <div className="text-sm text-gray-600 mb-1">Clicks desde esos links</div>
-                        <div className="text-2xl font-bold text-purple-700">
-                          {formatNumber(funnel.totals.total_clicks_from_links || 0)}
-                        </div>
-                        <div className="text-xs text-gray-600 mt-1">
-                          {funnel.totals.pct_clicks_over_links.toFixed(1)}% sobre links
+                      {/* Clicks desde esos links */}
+                      <div className="w-[92%] flex flex-col items-center mt-1">
+                        <div
+                          className="w-full flex items-center justify-between px-6 py-3 text-white"
+                          style={{
+                            background: 'linear-gradient(135deg, #b91c1c 0%, #dc2626 100%)',
+                            clipPath: 'polygon(0 50%, 8% 0, 92% 0, 100% 50%, 92% 100%, 8% 100%)',
+                          }}
+                        >
+                          <span className="font-medium">Clicks desde esos links</span>
+                          <span className="font-bold text-lg tabular-nums">
+                            {formatNumber(funnel.totals.total_clicks_from_links || 0)}
+                            <span className="font-normal opacity-90 ml-1.5">
+                              ({funnel.totals.pct_clicks_over_links?.toFixed(1) ?? 0}%)
+                            </span>
+                          </span>
                         </div>
                       </div>
-                      <div className="text-center p-4 bg-green-50 rounded-lg">
-                        <div className="text-sm text-gray-600 mb-1">Asistencias desde clicks</div>
-                        <div className="text-2xl font-bold text-green-700">
-                          {formatNumber(funnel.totals.total_attendance_from_clicks || 0)}
-                        </div>
-                        <div className="text-xs text-gray-600 mt-1">
-                          {funnel.totals.pct_attendance_over_clicks.toFixed(1)}% sobre clicks ·{' '}
-                          {funnel.totals.pct_attendance_over_links.toFixed(1)}% sobre links
+                      {/* Asistencias desde clicks */}
+                      <div className="w-[84%] flex flex-col items-center mt-1">
+                        <div
+                          className="w-full flex items-center justify-between px-6 py-3 text-white"
+                          style={{
+                            background: 'linear-gradient(135deg, #15803d 0%, #16a34a 100%)',
+                            clipPath: 'polygon(0 50%, 8% 0, 92% 0, 100% 50%, 92% 100%, 8% 100%)',
+                          }}
+                        >
+                          <span className="font-medium">Asistencias desde clicks</span>
+                          <span className="font-bold text-lg tabular-nums">
+                            {formatNumber(funnel.totals.total_attendance_from_clicks || 0)}
+                            <span className="font-normal opacity-90 ml-1.5">
+                              ({funnel.totals.pct_attendance_over_links?.toFixed(1) ?? 0}%)
+                            </span>
+                          </span>
                         </div>
                       </div>
-                    </div>
-
-                    {/* Tabla compacta de no match */}
-                    <div className="mt-4">
-                      <h3 className="text-sm font-semibold text-gray-700 mb-2">
-                        Registros sin match completo (Top 10)
-                      </h3>
-                      {funnel.no_match_records.length === 0 ? (
-                        <p className="text-xs text-gray-500">
-                          No hay registros sin match para los filtros actuales.
-                        </p>
-                      ) : (
-                        <div className="overflow-x-auto">
-                          <table className="min-w-full text-xs">
-                            <thead>
-                              <tr className="bg-gray-50 text-gray-600">
-                                <th className="px-2 py-1 text-left">Teléfono</th>
-                                <th className="px-2 py-1 text-left">Tabla</th>
-                                <th className="px-2 py-1 text-left">Campaña</th>
-                                <th className="px-2 py-1 text-left">Región</th>
-                                <th className="px-2 py-1 text-left">País</th>
-                                <th className="px-2 py-1 text-left">Razón</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {funnel.no_match_records.slice(0, 10).map((row, idx) => (
-                                <tr
-                                  key={`${row.source_table}-${row.phone_number}-${idx}`}
-                                  className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
-                                >
-                                  <td className="px-2 py-1 whitespace-nowrap">
-                                    {row.phone_number || '-'}
-                                  </td>
-                                  <td className="px-2 py-1 whitespace-nowrap">
-                                    {row.source_table}
-                                  </td>
-                                  <td className="px-2 py-1 whitespace-nowrap">
-                                    {row.campaña || '-'}
-                                  </td>
-                                  <td className="px-2 py-1 whitespace-nowrap">
-                                    {row.region || '-'}
-                                  </td>
-                                  <td className="px-2 py-1 whitespace-nowrap">
-                                    {row.pais || '-'}
-                                  </td>
-                                  <td className="px-2 py-1">{row.reason}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Detalle por teléfono */}
-                    <div className="mt-6">
-                      <h3 className="text-sm font-semibold text-gray-700 mb-2">
-                        Detalle por teléfono (máx. 200 registros)
-                      </h3>
-                      {funnel.funnel_by_phone.length === 0 ? (
-                        <p className="text-xs text-gray-500">
-                          No hay datos de funnel para los filtros actuales.
-                        </p>
-                      ) : (
-                        <div className="overflow-x-auto max-h-80 border border-gray-100 rounded-md">
-                          <table className="min-w-full text-xs">
-                            <thead>
-                              <tr className="bg-gray-50 text-gray-600">
-                                <th className="px-2 py-1 text-left">Teléfono</th>
-                                <th className="px-2 py-1 text-left">Link</th>
-                                <th className="px-2 py-1 text-left">Click</th>
-                                <th className="px-2 py-1 text-left">Asistencia</th>
-                                <th className="px-2 py-1 text-left">Campaña</th>
-                                <th className="px-2 py-1 text-left">Región</th>
-                                <th className="px-2 py-1 text-left">País</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {funnel.funnel_by_phone.slice(0, 200).map((row, idx) => (
-                                <tr
-                                  key={`${row.phone_norm}-${idx}`}
-                                  className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
-                                >
-                                  <td className="px-2 py-1 whitespace-nowrap">
-                                    {row.phone_examples.links ||
-                                      row.phone_examples.asistencia ||
-                                      row.phone_examples.webinar ||
-                                      row.phone_norm}
-                                  </td>
-                                  <td className="px-2 py-1">
-                                    {row.has_link ? '✔' : '✘'}
-                                  </td>
-                                  <td className="px-2 py-1">
-                                    {row.has_click ? '✔' : '✘'}
-                                  </td>
-                                  <td className="px-2 py-1">
-                                    {row.has_webinar ? '✔' : '✘'}
-                                  </td>
-                                  <td className="px-2 py-1 whitespace-nowrap">
-                                    {row.campaña || '-'}
-                                  </td>
-                                  <td className="px-2 py-1 whitespace-nowrap">
-                                    {row.region || '-'}
-                                  </td>
-                                  <td className="px-2 py-1 whitespace-nowrap">
-                                    {row.pais || '-'}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
                     </div>
                   </>
                 )}
