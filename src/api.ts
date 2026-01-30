@@ -15,6 +15,7 @@ const GET_DASHBOARD_CUSTOM_WEBHOOK_URL = `${BASE_URL}/api/dashboard/get-dashboar
 const GET_AGENDAS_WEBHOOK_URL =  `${BASE_URL}/api/agenda/get-agenda`;
 const DELETE_AGENDA_WEBHOOK_URL = `${BASE_URL}/api/agenda/delete`;
 const API_URL = 'https://api.retellai.com/v2/list-calls';
+const ASISTENCIA_FUNNEL_URL = `${BASE_URL}/api/asistencia/funnel`;
 
 // Función helper para obtener el client_id del localStorage
 function getClientId(): string | null {
@@ -883,6 +884,93 @@ export async function fetchAsistenciaClicksByHour(
     return data.data || [];
   } catch (error) {
     console.error('Error al obtener métricas de asistencia por hora:', error);
+    throw error;
+  }
+}
+
+// Obtener métricas de funnel (links -> clics -> asistencia webinar)
+export async function fetchAsistenciaFunnelMetrics(params?: {
+  region?: string;
+  pais?: string;
+  fecha_inicio?: string;
+  fecha_fin?: string;
+}): Promise<{
+  success: boolean;
+  filters_applied: {
+    region: string | null;
+    pais: string | null;
+    fecha_inicio: string | null;
+    fecha_fin: string | null;
+  };
+  totals: {
+    total_links: number;
+    total_clicks: number;
+    total_attendance: number;
+    total_links_unique: number;
+    total_clicks_from_links: number;
+    total_clicks_raw: number;
+    total_attendance_from_clicks: number;
+    total_attendance_from_links: number;
+    pct_clicks_over_links: number;
+    pct_attendance_over_clicks: number;
+    pct_attendance_over_links: number;
+  };
+  funnel_by_phone: Array<{
+    phone_norm: string;
+    phone_examples: {
+      links: string | null;
+      asistencia: string | null;
+      webinar: string | null;
+    };
+    has_link: boolean;
+    has_click: boolean;
+    has_webinar: boolean;
+    campaña: string | null;
+    region: string | null;
+    pais: string | null;
+  }>;
+  no_match_records: Array<{
+    source_table: string;
+    phone_number: string | null;
+    campaña: string | null;
+    region: string | null;
+    pais: string | null;
+    reason: string;
+    category?: string;
+  }>;
+}> {
+  try {
+    const body: any = {
+      client_id: getClientId()
+    };
+
+    if (params?.region) body.region = params.region;
+    if (params?.pais) body.pais = params.pais;
+    if (params?.fecha_inicio) body.fecha_inicio = params.fecha_inicio;
+    if (params?.fecha_fin) body.fecha_fin = params.fecha_fin;
+
+    const response = await fetch(ASISTENCIA_FUNNEL_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `Error en fetchAsistenciaFunnelMetrics: ${response.status} ${response.statusText} - ${errorText}`
+      );
+    }
+
+    const data = await response.json();
+    if (!data.success) {
+      throw new Error(data.error || 'Error al obtener el funnel de asistencia');
+    }
+    return data;
+  } catch (error) {
+    console.error('Error al obtener funnel de asistencia:', error);
     throw error;
   }
 }

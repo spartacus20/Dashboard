@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Phone, PhoneCall, PhoneOff, Link, MousePointer, Ban, RefreshCw, Calendar, TrendingUp, Globe, CalendarDays, Lock } from 'lucide-react';
-import { fetchLanzamientoMetricsToday, fetchLanzamientoMetricsCustom } from '../api';
+import { Phone, PhoneCall, PhoneOff, Link, MousePointer, Ban, RefreshCw, Calendar, TrendingUp, Globe, CalendarDays, Lock, Activity } from 'lucide-react';
+import { fetchLanzamientoMetricsToday, fetchLanzamientoMetricsCustom, fetchAsistenciaFunnelMetrics } from '../api';
 import { useCallsContext } from '../context/CallsContext';
 
 interface LanzamientoMetrics {
@@ -40,17 +40,89 @@ interface LanzamientoMetrics {
   };
 }
 
+interface FunnelTotals {
+  total_links: number;
+  total_clicks: number;
+  total_attendance: number;
+  total_links_unique: number;
+  total_clicks_from_links: number;
+  total_clicks_raw: number;
+  total_attendance_from_clicks: number;
+  total_attendance_from_links: number;
+  pct_clicks_over_links: number;
+  pct_attendance_over_clicks: number;
+  pct_attendance_over_links: number;
+}
+
+interface FunnelByPhone {
+  phone_norm: string;
+  phone_examples: {
+    links: string | null;
+    asistencia: string | null;
+    webinar: string | null;
+  };
+  has_link: boolean;
+  has_click: boolean;
+  has_webinar: boolean;
+  campaña: string | null;
+  region: string | null;
+  pais: string | null;
+}
+
+interface NoMatchRecord {
+  source_table: string;
+  phone_number: string | null;
+  campaña: string | null;
+  region: string | null;
+  pais: string | null;
+  reason: string;
+  category?: string;
+}
+
+interface FunnelMetrics {
+  totals: FunnelTotals;
+  funnel_by_phone: FunnelByPhone[];
+  no_match_records: NoMatchRecord[];
+}
+
+const REGION_OPTIONS = [
+  { region: 'España' },
+  { region: 'Europa' },
+  { region: 'Latam' },
+];
+
+const REGION_PAISES: { region: string; paises: string }[] = [
+  { region: 'España', paises: 'España' },
+  { region: 'Europa', paises: 'no_detectado' },
+  {
+    region: 'Latam',
+    paises:
+      'Argentina, Bolivia, Brasil, Chile, Colombia, Costa Rica, Cuba, Ecuador, El Salvador, México, Nicaragua, Panamá, Paraguay, Perú, República Dominicana, Uruguay, USA / Canadá, Venezuela',
+  },
+];
+
+function getPaisesByRegion(region: string): string[] {
+  const item = REGION_PAISES.find((r) => r.region === region);
+  if (!item) return [];
+  return item.paises.split(', ').map((p) => p.trim());
+}
 
 const Lanzamiento: React.FC = () => {
   const { launchEnabled } = useCallsContext();
   const [metrics, setMetrics] = useState<LanzamientoMetrics | null>(null);
+  const [funnel, setFunnel] = useState<FunnelMetrics | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingFunnel, setLoadingFunnel] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<'today' | 'custom'>('today');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const requestCounterRef = useRef<number>(0);
+  const [regionFilter, setRegionFilter] = useState<string>('');
+  const [countryFilter, setCountryFilter] = useState<string>('');
+
+  const paisesOptions = regionFilter ? getPaisesByRegion(regionFilter) : [];
 
   // Función helper para procesar los datos de la API y asegurar que siempre se muestren las 3 regiones
   const processApiData = (apiData: any): LanzamientoMetrics => {
@@ -88,12 +160,55 @@ const Lanzamiento: React.FC = () => {
     };
   };
 
+  // Carga solo el funnel según el rango actual y filtros
+  const loadFunnelForRange = async (range: 'today' | 'custom', fechaInicio?: string, fechaFin?: string) => {
+    setLoadingFunnel(true);
+    try {
+      let start = fechaInicio;
+      let end = fechaFin;
+
+      // Si el rango es "today", calculamos la fecha de hoy (formato YYYY-MM-DD)
+      if (range === 'today') {
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        start = `${yyyy}-${mm}-${dd}`;
+        end = `${yyyy}-${mm}-${dd}`;
+      }
+
+      // Para custom, si no hay fechas válidas aún, no hacemos nada
+      if (range === 'custom' && (!start || !end)) {
+        setLoadingFunnel(false);
+        return;
+      }
+
+      const funnelResponse = await fetchAsistenciaFunnelMetrics({
+        region: regionFilter || undefined,
+        pais: countryFilter || undefined,
+        fecha_inicio: start,
+        fecha_fin: end
+      });
+
+      setFunnel({
+        totals: funnelResponse.totals,
+        funnel_by_phone: funnelResponse.funnel_by_phone,
+        no_match_records: funnelResponse.no_match_records
+      });
+    } catch (funnelError) {
+      console.error('Error al cargar funnel de asistencia:', funnelError);
+    } finally {
+      setLoadingFunnel(false);
+    }
+  };
+
   const loadMetrics = async (range: 'today' | 'custom', fechaInicio?: string, fechaFin?: string) => {
     // Incrementar contador de peticiones
     requestCounterRef.current += 1;
     const currentRequest = requestCounterRef.current;
     
     setLoading(true);
+    setLoadingFunnel(true);
     setError(null);
     
     try {
@@ -119,6 +234,11 @@ const Lanzamiento: React.FC = () => {
       // Procesar los datos de la API para asegurar que siempre se muestren las 3 regiones
       const data = processApiData(apiData);
       setMetrics(data);
+
+      // Cargar funnel con los mismos filtros de fechas
+      if (currentRequest === requestCounterRef.current) {
+        await loadFunnelForRange(range, fechaInicio, fechaFin);
+      }
     } catch (err) {
       // Solo procesar errores si esta es la petición más reciente
       if (currentRequest !== requestCounterRef.current) {
@@ -131,6 +251,7 @@ const Lanzamiento: React.FC = () => {
       // Solo actualizar loading si esta es la petición más reciente
       if (currentRequest === requestCounterRef.current) {
         setLoading(false);
+        setLoadingFunnel(false);
       }
     }
   };
@@ -143,6 +264,18 @@ const Lanzamiento: React.FC = () => {
     }
     // No cargar automáticamente para 'custom' - esperar a que el usuario haga clic en "Aplicar"
   }, [timeRange]);
+
+  // Al cambiar la región, limpiar país si no pertenece a la nueva región
+  useEffect(() => {
+    if (!regionFilter) {
+      setCountryFilter('');
+      return;
+    }
+    const paises = getPaisesByRegion(regionFilter);
+    if (countryFilter && !paises.includes(countryFilter)) {
+      setCountryFilter('');
+    }
+  }, [regionFilter]);
 
   // Función para manejar el cambio de período
   const handleTimeRangeChange = (range: 'today' | 'custom') => {
@@ -377,6 +510,69 @@ const Lanzamiento: React.FC = () => {
         </div>
       </div>
 
+      {/* Filtros de funnel */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Activity className="h-5 w-5" />
+            Filtros de Funnel (Links → Clicks → Asistencia)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-3 items-end">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Región
+              </label>
+              <select
+                value={regionFilter}
+                onChange={(e) => setRegionFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+              >
+                <option value="">Todas las regiones</option>
+                {REGION_OPTIONS.map((opt) => (
+                  <option key={opt.region} value={opt.region}>
+                    {opt.region}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                País (Webinar)
+              </label>
+              <select
+                value={countryFilter}
+                onChange={(e) => setCountryFilter(e.target.value)}
+                disabled={!regionFilter}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
+              >
+                <option value="">
+                  {regionFilter ? 'Todos los países' : 'Selecciona una región'}
+                </option>
+                {paisesOptions.map((pais) => (
+                  <option key={pais} value={pais}>
+                    {pais}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => loadFunnelForRange(timeRange, startDate, endDate)}
+                disabled={loadingFunnel}
+                className="w-full md:w-auto"
+              >
+                <Activity className={`h-4 w-4 mr-2 ${loadingFunnel ? 'animate-spin' : ''}`} />
+                Aplicar filtros funnel
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Datepicker para fechas personalizadas */}
       {showDatePicker && (
         <Card className="mb-6">
@@ -494,6 +690,88 @@ const Lanzamiento: React.FC = () => {
               </div>
             </CardContent>
           </Card>
+
+          {/* Funnel de conversión */}
+          {funnel && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="h-5 w-5" />
+                  Funnel Links → Clicks → Asistencia
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {loadingFunnel ? (
+                  <div className="flex items-center space-x-2 py-4">
+                    <RefreshCw className="animate-spin h-4 w-4 text-blue-600" />
+                    <span className="text-gray-600 text-sm">Calculando funnel...</span>
+                  </div>
+                ) : (
+                  <>
+                    {/* Embudo de conversión (formato tunnel): picos en ambos lados, texto y dato dentro */}
+                    <div className="flex flex-col items-center gap-0 max-w-xl mx-auto mb-6">
+                      {/* Links únicos enviados */}
+                      <div className="w-full flex flex-col items-center mt-1 first:mt-0">
+                        <div
+                          className="w-full flex items-center justify-between px-10 py-4 text-white rounded-lg"
+                          style={{
+                            background: 'linear-gradient(135deg, #4c1d95 0%, #5b21b6 100%)',
+                          }}
+                        >
+                          <span className="font-medium">Links únicos enviados</span>
+                          <span className="font-bold text-lg tabular-nums">
+                            {formatNumber(funnel.totals.total_links_unique || 0)}
+                          </span>
+                        </div>
+                      </div>
+                      {/* Clicks desde esos links */}
+                      <div className="w-[92%] flex flex-col items-center mt-1">
+                        <div
+                          className="w-full flex items-center justify-between gap-4 px-10 py-4 text-white rounded-lg"
+                          style={{
+                            background: 'linear-gradient(135deg, #b91c1c 0%, #dc2626 100%)',
+                          }}
+                        >
+                          <div className="flex flex-col gap-1 min-w-0">
+                            <span className="font-medium">Clicks desde esos links</span>
+                            <span className="text-sm font-normal opacity-90">
+                              <span className="opacity-95">{formatNumber(funnel.totals.total_clicks_raw ?? 0)}</span>
+                              {' '}en asistencia ·{' '}
+                              <span className="opacity-95">{formatNumber(funnel.totals.total_clicks_from_links || 0)}</span>
+                              {' '}coinciden con links
+                            </span>
+                          </div>
+                          <span className="font-bold text-lg tabular-nums shrink-0">
+                            {formatNumber(funnel.totals.total_clicks_from_links || 0)}
+                            <span className="font-normal opacity-90 ml-1.5">
+                              ({funnel.totals.pct_clicks_over_links?.toFixed(1) ?? 0}%)
+                            </span>
+                          </span>
+                        </div>
+                      </div>
+                      {/* Asistencias desde clicks */}
+                      <div className="w-[84%] flex flex-col items-center mt-1">
+                        <div
+                          className="w-full flex items-center justify-between px-10 py-4 text-white rounded-lg"
+                          style={{
+                            background: 'linear-gradient(135deg, #15803d 0%, #16a34a 100%)',
+                          }}
+                        >
+                          <span className="font-medium">Asistencias desde clicks</span>
+                          <span className="font-bold text-lg tabular-nums">
+                            {formatNumber(funnel.totals.total_attendance_from_clicks || 0)}
+                            <span className="font-normal opacity-90 ml-1.5">
+                              ({funnel.totals.pct_attendance_over_clicks?.toFixed(1) ?? 0}%)
+                            </span>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <MetricCard
               title="Total Llamadas"
