@@ -510,69 +510,6 @@ const Lanzamiento: React.FC = () => {
         </div>
       </div>
 
-      {/* Filtros de funnel */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Activity className="h-5 w-5" />
-            Filtros de Funnel (Links → Clicks → Asistencia)
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-3 items-end">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Región
-              </label>
-              <select
-                value={regionFilter}
-                onChange={(e) => setRegionFilter(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-              >
-                <option value="">Todas las regiones</option>
-                {REGION_OPTIONS.map((opt) => (
-                  <option key={opt.region} value={opt.region}>
-                    {opt.region}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                País (Webinar)
-              </label>
-              <select
-                value={countryFilter}
-                onChange={(e) => setCountryFilter(e.target.value)}
-                disabled={!regionFilter}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
-              >
-                <option value="">
-                  {regionFilter ? 'Todos los países' : 'Selecciona una región'}
-                </option>
-                {paisesOptions.map((pais) => (
-                  <option key={pais} value={pais}>
-                    {pais}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => loadFunnelForRange(timeRange, startDate, endDate)}
-                disabled={loadingFunnel}
-                className="w-full md:w-auto"
-              >
-                <Activity className={`h-4 w-4 mr-2 ${loadingFunnel ? 'animate-spin' : ''}`} />
-                Aplicar filtros funnel
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Datepicker para fechas personalizadas */}
       {showDatePicker && (
         <Card className="mb-6">
@@ -676,13 +613,13 @@ const Lanzamiento: React.FC = () => {
                 </div>
                 <div className="text-center p-4 bg-blue-50 rounded-lg">
                   <div className="text-2xl font-bold text-blue-600">
-                    {calculatePercentage(metrics.total_enlaces_enviados, metrics.total_llamadas)}%
+                    {calculatePercentage(funnel?.totals?.total_links_unique ?? metrics.total_enlaces_enviados, metrics.total_llamadas)}%
                   </div>
-                  <div className="text-sm text-gray-600">Enlaces Enviados</div>
+                  <div className="text-sm text-gray-600">Enlaces Enviados (únicos)</div>
                 </div>
                 <div className="text-center p-4 bg-purple-50 rounded-lg">
                   <div className="text-2xl font-bold text-purple-600">
-                    {calculatePercentage(metrics.total_clicks_totales, metrics.total_enlaces_enviados)}%
+                    {calculatePercentage(metrics.total_clicks_totales, funnel?.totals?.total_links_unique ?? metrics.total_enlaces_enviados)}%
                   </div>
                   <div className="text-sm text-gray-600">Tasa de Clicks</div>
                 </div>
@@ -691,7 +628,140 @@ const Lanzamiento: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Funnel de conversión */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            <MetricCard
+              title="Total Llamadas"
+              value={metrics.total_llamadas}
+              icon={Phone}
+              color="text-blue-600"
+              bgColor="bg-blue-100"
+            />
+            <MetricCard
+              title="Llamadas Contestadas"
+              value={metrics.llamadas_contestadas}
+              icon={PhoneCall}
+              color="text-green-600"
+              bgColor="bg-green-100"
+            />
+            <MetricCard
+              title="Llamadas Fallidas"
+              value={metrics.llamadas_fallidas}
+              icon={PhoneOff}
+              color="text-red-600"
+              bgColor="bg-red-100"
+            />
+            <MetricCard
+              title="Enlaces Enviados (únicos)"
+              value={funnel?.totals?.total_links_unique ?? metrics.total_enlaces_enviados}
+              icon={Link}
+              color="text-blue-600"
+              bgColor="bg-blue-100"
+            />
+            <MetricCard
+              title="Clicks Totales"
+              value={metrics.total_clicks_totales}
+              icon={MousePointer}
+              color="text-purple-600"
+              bgColor="bg-purple-100"
+            />
+            <MetricCard
+              title="No Llamar"
+              value={metrics.total_no_llamar}
+              icon={Ban}
+              color="text-orange-600"
+              bgColor="bg-orange-100"
+            />
+          </div>
+
+          {/* Métricas por región */}
+          <div>
+            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+              <Globe className="h-6 w-6" />
+              Métricas por Región
+            </h2>
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              <RegionCard 
+                region="Europa" 
+                data={metrics.porRegion.europa} 
+                flag="🇪🇺"
+              />
+              <RegionCard 
+                region="Latam" 
+                data={metrics.porRegion.latam} 
+                flag="🌎"
+              />
+              <RegionCard 
+                region="España" 
+                data={metrics.porRegion.espana} 
+                flag="🇪🇸"
+              />
+            </div>
+          </div>
+
+          {/* Filtros de Funnel (debajo de Métricas por Región, encima del Funnel) */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Activity className="h-5 w-5" />
+                Filtros de Funnel (Links → Clicks → Asistencia)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 md:grid-cols-3 items-end">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Región
+                  </label>
+                  <select
+                    value={regionFilter}
+                    onChange={(e) => setRegionFilter(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                  >
+                    <option value="">Todas las regiones</option>
+                    {REGION_OPTIONS.map((opt) => (
+                      <option key={opt.region} value={opt.region}>
+                        {opt.region}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    País (Webinar)
+                  </label>
+                  <select
+                    value={countryFilter}
+                    onChange={(e) => setCountryFilter(e.target.value)}
+                    disabled={!regionFilter}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  >
+                    <option value="">
+                      {regionFilter ? 'Todos los países' : 'Selecciona una región'}
+                    </option>
+                    {paisesOptions.map((pais) => (
+                      <option key={pais} value={pais}>
+                        {pais}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => loadFunnelForRange(timeRange, startDate, endDate)}
+                    disabled={loadingFunnel}
+                    className="w-full md:w-auto"
+                  >
+                    <Activity className={`h-4 w-4 mr-2 ${loadingFunnel ? 'animate-spin' : ''}`} />
+                    Aplicar filtros funnel
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Funnel de conversión (debajo de Filtros de Funnel) */}
           {funnel && (
             <Card>
               <CardHeader>
@@ -708,7 +778,6 @@ const Lanzamiento: React.FC = () => {
                   </div>
                 ) : (
                   <>
-                    {/* Embudo de conversión (formato tunnel): picos en ambos lados, texto y dato dentro */}
                     <div className="flex flex-col items-center gap-0 max-w-xl mx-auto mb-6">
                       {/* Links únicos enviados */}
                       <div className="w-full flex flex-col items-center mt-1 first:mt-0">
@@ -772,75 +841,6 @@ const Lanzamiento: React.FC = () => {
               </CardContent>
             </Card>
           )}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-            <MetricCard
-              title="Total Llamadas"
-              value={metrics.total_llamadas}
-              icon={Phone}
-              color="text-blue-600"
-              bgColor="bg-blue-100"
-            />
-            <MetricCard
-              title="Llamadas Contestadas"
-              value={metrics.llamadas_contestadas}
-              icon={PhoneCall}
-              color="text-green-600"
-              bgColor="bg-green-100"
-            />
-            <MetricCard
-              title="Llamadas Fallidas"
-              value={metrics.llamadas_fallidas}
-              icon={PhoneOff}
-              color="text-red-600"
-              bgColor="bg-red-100"
-            />
-            <MetricCard
-              title="Enlaces Enviados"
-              value={metrics.total_enlaces_enviados}
-              icon={Link}
-              color="text-blue-600"
-              bgColor="bg-blue-100"
-            />
-            <MetricCard
-              title="Clicks Totales"
-              value={metrics.total_clicks_totales}
-              icon={MousePointer}
-              color="text-purple-600"
-              bgColor="bg-purple-100"
-            />
-            <MetricCard
-              title="No Llamar"
-              value={metrics.total_no_llamar}
-              icon={Ban}
-              color="text-orange-600"
-              bgColor="bg-orange-100"
-            />
-          </div>
-
-          {/* Métricas por región */}
-          <div>
-            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-              <Globe className="h-6 w-6" />
-              Métricas por Región
-            </h2>
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              <RegionCard 
-                region="Europa" 
-                data={metrics.porRegion.europa} 
-                flag="🇪🇺"
-              />
-              <RegionCard 
-                region="Latam" 
-                data={metrics.porRegion.latam} 
-                flag="🌎"
-              />
-              <RegionCard 
-                region="España" 
-                data={metrics.porRegion.espana} 
-                flag="🇪🇸"
-              />
-            </div>
-          </div>
 
           
         </>
