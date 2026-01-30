@@ -890,7 +890,6 @@ export async function fetchAsistenciaClicksByHour(
 
 // Obtener métricas de funnel (links -> clics -> asistencia webinar)
 export async function fetchAsistenciaFunnelMetrics(params?: {
-  campaña?: string;
   region?: string;
   pais?: string;
   fecha_inicio?: string;
@@ -898,7 +897,6 @@ export async function fetchAsistenciaFunnelMetrics(params?: {
 }): Promise<{
   success: boolean;
   filters_applied: {
-    campaña: string | null;
     region: string | null;
     pais: string | null;
     fecha_inicio: string | null;
@@ -910,6 +908,7 @@ export async function fetchAsistenciaFunnelMetrics(params?: {
     total_attendance: number;
     total_links_unique: number;
     total_clicks_from_links: number;
+    total_clicks_raw: number;
     total_attendance_from_clicks: number;
     total_attendance_from_links: number;
     pct_clicks_over_links: number;
@@ -945,7 +944,6 @@ export async function fetchAsistenciaFunnelMetrics(params?: {
       client_id: getClientId()
     };
 
-    if (params?.campaña) body.campaña = params.campaña;
     if (params?.region) body.region = params.region;
     if (params?.pais) body.pais = params.pais;
     if (params?.fecha_inicio) body.fecha_inicio = params.fecha_inicio;

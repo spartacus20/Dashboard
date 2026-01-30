@@ -46,6 +46,7 @@ interface FunnelTotals {
   total_attendance: number;
   total_links_unique: number;
   total_clicks_from_links: number;
+  total_clicks_raw: number;
   total_attendance_from_clicks: number;
   total_attendance_from_links: number;
   pct_clicks_over_links: number;
@@ -118,7 +119,6 @@ const Lanzamiento: React.FC = () => {
   const [endDate, setEndDate] = useState<string>('');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const requestCounterRef = useRef<number>(0);
-  const [campaignFilter, setCampaignFilter] = useState<string>('');
   const [regionFilter, setRegionFilter] = useState<string>('');
   const [countryFilter, setCountryFilter] = useState<string>('');
 
@@ -184,7 +184,6 @@ const Lanzamiento: React.FC = () => {
       }
 
       const funnelResponse = await fetchAsistenciaFunnelMetrics({
-        campaña: campaignFilter || undefined,
         region: regionFilter || undefined,
         pais: countryFilter || undefined,
         fecha_inicio: start,
@@ -520,19 +519,7 @@ const Lanzamiento: React.FC = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-4 items-end">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Campaña
-              </label>
-              <input
-                type="text"
-                value={campaignFilter}
-                onChange={(e) => setCampaignFilter(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Nombre de campaña"
-              />
-            </div>
+          <div className="grid gap-4 md:grid-cols-3 items-end">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Región
@@ -726,10 +713,9 @@ const Lanzamiento: React.FC = () => {
                       {/* Links únicos enviados */}
                       <div className="w-full flex flex-col items-center mt-1 first:mt-0">
                         <div
-                          className="w-full flex items-center justify-between px-6 py-3 text-white"
+                          className="w-full flex items-center justify-between px-10 py-4 text-white rounded-lg"
                           style={{
                             background: 'linear-gradient(135deg, #4c1d95 0%, #5b21b6 100%)',
-                            clipPath: 'polygon(0 50%, 8% 0, 92% 0, 100% 50%, 92% 100%, 8% 100%)',
                           }}
                         >
                           <span className="font-medium">Links únicos enviados</span>
@@ -741,14 +727,21 @@ const Lanzamiento: React.FC = () => {
                       {/* Clicks desde esos links */}
                       <div className="w-[92%] flex flex-col items-center mt-1">
                         <div
-                          className="w-full flex items-center justify-between px-6 py-3 text-white"
+                          className="w-full flex items-center justify-between gap-4 px-10 py-4 text-white rounded-lg"
                           style={{
                             background: 'linear-gradient(135deg, #b91c1c 0%, #dc2626 100%)',
-                            clipPath: 'polygon(0 50%, 8% 0, 92% 0, 100% 50%, 92% 100%, 8% 100%)',
                           }}
                         >
-                          <span className="font-medium">Clicks desde esos links</span>
-                          <span className="font-bold text-lg tabular-nums">
+                          <div className="flex flex-col gap-1 min-w-0">
+                            <span className="font-medium">Clicks desde esos links</span>
+                            <span className="text-sm font-normal opacity-90">
+                              <span className="opacity-95">{formatNumber(funnel.totals.total_clicks_raw ?? 0)}</span>
+                              {' '}en asistencia ·{' '}
+                              <span className="opacity-95">{formatNumber(funnel.totals.total_clicks_from_links || 0)}</span>
+                              {' '}coinciden con links
+                            </span>
+                          </div>
+                          <span className="font-bold text-lg tabular-nums shrink-0">
                             {formatNumber(funnel.totals.total_clicks_from_links || 0)}
                             <span className="font-normal opacity-90 ml-1.5">
                               ({funnel.totals.pct_clicks_over_links?.toFixed(1) ?? 0}%)
@@ -759,17 +752,16 @@ const Lanzamiento: React.FC = () => {
                       {/* Asistencias desde clicks */}
                       <div className="w-[84%] flex flex-col items-center mt-1">
                         <div
-                          className="w-full flex items-center justify-between px-6 py-3 text-white"
+                          className="w-full flex items-center justify-between px-10 py-4 text-white rounded-lg"
                           style={{
                             background: 'linear-gradient(135deg, #15803d 0%, #16a34a 100%)',
-                            clipPath: 'polygon(0 50%, 8% 0, 92% 0, 100% 50%, 92% 100%, 8% 100%)',
                           }}
                         >
                           <span className="font-medium">Asistencias desde clicks</span>
                           <span className="font-bold text-lg tabular-nums">
                             {formatNumber(funnel.totals.total_attendance_from_clicks || 0)}
                             <span className="font-normal opacity-90 ml-1.5">
-                              ({funnel.totals.pct_attendance_over_links?.toFixed(1) ?? 0}%)
+                              ({funnel.totals.pct_attendance_over_clicks?.toFixed(1) ?? 0}%)
                             </span>
                           </span>
                         </div>
