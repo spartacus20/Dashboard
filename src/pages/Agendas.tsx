@@ -620,7 +620,8 @@ export function Agendas({ onNavigate }: AgendasProps) {
                     {currentAgendas.map((agenda) => (
                       <div
                         key={agenda.id}
-                        className="bg-white rounded-lg p-6 hover:bg-slate-50 transition-colors shadow-lg border border-slate-200 relative"
+                        onClick={() => openAgendaModal(agenda)}
+                        className="bg-white rounded-lg p-6 hover:bg-slate-50 transition-colors shadow-lg border border-slate-200 relative cursor-pointer"
                       >
                         {/* Botón de eliminar en la esquina superior derecha */}
                         <button
@@ -635,10 +636,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
                           {/* Información principal */}
                           <div className="space-y-3">
                             <div className="flex items-center justify-between pr-12">
-                              <div 
-                                className="flex items-center space-x-2 cursor-pointer flex-1"
-                                onClick={() => openAgendaModal(agenda)}
-                              >
+                              <div className="flex items-center space-x-2 flex-1">
                                 <User className="w-5 h-5 text-blue-600" />
                                 <h3 className="text-lg font-semibold text-slate-800">
                                   {agenda?.nombre || 'Sin nombre'}
