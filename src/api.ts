@@ -14,6 +14,7 @@ const GET_DASHBOARD_WEBHOOK_URL = `${BASE_URL}/api/dashboard/get-dashboard`;
 const GET_DASHBOARD_CUSTOM_WEBHOOK_URL = `${BASE_URL}/api/dashboard/get-dashboard-custom`;
 const GET_AGENDAS_WEBHOOK_URL =  `${BASE_URL}/api/agenda/get-agenda`;
 const DELETE_AGENDA_WEBHOOK_URL = `${BASE_URL}/api/agenda/delete`;
+const AVERAGE_CALLS_PER_AGENDA_URL = `${BASE_URL}/api/agenda/average-calls-per-agenda`;
 const API_URL = 'https://api.retellai.com/v2/list-calls';
 const ASISTENCIA_FUNNEL_URL = `${BASE_URL}/api/asistencia/funnel`;
 
@@ -1164,7 +1165,7 @@ export async function fetchAllAgendas(
       const requestBody: any = {
         client_id: actualClientId,
         page: page,
-        per_page: 100 // Máximo por página
+        per_page: 10000 // Aumentado a 10000 para obtener todas las agendas en menos peticiones
       };
       
       // Agregar filtros si están disponibles
@@ -1252,7 +1253,7 @@ export async function fetchAllAgendas(
       allAgendas = [...allAgendas, ...agendas];
       
       // Determinar si hay más páginas
-      // Si obtenemos menos de 100 agendas, probablemente es la última página
+      // Si obtenemos menos de 10000 agendas, probablemente es la última página
       // También verificar si la respuesta indica el total de páginas
       const totalPages = data.total_paginas || data.totalPages || 0;
       const totalAgendas = data.total_agendas || data.totalAgendas || 0;
@@ -1263,18 +1264,17 @@ export async function fetchAllAgendas(
         // Si conocemos el total de páginas, usar esa información
         hasMore = page < totalPages;
       } else {
-        // Si no conocemos el total, usar la heurística
-        hasMore = agendas.length === 100;
+        // Si no conocemos el total, usar la heurística (actualizado para per_page=10000)
+        hasMore = agendas.length === 10000;
       }
       
       if (hasMore) {
         page++;
-        // Pequeña pausa para no sobrecargar el servidor
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Eliminado el delay ya que con per_page=10000 normalmente solo se necesita una petición
         
         // Verificación de seguridad para evitar bucles infinitos
-        if (page > 100) {
-          console.warn('Límite de páginas alcanzado (100), deteniendo paginación');
+        if (page > 10) {
+          console.warn('Límite de páginas alcanzado (10), deteniendo paginación');
           break;
         }
       }
@@ -1371,6 +1371,56 @@ export async function fetchAgendas(clientId?: string): Promise<Agenda[]> {
     console.error('Error al obtener agendas del webhook:', error);
     // En caso de error, devolver array vacío en lugar de lanzar la excepción
     return [];
+  }
+}
+
+// Función para obtener el promedio de llamadas por agenda
+export async function getAverageCallsPerAgenda(
+  clientId?: string,
+  dateFrom?: string,
+  dateTo?: string
+): Promise<{ total_agendas: number; total_calls: number; average_calls: number }> {
+  try {
+    const actualClientId = clientId || getClientId();
+    
+    if (!actualClientId) {
+      throw new Error('No se encontró client_id. Por favor, inicia sesión nuevamente.');
+    }
+    
+    const requestBody: any = {
+      client_id: actualClientId
+    };
+    
+    if (dateFrom) {
+      requestBody.fecha_inicio = dateFrom;
+    }
+    
+    if (dateTo) {
+      requestBody.fecha_fin = dateTo;
+    }
+    
+    const response = await fetch(AVERAGE_CALLS_PER_AGENDA_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error al obtener promedio: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    return {
+      total_agendas: data.total_agendas || 0,
+      total_calls: data.total_calls || 0,
+      average_calls: data.average_calls || 0
+    };
+  } catch (error) {
+    console.error('Error al obtener promedio de llamadas por agenda:', error);
+    throw error;
   }
 }
 
