@@ -1070,19 +1070,90 @@ function transformDashboardData(data: any): any {
           total_agendamientos: data.total_agendamientos || 0,
           costo_por_agenda: data.costo_por_agenda || 0
         },
-        // Transformar costos_por_dia a llamadas_por_dia
-        llamadas_por_dia: data.costos_por_dia ? data.costos_por_dia.map((item: any) => ({
-          fecha: item.fecha,
-          dia_label: new Date(item.fecha).toLocaleDateString('es-ES', { 
-            weekday: 'short', 
-            month: 'short', 
-            day: 'numeric' 
-          }),
-          total_llamadas: Math.round(item.costo / 0.02), // Estimación basada en costo promedio por llamada
-          costo_dia: item.costo,
-          llamadas_efectivas: Math.round((item.costo / 0.02) * 0.2), // Estimación del 20% de efectividad
-          llamadas_fallidas: Math.round((item.costo / 0.02) * 0.8) // Estimación del 80% de fallidas
-        })) : [],
+        // Transformar llamadas_por_dia reales si están disponibles; si no, hacer fallback a costos_por_dia
+        llamadas_por_dia: (() => {
+          const agendasPorDiaMap = new Map<string, number>();
+          if (Array.isArray(data.agendas_por_dia)) {
+            data.agendas_por_dia.forEach((apd: any) => {
+              if (apd && apd.fecha) {
+                agendasPorDiaMap.set(apd.fecha, Number(apd.total_agendamientos) || 0);
+              }
+            });
+          }
+
+          if (Array.isArray(data.llamadas_por_dia) && data.llamadas_por_dia.length > 0) {
+            return data.llamadas_por_dia.map((item: any) => {
+              const fecha = item.fecha;
+              const totalAgendamientos = agendasPorDiaMap.get(fecha) || 0;
+              
+              // Parsear fecha como fecha local (no UTC) para evitar desplazamientos de día
+              let diaLabel = '';
+              if (fecha) {
+                const fechaParts = fecha.toString().split('T')[0].split('-');
+                if (fechaParts.length === 3) {
+                  const [year, month, day] = fechaParts.map(Number);
+                  const fechaLocal = new Date(year, month - 1, day);
+                  diaLabel = fechaLocal.toLocaleDateString('es-ES', { 
+                    weekday: 'short', 
+                    month: 'short', 
+                    day: 'numeric',
+                    timeZone: 'Europe/Madrid'
+                  });
+                } else {
+                  diaLabel = fecha;
+                }
+              }
+              
+              return {
+                fecha,
+                dia_label: diaLabel,
+                total_llamadas: Number(item.total_llamadas) || 0,
+                llamadas_efectivas: Number(item.llamadas_efectivas) || 0,
+                llamadas_fallidas: Number(item.llamadas_fallidas) || 0,
+                costo_dia: Number(item.costo_dia) || 0,
+                total_agendamientos: totalAgendamientos
+              };
+            });
+          }
+
+          // Fallback antiguo basado en costos_por_dia si no hay llamadas_por_dia en la respuesta
+          if (Array.isArray(data.costos_por_dia) && data.costos_por_dia.length > 0) {
+            return data.costos_por_dia.map((item: any) => {
+              const fecha = item.fecha;
+              const totalAgendamientos = agendasPorDiaMap.get(fecha) || 0;
+
+              // Parsear fecha como fecha local (no UTC) para evitar desplazamientos de día
+              let diaLabel = '';
+              if (fecha) {
+                const fechaParts = fecha.toString().split('T')[0].split('-');
+                if (fechaParts.length === 3) {
+                  const [year, month, day] = fechaParts.map(Number);
+                  const fechaLocal = new Date(year, month - 1, day);
+                  diaLabel = fechaLocal.toLocaleDateString('es-ES', { 
+                    weekday: 'short', 
+                    month: 'short', 
+                    day: 'numeric',
+                    timeZone: 'Europe/Madrid'
+                  });
+                } else {
+                  diaLabel = fecha;
+                }
+              }
+
+              return {
+                fecha,
+                dia_label: diaLabel,
+                total_llamadas: Math.round(item.costo / 0.02),
+                costo_dia: item.costo,
+                llamadas_efectivas: Math.round((item.costo / 0.02) * 0.2),
+                llamadas_fallidas: Math.round((item.costo / 0.02) * 0.8),
+                total_agendamientos: totalAgendamientos
+              };
+            });
+          }
+
+          return [];
+        })(),
         // Transformar distribucion_por_hora a llamadas_por_hora
         llamadas_por_hora: data.distribucion_por_hora ? data.distribucion_por_hora.map((item: any) => ({
           hora: item.hora,
