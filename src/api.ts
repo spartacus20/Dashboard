@@ -1167,11 +1167,17 @@ function transformDashboardData(data: any): any {
           total: item.cantidad,
           porcentaje: ((item.cantidad / (data.total_llamadas || 1)) * 100).toFixed(2)
         })) : [],
-        // Transformar tipos_vivienda
+        // Transformar tipos_vivienda (por llamadas)
         tipos_vivienda: data.tipos_vivienda ? data.tipos_vivienda.map((item: any) => ({
           tipo: item.tipo,
           cantidad: item.cantidad,
           porcentaje: ((item.cantidad / (data.total_llamadas || 1)) * 100).toFixed(2)
+        })) : [],
+        // Transformar tipos_vivienda_agendas (por agendas)
+        tipos_vivienda_agendas: data.tipos_vivienda_agendas ? data.tipos_vivienda_agendas.map((item: any) => ({
+          tipo: item.tipo,
+          cantidad: item.cantidad,
+          porcentaje: ((item.cantidad / (data.total_agendamientos || 1)) * 100).toFixed(2)
         })) : [],
         // Transformar interes
         interes: data.interes ? data.interes.map((item: any) => ({

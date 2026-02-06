@@ -218,7 +218,7 @@ function generateEffectiveCallsData(dashboardData?: any, hourStart?: string, hou
   return [];
 }
 
-// Función para generar datos del gráfico de tipos de vivienda
+// Función para generar datos del gráfico de tipos de vivienda (por llamadas)
 function generateHousingTypeData(dashboardData?: any) {
   if (dashboardData?.dashboard_data?.tipos_vivienda && Array.isArray(dashboardData.dashboard_data.tipos_vivienda)) {
     // Filtrar excluyendo "no_identificado"
@@ -237,6 +237,38 @@ function generateHousingTypeData(dashboardData?: any) {
     }));
   }
   
+  return [];
+}
+
+// Función para generar datos del gráfico de agendas por tipo de vivienda (por agendas)
+function generateAgendaHousingTypeData(dashboardData?: any) {
+  if (dashboardData?.dashboard_data?.tipos_vivienda_agendas && Array.isArray(dashboardData.dashboard_data.tipos_vivienda_agendas)) {
+    const raw = dashboardData.dashboard_data.tipos_vivienda_agendas;
+    // Calcular total de agendas para porcentajes
+    const total = raw.reduce((sum: number, item: any) => sum + (item.cantidad || 0), 0);
+    if (total <= 0) {
+      // No hay agendas clasificadas por tipo_vivienda, pero puede haber agendas totales.
+      const totalAgendamientos = dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos || 0;
+      if (totalAgendamientos > 0) {
+        return [{
+          label: 'Sin tipo de propiedad',
+          cantidad: totalAgendamientos,
+          porcentaje: 100,
+          tipo: 'sin_tipo',
+        }];
+      }
+      return [];
+    }
+
+    return raw
+      .map((item: any) => ({
+        label: translateHousingType(item.tipo),
+        cantidad: item.cantidad || 0,
+        porcentaje: ((item.cantidad || 0) / total) * 100,
+        tipo: item.tipo
+      }))
+      .filter((item: any) => item.cantidad > 0);
+  }
   return [];
 }
 
@@ -1191,19 +1223,20 @@ export function Dashboard({
   
   const hourlyAgendasData = useMemo(() => generateHourlyAgendasData(dashboardData, hourRangeStart, hourRangeEnd), [dashboardData, hourRangeStart, hourRangeEnd]);
   const housingTypeData = useMemo(() => generateHousingTypeData(dashboardData), [dashboardData]);
+  const agendaHousingTypeData = useMemo(() => generateAgendaHousingTypeData(dashboardData), [dashboardData]);
   const hasAgendasInPeriod = !!(
     dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos &&
     dashboardData.dashboard_data.metricas_generales.total_agendamientos > 0
   );
   const agendaPropertyTypeData = useMemo(() => {
-    if (!hasAgendasInPeriod || !housingTypeData || housingTypeData.length === 0) return [];
-    return housingTypeData
+    if (!hasAgendasInPeriod || !agendaHousingTypeData || agendaHousingTypeData.length === 0) return [];
+    return agendaHousingTypeData
       .map((item: any) => ({
         label: item.label,
         porcentaje: typeof item.porcentaje === 'string' ? parseFloat(item.porcentaje) : (item.porcentaje || 0)
       }))
       .filter((item: any) => item.porcentaje && item.porcentaje > 0);
-  }, [housingTypeData, hasAgendasInPeriod]);
+  }, [agendaHousingTypeData, hasAgendasInPeriod]);
   const interestData = useMemo(() => generateInterestData(dashboardData), [dashboardData]);
   const effectiveCallsData = useMemo(() => generateEffectiveCallsData(dashboardData, effectiveCallsHourStart, effectiveCallsHourEnd), [dashboardData, effectiveCallsHourStart, effectiveCallsHourEnd]);
   const agentesPorAgendasData = useMemo(() => generateAgentesPorAgendasData(dashboardData), [dashboardData]);
