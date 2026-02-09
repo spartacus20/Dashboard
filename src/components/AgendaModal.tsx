@@ -61,6 +61,15 @@ export function AgendaModal({ agenda, isOpen, onClose }: AgendaModalProps) {
 
   if (!isOpen || !agenda) return null;
 
+  // Misma lógica de color que en la lista: amarillo para placas/paneles solares, azul para el resto
+  const getAgendaTypeBadgeClass = (tipo?: string | null) => {
+    const t = (tipo || '').toLowerCase();
+    if (t.includes('paneles solares') || t.includes('placas solares')) {
+      return 'bg-gradient-to-r from-yellow-500 to-orange-600';
+    }
+    return 'bg-gradient-to-r from-blue-600 to-indigo-700';
+  };
+
   // Formatear fecha
   const formatDate = (dateString: string) => {
     try {
@@ -139,7 +148,7 @@ export function AgendaModal({ agenda, isOpen, onClose }: AgendaModalProps) {
               </div>
               
               {agenda.tipo_agenda && (
-                <div className="inline-block px-3 py-1 bg-gradient-to-r from-blue-600 to-indigo-700 text-white text-sm rounded-full">
+                <div className={`inline-block px-3 py-1 text-white text-sm rounded-full ${getAgendaTypeBadgeClass(agenda.tipo_agenda)}`}>
                   {agenda.tipo_agenda}
                 </div>
               )}

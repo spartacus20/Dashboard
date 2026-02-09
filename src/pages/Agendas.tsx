@@ -328,6 +328,18 @@ export function Agendas({ onNavigate }: AgendasProps) {
     )
   ).length;
 
+  // Obtener clases de color para la etiqueta de tipo de agenda en la lista
+  const getAgendaTypeBadgeClass = (tipo?: string | null) => {
+    const t = (tipo || '').toLowerCase();
+
+    // Solo placas/paneles solares en amarillo-naranja; el resto como estaba (azul)
+    if (t.includes('paneles solares') || t.includes('placas solares')) {
+      return 'bg-gradient-to-r from-yellow-500 to-orange-600';
+    }
+
+    return 'bg-gradient-to-r from-blue-600 to-indigo-700';
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
       <div className="max-w-7xl mx-auto px-4 py-8">
@@ -722,7 +734,9 @@ export function Agendas({ onNavigate }: AgendasProps) {
                                 </h3>
                               </div>
                               {agenda?.tipo_agenda && (
-                                <span className="px-2 py-1 bg-gradient-to-r from-blue-600 to-indigo-700 text-white text-xs rounded-full">
+                                <span
+                                  className={`px-2 py-1 text-white text-xs rounded-full ${getAgendaTypeBadgeClass(agenda.tipo_agenda)}`}
+                                >
                                   {agenda.tipo_agenda}
                                 </span>
                               )}
