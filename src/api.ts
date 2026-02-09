@@ -14,7 +14,9 @@ const GET_DASHBOARD_WEBHOOK_URL = `${BASE_URL}/api/dashboard/get-dashboard`;
 const GET_DASHBOARD_CUSTOM_WEBHOOK_URL = `${BASE_URL}/api/dashboard/get-dashboard-custom`;
 const GET_AGENDAS_WEBHOOK_URL =  `${BASE_URL}/api/agenda/get-agenda`;
 const DELETE_AGENDA_WEBHOOK_URL = `${BASE_URL}/api/agenda/delete`;
+const AVERAGE_CALLS_PER_AGENDA_URL = `${BASE_URL}/api/agenda/average-calls-per-agenda`;
 const API_URL = 'https://api.retellai.com/v2/list-calls';
+const ASISTENCIA_FUNNEL_URL = `${BASE_URL}/api/asistencia/funnel`;
 
 // Función helper para obtener el client_id del localStorage
 function getClientId(): string | null {
@@ -887,6 +889,93 @@ export async function fetchAsistenciaClicksByHour(
   }
 }
 
+// Obtener métricas de funnel (links -> clics -> asistencia webinar)
+export async function fetchAsistenciaFunnelMetrics(params?: {
+  region?: string;
+  pais?: string;
+  fecha_inicio?: string;
+  fecha_fin?: string;
+}): Promise<{
+  success: boolean;
+  filters_applied: {
+    region: string | null;
+    pais: string | null;
+    fecha_inicio: string | null;
+    fecha_fin: string | null;
+  };
+  totals: {
+    total_links: number;
+    total_clicks: number;
+    total_attendance: number;
+    total_links_unique: number;
+    total_clicks_from_links: number;
+    total_clicks_raw: number;
+    total_attendance_from_clicks: number;
+    total_attendance_from_links: number;
+    pct_clicks_over_links: number;
+    pct_attendance_over_clicks: number;
+    pct_attendance_over_links: number;
+  };
+  funnel_by_phone: Array<{
+    phone_norm: string;
+    phone_examples: {
+      links: string | null;
+      asistencia: string | null;
+      webinar: string | null;
+    };
+    has_link: boolean;
+    has_click: boolean;
+    has_webinar: boolean;
+    campaña: string | null;
+    region: string | null;
+    pais: string | null;
+  }>;
+  no_match_records: Array<{
+    source_table: string;
+    phone_number: string | null;
+    campaña: string | null;
+    region: string | null;
+    pais: string | null;
+    reason: string;
+    category?: string;
+  }>;
+}> {
+  try {
+    const body: any = {
+      client_id: getClientId()
+    };
+
+    if (params?.region) body.region = params.region;
+    if (params?.pais) body.pais = params.pais;
+    if (params?.fecha_inicio) body.fecha_inicio = params.fecha_inicio;
+    if (params?.fecha_fin) body.fecha_fin = params.fecha_fin;
+
+    const response = await fetch(ASISTENCIA_FUNNEL_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `Error en fetchAsistenciaFunnelMetrics: ${response.status} ${response.statusText} - ${errorText}`
+      );
+    }
+
+    const data = await response.json();
+    if (!data.success) {
+      throw new Error(data.error || 'Error al obtener el funnel de asistencia');
+    }
+    return data;
+  } catch (error) {
+    console.error('Error al obtener funnel de asistencia:', error);
+    throw error;
+  }
+}
+
 // Función para obtener datos del dashboard de la semana
 export async function getDashboardWeek(clientId?: string, bdd?: string): Promise<any> {
   try {
@@ -981,19 +1070,90 @@ function transformDashboardData(data: any): any {
           total_agendamientos: data.total_agendamientos || 0,
           costo_por_agenda: data.costo_por_agenda || 0
         },
-        // Transformar costos_por_dia a llamadas_por_dia
-        llamadas_por_dia: data.costos_por_dia ? data.costos_por_dia.map((item: any) => ({
-          fecha: item.fecha,
-          dia_label: new Date(item.fecha).toLocaleDateString('es-ES', { 
-            weekday: 'short', 
-            month: 'short', 
-            day: 'numeric' 
-          }),
-          total_llamadas: Math.round(item.costo / 0.02), // Estimación basada en costo promedio por llamada
-          costo_dia: item.costo,
-          llamadas_efectivas: Math.round((item.costo / 0.02) * 0.2), // Estimación del 20% de efectividad
-          llamadas_fallidas: Math.round((item.costo / 0.02) * 0.8) // Estimación del 80% de fallidas
-        })) : [],
+        // Transformar llamadas_por_dia reales si están disponibles; si no, hacer fallback a costos_por_dia
+        llamadas_por_dia: (() => {
+          const agendasPorDiaMap = new Map<string, number>();
+          if (Array.isArray(data.agendas_por_dia)) {
+            data.agendas_por_dia.forEach((apd: any) => {
+              if (apd && apd.fecha) {
+                agendasPorDiaMap.set(apd.fecha, Number(apd.total_agendamientos) || 0);
+              }
+            });
+          }
+
+          if (Array.isArray(data.llamadas_por_dia) && data.llamadas_por_dia.length > 0) {
+            return data.llamadas_por_dia.map((item: any) => {
+              const fecha = item.fecha;
+              const totalAgendamientos = agendasPorDiaMap.get(fecha) || 0;
+              
+              // Parsear fecha como fecha local (no UTC) para evitar desplazamientos de día
+              let diaLabel = '';
+              if (fecha) {
+                const fechaParts = fecha.toString().split('T')[0].split('-');
+                if (fechaParts.length === 3) {
+                  const [year, month, day] = fechaParts.map(Number);
+                  const fechaLocal = new Date(year, month - 1, day);
+                  diaLabel = fechaLocal.toLocaleDateString('es-ES', { 
+                    weekday: 'short', 
+                    month: 'short', 
+                    day: 'numeric',
+                    timeZone: 'Europe/Madrid'
+                  });
+                } else {
+                  diaLabel = fecha;
+                }
+              }
+              
+              return {
+                fecha,
+                dia_label: diaLabel,
+                total_llamadas: Number(item.total_llamadas) || 0,
+                llamadas_efectivas: Number(item.llamadas_efectivas) || 0,
+                llamadas_fallidas: Number(item.llamadas_fallidas) || 0,
+                costo_dia: Number(item.costo_dia) || 0,
+                total_agendamientos: totalAgendamientos
+              };
+            });
+          }
+
+          // Fallback antiguo basado en costos_por_dia si no hay llamadas_por_dia en la respuesta
+          if (Array.isArray(data.costos_por_dia) && data.costos_por_dia.length > 0) {
+            return data.costos_por_dia.map((item: any) => {
+              const fecha = item.fecha;
+              const totalAgendamientos = agendasPorDiaMap.get(fecha) || 0;
+
+              // Parsear fecha como fecha local (no UTC) para evitar desplazamientos de día
+              let diaLabel = '';
+              if (fecha) {
+                const fechaParts = fecha.toString().split('T')[0].split('-');
+                if (fechaParts.length === 3) {
+                  const [year, month, day] = fechaParts.map(Number);
+                  const fechaLocal = new Date(year, month - 1, day);
+                  diaLabel = fechaLocal.toLocaleDateString('es-ES', { 
+                    weekday: 'short', 
+                    month: 'short', 
+                    day: 'numeric',
+                    timeZone: 'Europe/Madrid'
+                  });
+                } else {
+                  diaLabel = fecha;
+                }
+              }
+
+              return {
+                fecha,
+                dia_label: diaLabel,
+                total_llamadas: Math.round(item.costo / 0.02),
+                costo_dia: item.costo,
+                llamadas_efectivas: Math.round((item.costo / 0.02) * 0.2),
+                llamadas_fallidas: Math.round((item.costo / 0.02) * 0.8),
+                total_agendamientos: totalAgendamientos
+              };
+            });
+          }
+
+          return [];
+        })(),
         // Transformar distribucion_por_hora a llamadas_por_hora
         llamadas_por_hora: data.distribucion_por_hora ? data.distribucion_por_hora.map((item: any) => ({
           hora: item.hora,
@@ -1007,11 +1167,17 @@ function transformDashboardData(data: any): any {
           total: item.cantidad,
           porcentaje: ((item.cantidad / (data.total_llamadas || 1)) * 100).toFixed(2)
         })) : [],
-        // Transformar tipos_vivienda
+        // Transformar tipos_vivienda (por llamadas)
         tipos_vivienda: data.tipos_vivienda ? data.tipos_vivienda.map((item: any) => ({
           tipo: item.tipo,
           cantidad: item.cantidad,
           porcentaje: ((item.cantidad / (data.total_llamadas || 1)) * 100).toFixed(2)
+        })) : [],
+        // Transformar tipos_vivienda_agendas (por agendas)
+        tipos_vivienda_agendas: data.tipos_vivienda_agendas ? data.tipos_vivienda_agendas.map((item: any) => ({
+          tipo: item.tipo,
+          cantidad: item.cantidad,
+          porcentaje: ((item.cantidad / (data.total_agendamientos || 1)) * 100).toFixed(2)
         })) : [],
         // Transformar interes
         interes: data.interes ? data.interes.map((item: any) => ({
@@ -1076,7 +1242,7 @@ export async function fetchAllAgendas(
       const requestBody: any = {
         client_id: actualClientId,
         page: page,
-        per_page: 100 // Máximo por página
+        per_page: 10000 // Aumentado a 10000 para obtener todas las agendas en menos peticiones
       };
       
       // Agregar filtros si están disponibles
@@ -1164,7 +1330,7 @@ export async function fetchAllAgendas(
       allAgendas = [...allAgendas, ...agendas];
       
       // Determinar si hay más páginas
-      // Si obtenemos menos de 100 agendas, probablemente es la última página
+      // Si obtenemos menos de 10000 agendas, probablemente es la última página
       // También verificar si la respuesta indica el total de páginas
       const totalPages = data.total_paginas || data.totalPages || 0;
       const totalAgendas = data.total_agendas || data.totalAgendas || 0;
@@ -1175,18 +1341,17 @@ export async function fetchAllAgendas(
         // Si conocemos el total de páginas, usar esa información
         hasMore = page < totalPages;
       } else {
-        // Si no conocemos el total, usar la heurística
-        hasMore = agendas.length === 100;
+        // Si no conocemos el total, usar la heurística (actualizado para per_page=10000)
+        hasMore = agendas.length === 10000;
       }
       
       if (hasMore) {
         page++;
-        // Pequeña pausa para no sobrecargar el servidor
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Eliminado el delay ya que con per_page=10000 normalmente solo se necesita una petición
         
         // Verificación de seguridad para evitar bucles infinitos
-        if (page > 100) {
-          console.warn('Límite de páginas alcanzado (100), deteniendo paginación');
+        if (page > 10) {
+          console.warn('Límite de páginas alcanzado (10), deteniendo paginación');
           break;
         }
       }
@@ -1283,6 +1448,56 @@ export async function fetchAgendas(clientId?: string): Promise<Agenda[]> {
     console.error('Error al obtener agendas del webhook:', error);
     // En caso de error, devolver array vacío en lugar de lanzar la excepción
     return [];
+  }
+}
+
+// Función para obtener el promedio de llamadas por agenda
+export async function getAverageCallsPerAgenda(
+  clientId?: string,
+  dateFrom?: string,
+  dateTo?: string
+): Promise<{ total_agendas: number; total_calls: number; average_calls: number }> {
+  try {
+    const actualClientId = clientId || getClientId();
+    
+    if (!actualClientId) {
+      throw new Error('No se encontró client_id. Por favor, inicia sesión nuevamente.');
+    }
+    
+    const requestBody: any = {
+      client_id: actualClientId
+    };
+    
+    if (dateFrom) {
+      requestBody.fecha_inicio = dateFrom;
+    }
+    
+    if (dateTo) {
+      requestBody.fecha_fin = dateTo;
+    }
+    
+    const response = await fetch(AVERAGE_CALLS_PER_AGENDA_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error al obtener promedio: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    return {
+      total_agendas: data.total_agendas || 0,
+      total_calls: data.total_calls || 0,
+      average_calls: data.average_calls || 0
+    };
+  } catch (error) {
+    console.error('Error al obtener promedio de llamadas por agenda:', error);
+    throw error;
   }
 }
 

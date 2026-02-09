@@ -7,9 +7,12 @@ interface AgendaCalendarProps {
   agendas: Agenda[];
   onAgendaClick: (agenda: Agenda) => void;
   onLoadAllAgendas?: () => Promise<Agenda[]>;
+  // mode controla qué fecha se usa para ubicar la agenda en el calendario:
+  // 'created' = fecha de creación, 'scheduled' = fecha agendada
+  mode?: 'created' | 'scheduled';
 }
 
-export function AgendaCalendar({ agendas, onAgendaClick, onLoadAllAgendas }: AgendaCalendarProps) {
+export function AgendaCalendar({ agendas, onAgendaClick, onLoadAllAgendas, mode = 'created' }: AgendaCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedType, setSelectedType] = useState<string>('all');
   const [showTypeFilter, setShowTypeFilter] = useState(false);
@@ -45,11 +48,12 @@ export function AgendaCalendar({ agendas, onAgendaClick, onLoadAllAgendas }: Age
     return types;
   }, [allAgendas]);
 
-  // Filtrar agendas por tipo seleccionado
+  // Filtrar agendas por tipo seleccionado (sobre todas las agendas cargadas)
   const filteredAgendas = useMemo(() => {
-    if (selectedType === 'all') return agendas;
-    return agendas.filter(agenda => agenda.tipo_agenda === selectedType);
-  }, [agendas, selectedType]);
+    const source = allAgendas;
+    if (selectedType === 'all') return source;
+    return source.filter(agenda => agenda.tipo_agenda === selectedType);
+  }, [allAgendas, selectedType]);
 
   // Generar días del mes actual
   const getDaysInMonth = (date: Date) => {
@@ -75,11 +79,25 @@ export function AgendaCalendar({ agendas, onAgendaClick, onLoadAllAgendas }: Age
     return days;
   };
 
-  // Obtener agendas para una fecha específica (usar fecha de creación)
+  // Obtener la fecha relevante según el modo
+  const getAgendaDateForMode = (agenda: Agenda): Date | null => {
+    const dateString =
+      mode === 'scheduled'
+        ? (agenda.fecha_agendamiento || agenda.created_at)
+        : (agenda.created_at || agenda.fecha_agendamiento);
+
+    if (!dateString) return null;
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return null;
+    return d;
+  };
+
+  // Obtener agendas para una fecha específica,
+  // respetando el filtro de tipo seleccionado y el modo de fecha
   const getAgendasForDate = (date: Date) => {
-    return allAgendas.filter(agenda => {
-      if (!agenda.created_at) return false;
-      const agendaDate = new Date(agenda.created_at);
+    return filteredAgendas.filter(agenda => {
+      const agendaDate = getAgendaDateForMode(agenda);
+      if (!agendaDate) return false;
       return agendaDate.toDateString() === date.toDateString();
     });
   };
@@ -234,7 +252,7 @@ export function AgendaCalendar({ agendas, onAgendaClick, onLoadAllAgendas }: Age
             </span>
           ) : (
             <>
-              {allAgendas.length} agendas totales
+              {filteredAgendas.length} agenda{filteredAgendas.length !== 1 ? 's' : ''} {selectedType === 'all' ? 'totales' : 'filtradas'}
               {selectedType !== 'all' && (
                 <span className="text-blue-600 ml-2">
                   (filtro visual por "{selectedType}")
@@ -284,16 +302,26 @@ export function AgendaCalendar({ agendas, onAgendaClick, onLoadAllAgendas }: Age
                 
                                  {/* Agendas del día */}
                  <div className="space-y-1">
-                   {dayAgendas.slice(0, 2).map((agenda, agendaIndex) => (
+                   {dayAgendas.slice(0, 2).map((agenda, agendaIndex) => {
+                     const titleDate =
+                       mode === 'scheduled'
+                         ? (agenda.fecha_agendamiento
+                            ? `Agendado: ${formatDate(agenda.fecha_agendamiento)}`
+                            : (agenda.created_at ? `Creado: ${formatDate(agenda.created_at)}` : ''))
+                         : (agenda.created_at
+                            ? `Creado: ${formatDate(agenda.created_at)}`
+                            : (agenda.fecha_agendamiento ? `Agendado: ${formatDate(agenda.fecha_agendamiento)}` : ''));
+
+                     return (
                      <div
                        key={agendaIndex}
                        className={`text-xs p-1 rounded text-white truncate cursor-pointer hover:opacity-80 transition-opacity ${getAgendaColor(agenda.tipo_agenda)}`}
-                       title={`${agenda.nombre} - ${agenda.tipo_agenda} - Creado: ${formatDate(agenda.created_at)}`}
+                       title={`${agenda.nombre} - ${agenda.tipo_agenda}${titleDate ? ' - ' + titleDate : ''}`}
                        onClick={() => onAgendaClick(agenda)}
                      >
                        {agenda.nombre}
                      </div>
-                   ))}
+                   ); })}
                    {dayAgendas.length > 2 && (
                      <div className="text-xs text-slate-500 text-center">
                        +{dayAgendas.length - 2} más

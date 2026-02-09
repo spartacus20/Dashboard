@@ -13,6 +13,21 @@ import {
   DialogTitle,
 } from "../components/ui/dialog";
 import {
+  ResponsiveContainer as RechartsResponsiveContainer,
+  ComposedChart as RechartsComposedChart,
+  BarChart as RechartsBarChart,
+  Bar as RechartsBar,
+  Line as RechartsLine,
+  PieChart as RechartsPieChart,
+  Pie as RechartsPie,
+  Cell as RechartsCell,
+  XAxis as RechartsXAxis,
+  YAxis as RechartsYAxis,
+  Tooltip as RechartsTooltip,
+  Legend as RechartsLegend,
+  CartesianGrid as RechartsCartesianGrid
+} from "recharts";
+import {
   fetchLanzamientoMetrics,
   fetchLanzamientoMetricsToday,
   fetchLanzamientoMetricsCustom,
@@ -48,10 +63,16 @@ function addDaysUTC(base: Date, days: number): Date {
 
 function formatMadridDateYYYYMMDD(date: Date): string {
   // Formatea a YYYY-MM-DD según la fecha de Madrid representada por "date"
-  const y = date.getUTCFullYear();
-  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(date.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  const { year: y, month: m, day: d } = getMadridYmdParts(date);
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+function formatDiaLabel(fechaStr: string): string {
+  const parts = fechaStr.toString().split('T')[0].split('-');
+  if (parts.length !== 3) return fechaStr;
+  const [year, month, day] = parts.map(Number);
+  const d = new Date(year, month - 1, day);
+  return d.toLocaleDateString('es-ES', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'Europe/Madrid' });
 }
 
 // Componente para mostrar esqueletos de carga
@@ -198,7 +219,7 @@ function generateEffectiveCallsData(dashboardData?: any, hourStart?: string, hou
   return [];
 }
 
-// Función para generar datos del gráfico de tipos de vivienda
+// Función para generar datos del gráfico de tipos de vivienda (por llamadas)
 function generateHousingTypeData(dashboardData?: any) {
   if (dashboardData?.dashboard_data?.tipos_vivienda && Array.isArray(dashboardData.dashboard_data.tipos_vivienda)) {
     // Filtrar excluyendo "no_identificado"
@@ -217,6 +238,38 @@ function generateHousingTypeData(dashboardData?: any) {
     }));
   }
   
+  return [];
+}
+
+// Función para generar datos del gráfico de agendas por tipo de vivienda (por agendas)
+function generateAgendaHousingTypeData(dashboardData?: any) {
+  if (dashboardData?.dashboard_data?.tipos_vivienda_agendas && Array.isArray(dashboardData.dashboard_data.tipos_vivienda_agendas)) {
+    const raw = dashboardData.dashboard_data.tipos_vivienda_agendas;
+    // Calcular total de agendas para porcentajes
+    const total = raw.reduce((sum: number, item: any) => sum + (item.cantidad || 0), 0);
+    if (total <= 0) {
+      // No hay agendas clasificadas por tipo_vivienda, pero puede haber agendas totales.
+      const totalAgendamientos = dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos || 0;
+      if (totalAgendamientos > 0) {
+        return [{
+          label: 'Sin tipo de propiedad',
+          cantidad: totalAgendamientos,
+          porcentaje: 100,
+          tipo: 'sin_tipo',
+        }];
+      }
+      return [];
+    }
+
+    return raw
+      .map((item: any) => ({
+        label: translateHousingType(item.tipo),
+        cantidad: item.cantidad || 0,
+        porcentaje: ((item.cantidad || 0) / total) * 100,
+        tipo: item.tipo
+      }))
+      .filter((item: any) => item.cantidad > 0);
+  }
   return [];
 }
 
@@ -600,26 +653,9 @@ export function Dashboard({
         return { fechaInicio: todayStr, fechaFin: tomorrowStr };
       
       case 'week':
-        // Calcular igual que el backend: desde el lunes de esta semana hasta el lunes siguiente
-        // Obtener fecha actual en zona horaria de Madrid
-        const { year: yearWeek, month: monthWeek, day: dayWeek } = getMadridYmdParts();
-        const todayMadridWeek = new Date(Date.UTC(yearWeek, monthWeek - 1, dayWeek, 0, 0, 0, 0));
-        
-        // Calcular el día de la semana (0 = domingo, 1 = lunes, ..., 6 = sábado)
-        // Usar UTC para obtener el día de la semana correcto
-        const dayOfWeek = todayMadridWeek.getUTCDay();
-        const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-        
-        // Calcular inicio de semana (lunes)
-        const startOfWeek = new Date(todayMadridWeek);
-        startOfWeek.setUTCDate(todayMadridWeek.getUTCDate() - daysToMonday);
-        startOfWeek.setUTCHours(0, 0, 0, 0);
-        
-        // Calcular fin de semana (lunes siguiente)
-        const endOfWeek = new Date(startOfWeek);
-        endOfWeek.setUTCDate(startOfWeek.getUTCDate() + 7);
-        endOfWeek.setUTCHours(0, 0, 0, 0);
-        
+        // Últimos 7 días (incluyendo hoy): hoy - 6 hasta hoy (inclusive), fin = hoy + 1 (exclusivo)
+        const startOfWeek = addDaysUTC(todayMadrid, -6);
+        const endOfWeek = addDaysUTC(todayMadrid, 1);
         return { 
           fechaInicio: startOfWeek.toISOString(), 
           fechaFin: endOfWeek.toISOString() 
@@ -928,11 +964,12 @@ export function Dashboard({
           });
         
         case 'week':
-          const weekStart = addDaysUTC(today, -7);
+          const weekStart = addDaysUTC(today, -6);
+          const weekEndExclusive = addDaysUTC(today, 1);
           return data.filter(item => {
             try {
               const itemDate = new Date(item[dateField]);
-              return !isNaN(itemDate.getTime()) && itemDate >= weekStart;
+              return !isNaN(itemDate.getTime()) && itemDate >= weekStart && itemDate < weekEndExclusive;
             } catch (error) {
               console.warn('Error procesando fecha:', item[dateField], error);
               return false;
@@ -954,14 +991,52 @@ export function Dashboard({
         case 'custom':
           if (customStartDate && customEndDate) {
             try {
-              const [yS, mS, dS] = customStartDate.split('-').map(Number);
-              const [yE, mE, dE] = customEndDate.split('-').map(Number);
-              const startDate = new Date(Date.UTC(yS, (mS || 1) - 1, dS || 1, 0, 0, 0, 0));
-              const endDateExclusive = addDaysUTC(new Date(Date.UTC(yE, (mE || 1) - 1, dE || 1, 0, 0, 0, 0)), 1);
+              // Parsear fechas considerando horas si están disponibles
+              let startDate: Date;
+              let endDateExclusive: Date;
+              
+              if (customStartTime && customEndTime) {
+                const [yS, mS, dS] = customStartDate.split('-').map(Number);
+                const [hS, minS] = customStartTime.split(':').map(Number);
+                const [yE, mE, dE] = customEndDate.split('-').map(Number);
+                const [hE, minE] = customEndTime.split(':').map(Number);
+                
+                startDate = new Date(Date.UTC(yS, (mS || 1) - 1, dS || 1, hS || 0, minS || 0, 0, 0));
+                endDateExclusive = new Date(Date.UTC(yE, (mE || 1) - 1, dE || 1, hE || 23, minE || 59, 59, 999));
+                endDateExclusive = addDaysUTC(endDateExclusive, 0);
+                endDateExclusive.setUTCMilliseconds(999);
+              } else {
+                const [yS, mS, dS] = customStartDate.split('-').map(Number);
+                const [yE, mE, dE] = customEndDate.split('-').map(Number);
+                startDate = new Date(Date.UTC(yS, (mS || 1) - 1, dS || 1, 0, 0, 0, 0));
+                endDateExclusive = addDaysUTC(new Date(Date.UTC(yE, (mE || 1) - 1, dE || 1, 23, 59, 59, 999)), 0);
+              }
+              
               return data.filter(item => {
                 try {
-                  const itemDate = new Date(item[dateField]);
-                  return !isNaN(itemDate.getTime()) && itemDate >= startDate && itemDate < endDateExclusive;
+                  const fechaStr = item[dateField];
+                  if (!fechaStr) return false;
+                  
+                  // Parsear fecha como string YYYY-MM-DD directamente (sin usar new Date que puede cambiar zona horaria)
+                  const fechaParts = fechaStr.toString().split('T')[0].split('-');
+                  if (fechaParts.length !== 3) return false;
+                  
+                  const [itemYear, itemMonth, itemDay] = fechaParts.map(Number);
+                  
+                  // Comparar directamente los componentes de fecha
+                  const itemDateOnly = new Date(Date.UTC(itemYear, itemMonth - 1, itemDay));
+                  const startDateOnly = new Date(Date.UTC(
+                    startDate.getUTCFullYear(),
+                    startDate.getUTCMonth(),
+                    startDate.getUTCDate()
+                  ));
+                  const endDateOnly = new Date(Date.UTC(
+                    endDateExclusive.getUTCFullYear(),
+                    endDateExclusive.getUTCMonth(),
+                    endDateExclusive.getUTCDate()
+                  ));
+                  
+                  return itemDateOnly >= startDateOnly && itemDateOnly < endDateOnly;
                 } catch (error) {
                   console.warn('Error procesando fecha:', item[dateField], error);
                   return false;
@@ -988,7 +1063,12 @@ export function Dashboard({
     try {
       if (dashboardData?.dashboard_data?.llamadas_por_dia) {
         console.log('Datos originales de llamadas_por_dia:', dashboardData.dashboard_data.llamadas_por_dia);
-        const filtered = filterDataByPeriod(dashboardData.dashboard_data.llamadas_por_dia, 'fecha');
+        // Para períodos específicos (week, month, today), el backend ya devuelve datos filtrados
+        // No necesitamos filtrar de nuevo, solo para 'custom' y 'all'
+        let filtered = dashboardData.dashboard_data.llamadas_por_dia;
+        if (timePeriod === 'custom' || timePeriod === 'all') {
+          filtered = filterDataByPeriod(dashboardData.dashboard_data.llamadas_por_dia, 'fecha');
+        }
         console.log('Datos filtrados:', filtered);
         return filtered;
       }
@@ -1000,50 +1080,329 @@ export function Dashboard({
     }
   }, [dashboardData, timePeriod, customStartDate, customEndDate]);
 
+  // Rellenar días faltantes en el rango (semana, mes, personalizado) para que todos aparezcan en el gráfico
+  const filledDailyData = useMemo(() => {
+    const today = getMadridMidnight();
+    const mapByFecha = new Map<string, any>();
+    // Solo incluir datos que estén dentro del rango correcto
+    (filteredDailyData || []).forEach((item: any) => {
+      const f = item.fecha ? String(item.fecha).split('T')[0] : '';
+      if (f) {
+        // Verificar que la fecha esté en el rango correcto antes de agregarla
+        let shouldInclude = true;
+        if (timePeriod === 'week') {
+          const weekStart = addDaysUTC(today, -6);
+          const weekEndExclusive = addDaysUTC(today, 1);
+          const itemDate = new Date(f + 'T00:00:00Z');
+          if (itemDate < weekStart || itemDate >= weekEndExclusive) {
+            shouldInclude = false;
+          }
+        } else if (timePeriod === 'month') {
+          // Para mes: desde el día 1 del mes actual hasta hoy
+          const { year, month } = getMadridYmdParts(today);
+          const monthStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+          const monthEndExclusive = addDaysUTC(today, 1);
+          const itemDate = new Date(f + 'T00:00:00Z');
+          if (itemDate < monthStart || itemDate >= monthEndExclusive) {
+            shouldInclude = false;
+          }
+        }
+        if (shouldInclude) {
+          mapByFecha.set(f, item);
+        }
+      }
+    });
+
+    if (timePeriod === 'week') {
+      const days: any[] = [];
+      for (let i = -6; i <= 0; i++) {
+        const d = addDaysUTC(today, i);
+        const fechaStr = formatMadridDateYYYYMMDD(d);
+        const existing = mapByFecha.get(fechaStr);
+        days.push(existing ?? {
+          fecha: fechaStr,
+          dia_label: formatDiaLabel(fechaStr),
+          total_llamadas: 0,
+          llamadas_efectivas: 0,
+          llamadas_fallidas: 0,
+          costo_dia: 0,
+          total_agendamientos: 0
+        });
+      }
+      return days;
+    }
+    if (timePeriod === 'month') {
+      // Para mes: desde el día 1 del mes actual hasta hoy
+      const { year, month } = getMadridYmdParts(today);
+      const monthStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+      const days: any[] = [];
+      const cursor = new Date(monthStart);
+      const todayEnd = addDaysUTC(today, 1);
+      while (cursor < todayEnd) {
+        const fechaStr = formatMadridDateYYYYMMDD(cursor);
+        const existing = mapByFecha.get(fechaStr);
+        days.push(existing ?? {
+          fecha: fechaStr,
+          dia_label: formatDiaLabel(fechaStr),
+          total_llamadas: 0,
+          llamadas_efectivas: 0,
+          llamadas_fallidas: 0,
+          costo_dia: 0,
+          total_agendamientos: 0
+        });
+        cursor.setUTCDate(cursor.getUTCDate() + 1);
+      }
+      return days;
+    }
+    if (timePeriod === 'custom' && customStartDate && customEndDate) {
+      try {
+        const [yS, mS, dS] = customStartDate.split('-').map(Number);
+        const [yE, mE, dE] = customEndDate.split('-').map(Number);
+        const start = new Date(Date.UTC(yS, (mS || 1) - 1, dS || 1, 0, 0, 0, 0));
+        const end = new Date(Date.UTC(yE, (mE || 1) - 1, dE || 1, 23, 59, 59, 999));
+        const days: any[] = [];
+        const cursor = new Date(start);
+        while (cursor <= end) {
+          const fechaStr = formatMadridDateYYYYMMDD(cursor);
+          const existing = mapByFecha.get(fechaStr);
+          days.push(existing ?? {
+            fecha: fechaStr,
+            dia_label: formatDiaLabel(fechaStr),
+            total_llamadas: 0,
+            llamadas_efectivas: 0,
+            llamadas_fallidas: 0,
+            costo_dia: 0,
+            total_agendamientos: 0
+          });
+          cursor.setUTCDate(cursor.getUTCDate() + 1);
+        }
+        return days;
+      } catch {
+        return filteredDailyData || [];
+      }
+    }
+    return filteredDailyData || [];
+  }, [timePeriod, filteredDailyData, customStartDate, customEndDate]);
+
   const disconnectionData = useMemo(() => generateDisconnectionData([], dashboardData), [dashboardData]);
   const dailyCallsData = useMemo(() => {
-    console.log('Procesando dailyCallsData con filteredDailyData:', filteredDailyData);
+    console.log('Procesando dailyCallsData con filledDailyData:', filledDailyData);
     try {
-      if (filteredDailyData && filteredDailyData.length > 0) {
-        const processedData = filteredDailyData.map((item: any) => {
+      if (filledDailyData && filledDailyData.length > 0) {
+        const processedData = filledDailyData.map((item: any) => {
           try {
             return {
               label: item.dia_label || item.fecha || 'Fecha desconocida',
               llamadas: Number(item.total_llamadas) || 0,
+              llamadas_efectivas: Number(item.llamadas_efectivas) || 0,
               costo: Number(item.costo_dia) || 0,
-              fecha: item.fecha || ''
+              fecha: item.fecha || '',
+              total_agendamientos: Number(item.total_agendamientos) || 0
             };
           } catch (error) {
             console.warn('Error procesando item en dailyCallsData:', item, error);
             return {
               label: 'Error',
               llamadas: 0,
+              llamadas_efectivas: 0,
               costo: 0,
-              fecha: ''
+              fecha: '',
+              total_agendamientos: 0
             };
           }
         });
         console.log('dailyCallsData procesado:', processedData);
         return processedData;
       }
-      console.log('No hay datos filtrados para dailyCallsData');
+      console.log('No hay datos para dailyCallsData');
       return [];
     } catch (error) {
       console.error('Error procesando dailyCallsData:', error);
       return [];
     }
-  }, [filteredDailyData]);
+  }, [filledDailyData]);
   
   const hourlyAgendasData = useMemo(() => generateHourlyAgendasData(dashboardData, hourRangeStart, hourRangeEnd), [dashboardData, hourRangeStart, hourRangeEnd]);
   const housingTypeData = useMemo(() => generateHousingTypeData(dashboardData), [dashboardData]);
+  const agendaHousingTypeData = useMemo(() => generateAgendaHousingTypeData(dashboardData), [dashboardData]);
+  const hasAgendasInPeriod = !!(
+    dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos &&
+    dashboardData.dashboard_data.metricas_generales.total_agendamientos > 0
+  );
+  const agendaPropertyTypeData = useMemo(() => {
+    if (!hasAgendasInPeriod || !agendaHousingTypeData || agendaHousingTypeData.length === 0) return [];
+    return agendaHousingTypeData
+      .map((item: any) => ({
+        label: item.label,
+        porcentaje: typeof item.porcentaje === 'string' ? parseFloat(item.porcentaje) : (item.porcentaje || 0)
+      }))
+      .filter((item: any) => item.porcentaje && item.porcentaje > 0);
+  }, [agendaHousingTypeData, hasAgendasInPeriod]);
   const interestData = useMemo(() => generateInterestData(dashboardData), [dashboardData]);
   const effectiveCallsData = useMemo(() => generateEffectiveCallsData(dashboardData, effectiveCallsHourStart, effectiveCallsHourEnd), [dashboardData, effectiveCallsHourStart, effectiveCallsHourEnd]);
   const agentesPorAgendasData = useMemo(() => generateAgentesPorAgendasData(dashboardData), [dashboardData]);
 
-  // Log para verificar datos del gráfico
-  React.useEffect(() => {
-    console.log('Renderizando Chart con datos:', dailyCallsData);
-  }, [dailyCallsData]);
+  // Datos combinados para gráfico llamadas (barras) vs agendas (línea)
+  const combinedCallsAgendasData = useMemo(() => {
+    // Modo "hoy": usar series por hora
+    if (timePeriod === 'today') {
+      if ((!effectiveCallsData || effectiveCallsData.length === 0) &&
+          (!hourlyAgendasData || hourlyAgendasData.length === 0)) {
+        return [];
+      }
+
+      const map = new Map<string, { label: string; llamadas: number; agendas: number }>();
+
+      if (effectiveCallsData && effectiveCallsData.length > 0) {
+        effectiveCallsData.forEach((item: any) => {
+          const label = item.label ?? '';
+          const llamadas = typeof item.llamadas === 'number' ? item.llamadas : 0;
+          if (!label) return;
+          map.set(label, { label, llamadas, agendas: 0 });
+        });
+      }
+
+      if (hourlyAgendasData && hourlyAgendasData.length > 0) {
+        hourlyAgendasData.forEach((item: any) => {
+          const label = item.label ?? '';
+          const agendas = typeof item.agendas === 'number' ? item.agendas : 0;
+          if (!label) return;
+          const existing = map.get(label);
+          if (existing) {
+            existing.agendas = agendas;
+          } else {
+            map.set(label, { label, llamadas: 0, agendas });
+          }
+        });
+      }
+
+      const result = Array.from(map.values());
+      result.sort((a, b) => a.label.localeCompare(b.label));
+      return result;
+    }
+
+    // Otros períodos (semana, mes, personalizado): usar llamadas efectivas reales por día
+    if (!dailyCallsData || dailyCallsData.length === 0) {
+      return [];
+    }
+
+    // Construir array preservando fecha para ordenar cronológicamente (más antiguo primero)
+    const result = dailyCallsData.map((item: any) => {
+      const label = item.label ?? item.fecha ?? '';
+      const fecha = item.fecha ?? '';
+      const llamadas = typeof item.llamadas_efectivas === 'number' ? item.llamadas_efectivas : 0;
+      const agendas = typeof item.total_agendamientos === 'number' ? item.total_agendamientos : 0;
+      return { label, fecha, llamadas, agendas };
+    });
+
+    // Ordenar por fecha ascendente (día más antiguo primero, hoy al final)
+    result.sort((a: any, b: any) => {
+      const dateA = a.fecha ? String(a.fecha).split('T')[0] : '';
+      const dateB = b.fecha ? String(b.fecha).split('T')[0] : '';
+      return dateA.localeCompare(dateB);
+    });
+
+    // Log para validar suma de llamadas efectivas
+    if (timePeriod === 'week' && result.length > 0) {
+      const sumaGrafico = result.reduce((sum: number, item: any) => sum + item.llamadas, 0);
+      const totalCard = dashboardData?.dashboard_data?.metricas_generales?.llamadas_efectivas || 0;
+      console.log('🔍 Validación llamadas efectivas (semana):', {
+        sumaGrafico,
+        totalCard,
+        diferencia: sumaGrafico - totalCard,
+        datosPorDia: result.map((r: any) => ({ fecha: r.fecha, llamadas: r.llamadas }))
+      });
+    }
+
+    // Si el rango de fechas es mayor a 30 días, agrupar por semana
+    if (result.length > 0) {
+      const firstDateStr = result[0].fecha ? String(result[0].fecha).split('T')[0] : '';
+      const lastDateStr = result[result.length - 1].fecha ? String(result[result.length - 1].fecha).split('T')[0] : '';
+
+      if (firstDateStr && lastDateStr) {
+        const firstDate = new Date(firstDateStr);
+        const lastDate = new Date(lastDateStr);
+        const diffMs = lastDate.getTime() - firstDate.getTime();
+        const diffDays = diffMs / (1000 * 60 * 60 * 24) + 1;
+
+        if (!isNaN(diffDays) && diffDays > 30) {
+          const msPerDay = 24 * 60 * 60 * 1000;
+          const weekMap = new Map<number, {
+            fecha_inicio: string;
+            fecha_fin: string;
+            llamadas: number;
+            agendas: number;
+          }>();
+
+          result.forEach((item: any) => {
+            const fechaStr = item.fecha ? String(item.fecha).split('T')[0] : '';
+            if (!fechaStr) return;
+            const d = new Date(fechaStr);
+            if (isNaN(d.getTime())) return;
+
+            const weekIndex = Math.floor((d.getTime() - firstDate.getTime()) / (7 * msPerDay));
+            const llamadas = typeof item.llamadas === 'number' ? item.llamadas : 0;
+            const agendas = typeof item.agendas === 'number' ? item.agendas : 0;
+
+            const existing = weekMap.get(weekIndex);
+            if (existing) {
+              existing.llamadas += llamadas;
+              existing.agendas += agendas;
+              if (fechaStr < existing.fecha_inicio) existing.fecha_inicio = fechaStr;
+              if (fechaStr > existing.fecha_fin) existing.fecha_fin = fechaStr;
+            } else {
+              weekMap.set(weekIndex, {
+                fecha_inicio: fechaStr,
+                fecha_fin: fechaStr,
+                llamadas,
+                agendas,
+              });
+            }
+          });
+
+          const weeklyResult = Array.from(weekMap.entries())
+            .sort((a, b) => a[0] - b[0])
+            .map(([_, value]) => {
+              const formatShort = (iso: string) => {
+                const d = new Date(iso);
+                if (isNaN(d.getTime())) return iso;
+                return d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
+              };
+
+              const label = `${formatShort(value.fecha_inicio)} al ${formatShort(value.fecha_fin)}`;
+
+              return {
+                label,
+                fecha_inicio: value.fecha_inicio,
+                fecha_fin: value.fecha_fin,
+                llamadas: value.llamadas,
+                agendas: value.agendas,
+              };
+            });
+
+          return weeklyResult;
+        }
+      }
+    }
+
+    return result;
+  }, [timePeriod, effectiveCallsData, hourlyAgendasData, dailyCallsData, dashboardData]);
+
+  // Determinar si estamos en un rango "largo" (agrupado por semanas o todos los datos)
+  const isLongRange = useMemo(() => {
+    // Si estamos mostrando todos los datos, siempre considerar rango largo
+    if (timePeriod === 'all') return true;
+
+    // Si los datos combinados tienen campos de rango semanal, también es rango largo
+    if (combinedCallsAgendasData && combinedCallsAgendasData.length > 0) {
+      const hasWeeklyRange = combinedCallsAgendasData.some(
+        (item: any) => item.fecha_inicio && item.fecha_fin
+      );
+      if (hasWeeklyRange) return true;
+    }
+
+    return false;
+  }, [timePeriod, combinedCallsAgendasData]);
   
   // Métricas calculadas con datos filtrados
   const filteredMetrics = useMemo(() => {
@@ -1067,7 +1426,7 @@ export function Dashboard({
   // Procesar los datos para el gráfico apilado (efectivas/fallidas) optimizado
   const stackedDailyChartData = React.useMemo(() => {
     // Filtrar días sin llamadas
-    const filtered = filteredDailyData.filter(item => {
+    const filtered = filteredDailyData.filter((item: any) => {
       const anyItem = item as any;
       const total = (typeof anyItem.llamadas_efectivas === 'number' ? anyItem.llamadas_efectivas : 0)
         + (typeof anyItem.llamadas_fallidas === 'number' ? anyItem.llamadas_fallidas : 0);
@@ -1075,7 +1434,7 @@ export function Dashboard({
     });
     // Limitar a los últimos 30 días si hay muchos datos
     const limited = filtered.length > 30 ? filtered.slice(-30) : filtered;
-    return limited.map(item => {
+    return limited.map((item: any) => {
       const anyItem = item as any;
       return {
         label: item.label,
@@ -1942,7 +2301,170 @@ export function Dashboard({
               </Card>
             )}
           </div>
-          
+
+        {/* Bloque: Llamadas contestadas / Agendas + Agendas por tipo de propiedad */}
+        {(combinedCallsAgendasData && combinedCallsAgendasData.length > 0) || (hasAgendasInPeriod && agendaPropertyTypeData && agendaPropertyTypeData.length > 0) ? (
+          <div
+            className={`grid gap-4 mb-8 ${
+              isLongRange
+                ? 'md:grid-cols-1'
+                : (hasAgendasInPeriod && agendaPropertyTypeData && agendaPropertyTypeData.length > 0
+                    ? 'md:grid-cols-2'
+                    : 'md:grid-cols-1')
+            }`}
+          >
+              {combinedCallsAgendasData && combinedCallsAgendasData.length > 0 && (
+                <Card className="shadow-lg border border-slate-200">
+                  <CardHeader>
+                    <CardTitle className="text-base font-semibold text-slate-800">
+                      Llamadas contestadas / Agendas
+                    </CardTitle>
+                    <CardDescription className="text-slate-500">
+                      Llamadas contestadas (barras azules) y agendas creadas (línea roja) {timePeriod === 'today' ? 'por hora' : 'en el período seleccionado'}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0 md:p-6">
+                    <div className="h-[320px] bg-white rounded-xl p-4 md:p-6">
+                      <RechartsResponsiveContainer width="100%" height="100%">
+                        <RechartsComposedChart data={combinedCallsAgendasData}>
+                          <RechartsCartesianGrid strokeDasharray="3 3" vertical={false} />
+                          <RechartsXAxis dataKey="label" stroke="#888888" fontSize={12} />
+                          <RechartsYAxis
+                            yAxisId="left"
+                            stroke="#1d4ed8"
+                            fontSize={12}
+                            tickFormatter={(v) => v.toLocaleString('es-ES')}
+                          />
+                          <RechartsYAxis
+                            yAxisId="right"
+                            orientation="right"
+                            stroke="#dc2626"
+                            fontSize={12}
+                            tickFormatter={(v) => v.toLocaleString('es-ES')}
+                          />
+                          <RechartsTooltip
+                            contentStyle={{
+                              background: "white",
+                              border: "1px solid #e5e7eb",
+                              color: "#111827",
+                              fontSize: 13,
+                            }}
+                            formatter={(value: any, _name: string, props: any) => {
+                              const dataKey = props?.dataKey;
+                              const label =
+                                dataKey === 'llamadas'
+                                  ? 'Llamadas'
+                                  : dataKey === 'agendas'
+                                    ? 'Agendas'
+                                    : _name;
+
+                              if (typeof value === 'number') {
+                                return [value.toLocaleString('es-ES'), label];
+                              }
+                              return [value, label];
+                            }}
+                          />
+                          <RechartsLegend />
+                          <RechartsBar
+                            yAxisId="left"
+                            dataKey="llamadas"
+                            name="Llamadas"
+                            fill="#3b82f6"
+                            radius={[4, 4, 0, 0]}
+                          />
+                          <RechartsLine
+                            yAxisId="right"
+                            type="monotone"
+                            dataKey="agendas"
+                            name="Agendas"
+                            stroke="#dc2626"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            activeDot={{ r: 5 }}
+                          />
+                        </RechartsComposedChart>
+                      </RechartsResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {agendaEnabled && hasAgendasInPeriod && agendaPropertyTypeData && agendaPropertyTypeData.length > 0 && (
+                <Card className="shadow-lg border border-slate-200">
+                  <CardHeader>
+                    <CardTitle className="text-base font-semibold text-slate-800">
+                      Agendas por tipo de propiedad
+                    </CardTitle>
+                    <CardDescription className="text-slate-500">
+                      Distribución porcentual de agendas según tipo de vivienda
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0 md:p-6">
+                    <div className="h-[320px] bg-white rounded-xl p-4 md:p-6">
+                      <RechartsResponsiveContainer width="100%" height="100%">
+                        <RechartsPieChart>
+                          <RechartsTooltip
+                            contentStyle={{
+                              background: "white",
+                              border: "1px solid #e5e7eb",
+                              color: "#111827",
+                              fontSize: 13,
+                            }}
+                            formatter={(value: any, _name: string, props: any) => {
+                              const label = props?.payload?.label ?? _name;
+                              if (typeof value === 'number') {
+                                const pct = `${value.toFixed(2)}%`;
+                                return [pct, label];
+                              }
+                              return [value, label];
+                            }}
+                          />
+                          <RechartsLegend 
+                            verticalAlign="bottom" 
+                            height={agendaPropertyTypeData.length > 3 ? 80 : 36}
+                            wrapperStyle={{ fontSize: '12px' }}
+                            formatter={(value, entry: any) => {
+                              const pct = entry?.payload?.porcentaje;
+                              if (pct != null && pct !== undefined) {
+                                return `${value} (${Number(pct).toFixed(1)}%)`;
+                              }
+                              return value;
+                            }}
+                          />
+                          <RechartsPie
+                            data={agendaPropertyTypeData}
+                            dataKey="porcentaje"
+                            nameKey="label"
+                            cx="50%"
+                            cy={agendaPropertyTypeData.length > 3 ? "40%" : "50%"}
+                            outerRadius={agendaPropertyTypeData.length > 3 ? 75 : 90}
+                            labelLine={false}
+                            label={agendaPropertyTypeData.length > 3 ? false : (entry: any) => `${entry.label}: ${entry.porcentaje.toFixed(2)}%`}
+                          >
+                            {agendaPropertyTypeData.map((entry: any, index: number) => {
+                              const label = (entry.label || '').toString().toLowerCase();
+                              let fill = '#6366f1'; // color por defecto
+
+                              if (label.includes('casa')) {
+                                fill = '#facc15'; // amarillo
+                              } else if (label.includes('piso')) {
+                                fill = '#22c55e'; // verde
+                              } else if (label.includes('alquiler')) {
+                                fill = '#3b82f6'; // azul
+                              }
+
+                              return <RechartsCell key={`cell-${index}`} fill={fill} />;
+                            })}
+                          </RechartsPie>
+                        </RechartsPieChart>
+                      </RechartsResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          ) : null}
+       
           {/* Resumen detallado de llamadas efectivas por hora */}
           {dashboardData?.dashboard_data?.llamadas_efectivas_por_hora && (
             <Card className="mb-8">

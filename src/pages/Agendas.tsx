@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { fetchAgendas, fetchAllAgendas, deleteAgenda } from '../api';
+import { fetchAgendas, fetchAllAgendas, deleteAgenda, getAverageCallsPerAgenda } from '../api';
 import { Agenda } from '../types';
 import { useCallsContext } from '../context/CallsContext';
-import { Calendar, Clock, MapPin, Phone, User, Building, Search, Filter, RefreshCw, AlertCircle, X, List, CalendarDays, Download, Trash2 } from 'lucide-react';
+import { Calendar, Clock, MapPin, Phone, User, Building, Search, Filter, RefreshCw, AlertCircle, X, List, CalendarDays, Download, Trash2, BarChart3 } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { Chart } from '../components/ui/chart';
 import { AgendaModal } from '../components/AgendaModal';
 import { AgendaCalendar } from '../components/AgendaCalendar';
 import { exportAgendasToCSV, generateCSVFilename } from '../lib/csvExport';
@@ -24,13 +26,15 @@ export function Agendas({ onNavigate }: AgendasProps) {
   const [dateTo, setDateTo] = useState('');
   const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
   const [currentPage, setCurrentPage] = useState(1);
-  const [activeTab, setActiveTab] = useState<'list' | 'calendar'>('list');
+  const [activeTab, setActiveTab] = useState<'list' | 'calendar' | 'calendarScheduled'>('list');
   const [selectedAgenda, setSelectedAgenda] = useState<Agenda | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [agendaToDelete, setAgendaToDelete] = useState<Agenda | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [averageStats, setAverageStats] = useState<{ average_calls: number; total_agendas: number; total_calls: number } | null>(null);
+  const [loadingAverage, setLoadingAverage] = useState(false);
   const itemsPerPage = 10;
 
   // Cargar agendas
@@ -47,11 +51,11 @@ export function Agendas({ onNavigate }: AgendasProps) {
       console.log('Cargando agendas para client_id:', clientId);
       console.log('Filtros de fecha aplicados:', { dateFrom, dateTo });
       
-      // Usar fetchAllAgendas para obtener todas las agendas con filtros de fecha
+      // Usar fetchAllAgendas para obtener todas las agendas con filtros de fecha y tipo
       const agendasData = await fetchAllAgendas(
         clientId,
-        undefined, // searchTerm
-        undefined, // filterType
+        undefined, // searchTerm (la búsqueda se aplica en el cliente)
+        filterType !== 'all' ? filterType : undefined, // filtro por tipo de agenda
         dateFrom || undefined,
         dateTo || undefined,
         sortOrder, // sort_order
@@ -75,12 +79,36 @@ export function Agendas({ onNavigate }: AgendasProps) {
     }
   };
 
-  // Cargar agendas al montar el componente o cuando cambien los filtros de fecha, ordenamiento o agente
+  // Cargar agendas al montar el componente o cuando cambien los filtros de fecha, tipo, ordenamiento o agente
   useEffect(() => {
     loadAgendas();
-  }, [clientId, dateFrom, dateTo, sortOrder, filterAgentId]);
+  }, [clientId, dateFrom, dateTo, sortOrder, filterAgentId, filterType]);
 
-  // Filtrar agendas (solo búsqueda y tipo, las fechas se filtran en la API)
+  // Cargar promedio de llamadas por agenda
+  useEffect(() => {
+    const loadAverageCalls = async () => {
+      if (!clientId) return;
+      
+      setLoadingAverage(true);
+      try {
+        const stats = await getAverageCallsPerAgenda(
+          clientId,
+          dateFrom || undefined,
+          dateTo || undefined
+        );
+        setAverageStats({ average_calls: stats.average_calls, total_agendas: stats.total_agendas, total_calls: stats.total_calls });
+      } catch (err) {
+        console.error('Error al cargar promedio de llamadas:', err);
+        setAverageStats(null);
+      } finally {
+        setLoadingAverage(false);
+      }
+    };
+    
+    loadAverageCalls();
+  }, [clientId, dateFrom, dateTo]);
+
+  // Filtrar agendas (búsqueda y tipo; fechas y agente se filtran en la API)
   useEffect(() => {
     // Asegurar que agendas sea un array antes de filtrarlo
     const validAgendas = Array.isArray(agendas) ? agendas : [];
@@ -97,12 +125,12 @@ export function Agendas({ onNavigate }: AgendasProps) {
       );
     }
 
-    // Filtrar por tipo
+    // Filtrar por tipo de agenda (además del filtro en la API, reforzamos en el cliente)
     if (filterType !== 'all') {
       filtered = filtered.filter(agenda => agenda.tipo_agenda === filterType);
     }
 
-    // NOTA: Los filtros de fecha (dateFrom, dateTo) se aplican en la API
+    // NOTA: Los filtros de fecha (dateFrom, dateTo) y agente se aplican en la API
     // No se filtran aquí para evitar duplicación
 
     setFilteredAgendas(filtered);
@@ -435,11 +463,62 @@ export function Agendas({ onNavigate }: AgendasProps) {
             <CalendarDays className="w-5 h-5" />
             Calendario
           </button>
+          <button
+            onClick={() => setActiveTab('calendarScheduled')}
+            className={`flex items-center gap-2 px-6 py-3 font-medium transition-colors ${
+              activeTab === 'calendarScheduled'
+                ? 'text-emerald-700 border-b-2 border-emerald-700'
+                : 'text-slate-600 hover:text-slate-800'
+            }`}
+          >
+            <CalendarDays className="w-5 h-5" />
+            Calendario de Agendas
+          </button>
         </div>
 
         {/* Contenido de las pestañas */}
         {activeTab === 'list' && (
           <div>
+            {/* Card: Promedio de llamadas por agenda con gráfico */}
+            {loadingAverage && (
+              <div className="mb-6 p-4 bg-slate-50 rounded-lg border border-slate-200 text-slate-500 text-sm">
+                Calculando promedio de llamadas...
+              </div>
+            )}
+            {!loadingAverage && averageStats !== null && (
+              <Card className="mb-6 shadow-lg border-slate-200">
+                <CardHeader className="pb-2">
+                  <div className="flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5 text-violet-600" />
+                    <CardTitle className="text-lg">Promedio de llamadas por agenda</CardTitle>
+                  </div>
+                  <CardDescription>
+                    {agendas.length.toLocaleString('es-ES')} agendas · {averageStats.total_calls.toLocaleString('es-ES')} llamadas totales
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                    <div className="text-center md:text-left">
+                      <p className="text-3xl font-bold text-violet-600">
+                        {averageStats.average_calls.toFixed(2)}
+                      </p>
+                      <p className="text-sm text-slate-600">llamadas por agenda (promedio)</p>
+                    </div>
+                    <div className="md:col-span-2 h-[180px]">
+                      <Chart
+                        data={[{ label: 'Llamadas por agenda (promedio)', llamadas: averageStats.average_calls }]}
+                        type="bar"
+                        xKey="label"
+                        yKey="llamadas"
+                        height={180}
+                        colors={['#7c3aed']}
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Información de la lista */}
             <div className="mb-6">
               <p className="text-slate-600">
@@ -620,7 +699,8 @@ export function Agendas({ onNavigate }: AgendasProps) {
                     {currentAgendas.map((agenda) => (
                       <div
                         key={agenda.id}
-                        className="bg-white rounded-lg p-6 hover:bg-slate-50 transition-colors shadow-lg border border-slate-200 relative"
+                        onClick={() => openAgendaModal(agenda)}
+                        className="bg-white rounded-lg p-6 hover:bg-slate-50 transition-colors shadow-lg border border-slate-200 relative cursor-pointer"
                       >
                         {/* Botón de eliminar en la esquina superior derecha */}
                         <button
@@ -635,10 +715,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
                           {/* Información principal */}
                           <div className="space-y-3">
                             <div className="flex items-center justify-between pr-12">
-                              <div 
-                                className="flex items-center space-x-2 cursor-pointer flex-1"
-                                onClick={() => openAgendaModal(agenda)}
-                              >
+                              <div className="flex items-center space-x-2 flex-1">
                                 <User className="w-5 h-5 text-blue-600" />
                                 <h3 className="text-lg font-semibold text-slate-800">
                                   {agenda?.nombre || 'Sin nombre'}
@@ -762,14 +839,17 @@ export function Agendas({ onNavigate }: AgendasProps) {
           </div>
         )}
 
-        {/* Pestaña del Calendario */}
+        {/* Pestaña del Calendario (creación) */}
         {activeTab === 'calendar' && (
           <div>
             <div className="mb-6">
-              <h3 className="text-xl font-semibold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800 mb-2">Calendario de Agendas</h3>
-              <p className="text-slate-600 text-sm">Visualiza tus agendas en formato calendario y filtra por tipo</p>
+              <h3 className="text-xl font-semibold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800 mb-2">
+                Calendario
+              </h3>
+              <p className="text-slate-600 text-sm">
+                Agendas ubicadas según la fecha en que fueron creadas.
+              </p>
             </div>
-            
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <RefreshCw className="animate-spin w-8 h-8 text-blue-600 mr-3" />
@@ -784,9 +864,43 @@ export function Agendas({ onNavigate }: AgendasProps) {
               </div>
             ) : (
               <AgendaCalendar 
-                agendas={agendas} 
+                agendas={filteredAgendas} 
                 onAgendaClick={openAgendaModal}
                 onLoadAllAgendas={clientId ? () => fetchAllAgendas(clientId) : undefined}
+                mode="created"
+              />
+            )}
+          </div>
+        )}
+
+        {activeTab === 'calendarScheduled' && (
+          <div>
+            <div className="mb-6">
+              <h3 className="text-xl font-semibold text-transparent bg-clip-text bg-gradient-to-r from-emerald-700 to-teal-800 mb-2">
+                Calendario de Agendas
+              </h3>
+              <p className="text-slate-600 text-sm">
+                Visualiza tus agendas posicionadas en la fecha en que fueron agendadas (fecha de visita).
+              </p>
+            </div>
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <RefreshCw className="animate-spin w-8 h-8 text-emerald-600 mr-3" />
+                <span className="text-slate-600">Cargando calendario...</span>
+              </div>
+            ) : error ? (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <div className="flex items-center">
+                  <AlertCircle className="w-5 h-5 text-red-600 mr-2" />
+                  <span className="text-red-700">{error}</span>
+                </div>
+              </div>
+            ) : (
+              <AgendaCalendar 
+                agendas={filteredAgendas} 
+                onAgendaClick={openAgendaModal}
+                onLoadAllAgendas={clientId ? () => fetchAllAgendas(clientId) : undefined}
+                mode="scheduled"
               />
             )}
           </div>

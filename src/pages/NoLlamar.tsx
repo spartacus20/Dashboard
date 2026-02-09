@@ -18,6 +18,7 @@ import { DontCall } from '../types';
 import { useCallsContext } from '../context/CallsContext';
 import { listDontCallRecords, getClientApiKey } from '../api';
 import { useUserData } from '../hooks/useUserData';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 
 const NoLlamar: React.FC = () => {
   const { dontCallEnabled } = useCallsContext();
@@ -33,6 +34,10 @@ const NoLlamar: React.FC = () => {
   const [totalPages, setTotalPages] = useState(0);
   const [apiKey, setApiKey] = useState<string | null>(userApiKey);
   const recordsPerPage = 50;
+  const [exporting, setExporting] = useState(false);
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [exportMode, setExportMode] = useState<'page' | 'all' | 'custom'>('page');
+  const [customExportCount, setCustomExportCount] = useState<string>('');
 
   // Efecto para obtener la API key si no está disponible
   useEffect(() => {
@@ -58,6 +63,31 @@ const NoLlamar: React.FC = () => {
     fetchApiKey();
   }, [apiKey, clientId]);
 
+  // Construir parámetros comunes para la API de No Llamar
+  const buildDontCallParams = (perPage: number, page: number) => {
+    const params: any = {
+      client_id: clientId,
+      per_page: perPage,
+      page,
+      sort_order: 'DESC'
+    };
+
+    // Aplicar filtros
+    if (searchTerm) {
+      params.search_term = searchTerm;
+    }
+
+    if (dateFrom) {
+      params.fecha_inicio = `${dateFrom}T00:00:00.000Z`;
+    }
+
+    if (dateTo) {
+      params.fecha_fin = `${dateTo}T23:59:59.999Z`;
+    }
+
+    return params;
+  };
+
   // Función para cargar los registros de "No Llamar"
   const loadDontCallRecords = async (page: number = 1) => {
     try {
@@ -70,27 +100,7 @@ const NoLlamar: React.FC = () => {
         return;
       }
 
-      // Preparar parámetros para la API
-      const params: any = {
-        client_id: clientId,
-        per_page: recordsPerPage,
-        page: page,
-        sort_order: 'DESC'
-      };
-
-      // Aplicar filtros
-      if (searchTerm) {
-        params.search_term = searchTerm;
-      }
-
-
-      if (dateFrom) {
-        params.fecha_inicio = `${dateFrom}T00:00:00.000Z`;
-      }
-
-      if (dateTo) {
-        params.fecha_fin = `${dateTo}T23:59:59.999Z`;
-      }
+      const params = buildDontCallParams(recordsPerPage, page);
 
       console.log('🔍 Cargando registros de No Llamar con parámetros:', params);
 
@@ -112,8 +122,8 @@ const NoLlamar: React.FC = () => {
     }
   };
 
-  // Función para exportar a CSV
-  const exportToCSV = () => {
+  // Función auxiliar para generar y descargar un CSV dado un conjunto de registros
+  const downloadDontCallCSV = (records: DontCall[], filenameSuffix: string) => {
     const headers = [
       'ID',
       'Teléfono',
@@ -125,7 +135,7 @@ const NoLlamar: React.FC = () => {
 
     const csvContent = [
       headers.join(','),
-      ...dontCallRecords.map(record => [
+      ...records.map(record => [
         record.id,
         `"${record.phone_number}"`,
         `"${record.name || ''}"`,
@@ -139,11 +149,82 @@ const NoLlamar: React.FC = () => {
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `no_llamar_${totalRecords}_registros_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `no_llamar_${filenameSuffix}_${new Date().toISOString().split('T')[0]}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  // Función para exportar a CSV con selección de cantidad
+  const exportToCSV = async () => {
+    try {
+      if (!apiKey || !clientId) {
+        setError('No hay API key o client_id para exportar');
+        return;
+      }
+
+      if (totalRecords === 0 || dontCallRecords.length === 0) {
+        setError('No hay registros para exportar');
+        return;
+      }
+
+      let maxToExport: number;
+
+      if (exportMode === 'page') {
+        maxToExport = dontCallRecords.length;
+      } else if (exportMode === 'all') {
+        maxToExport = totalRecords;
+      } else {
+        const parsed = parseInt(customExportCount.trim(), 10);
+        if (isNaN(parsed) || parsed <= 0) {
+          setError('Ingresa una cantidad válida de registros para exportar.');
+          return;
+        }
+        maxToExport = Math.min(parsed, totalRecords);
+      }
+
+      setExporting(true);
+      setError(null);
+
+      // Si lo que pidió cabe en la página actual, no llamamos más a la API
+      if (maxToExport <= dontCallRecords.length) {
+        downloadDontCallCSV(dontCallRecords.slice(0, maxToExport), `${maxToExport}_registros`);
+        setIsExportDialogOpen(false);
+        return;
+      }
+
+      // Si necesita más que la página actual, ir paginando contra el backend
+      const allRecords: DontCall[] = [];
+      let page = 1;
+      const perPage = 100; // máximo que permite el backend
+
+      while (allRecords.length < maxToExport) {
+        const params = buildDontCallParams(perPage, page);
+        const response = await listDontCallRecords(apiKey, params);
+
+        if (!response.registros || response.registros.length === 0) {
+          break;
+        }
+
+        allRecords.push(...(response.registros as DontCall[]));
+
+        if (page >= (response.total_paginas || 0)) {
+          break;
+        }
+
+        page += 1;
+      }
+
+      const finalRecords = allRecords.slice(0, maxToExport);
+      downloadDontCallCSV(finalRecords, `${finalRecords.length}_registros`);
+      setIsExportDialogOpen(false);
+    } catch (err) {
+      console.error('Error al exportar registros de No Llamar:', err);
+      setError(err instanceof Error ? err.message : 'Error al exportar registros');
+    } finally {
+      setExporting(false);
+    }
   };
 
   // Función para formatear fecha
@@ -222,7 +303,7 @@ const NoLlamar: React.FC = () => {
             Actualizar
           </Button>
           <Button
-            onClick={exportToCSV}
+            onClick={() => setIsExportDialogOpen(true)}
             disabled={dontCallRecords.length === 0}
             size="sm"
           >
@@ -282,6 +363,117 @@ const NoLlamar: React.FC = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Dialog de exportación */}
+      <Dialog open={isExportDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          // Resetear estado si se cierra sin exportar
+          setIsExportDialogOpen(false);
+          setExportMode('page');
+          setCustomExportCount('');
+        }
+      }}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>Exportar registros de No Llamar</DialogTitle>
+            <DialogDescription>
+              Elige cuántos registros quieres exportar aplicando los filtros actuales.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <p className="text-sm text-slate-600">
+                Registros totales (con filtros): <span className="font-semibold">{totalRecords.toLocaleString()}</span>
+              </p>
+              <p className="text-xs text-slate-500">
+                La exportación puede tardar más si seleccionas muchos registros.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  type="radio"
+                  className="h-4 w-4"
+                  checked={exportMode === 'page'}
+                  onChange={() => setExportMode('page')}
+                />
+                <span>
+                  Exportar solo la página actual ({dontCallRecords.length} registros)
+                </span>
+              </label>
+
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  type="radio"
+                  className="h-4 w-4"
+                  checked={exportMode === 'all'}
+                  onChange={() => setExportMode('all')}
+                />
+                <span>
+                  Exportar todos los registros filtrados ({totalRecords.toLocaleString()})
+                </span>
+              </label>
+
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="radio"
+                    className="h-4 w-4"
+                    checked={exportMode === 'custom'}
+                    onChange={() => setExportMode('custom')}
+                  />
+                  <span>Exportar una cantidad específica</span>
+                </label>
+                <div className="pl-7">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={totalRecords || undefined}
+                    placeholder="Ej: 200"
+                    value={customExportCount}
+                    onChange={(e) => setCustomExportCount(e.target.value)}
+                    disabled={exportMode !== 'custom'}
+                    className="bg-white border border-slate-300 text-slate-700"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">
+                    Máximo: {totalRecords.toLocaleString()} registros.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsExportDialogOpen(false);
+                setExportMode('page');
+                setCustomExportCount('');
+              }}
+              disabled={exporting}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={exportToCSV}
+              disabled={exporting}
+            >
+              {exporting ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Exportando...
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4 mr-2" />
+                  Confirmar exportación
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Filtros */}
       <Card className="bg-white border border-gray-200">
