@@ -15,6 +15,7 @@ import {
 import {
   ResponsiveContainer as RechartsResponsiveContainer,
   ComposedChart as RechartsComposedChart,
+  BarChart as RechartsBarChart,
   Bar as RechartsBar,
   Line as RechartsLine,
   PieChart as RechartsPieChart,
@@ -1313,13 +1314,95 @@ export function Dashboard({
       });
     }
 
-    return result;
-  }, [timePeriod, effectiveCallsData, hourlyAgendasData, dailyCallsData]);
+    // Si el rango de fechas es mayor a 30 días, agrupar por semana
+    if (result.length > 0) {
+      const firstDateStr = result[0].fecha ? String(result[0].fecha).split('T')[0] : '';
+      const lastDateStr = result[result.length - 1].fecha ? String(result[result.length - 1].fecha).split('T')[0] : '';
 
-  // Log para verificar datos del gráfico
-  React.useEffect(() => {
-    console.log('Renderizando Chart con datos:', dailyCallsData);
-  }, [dailyCallsData]);
+      if (firstDateStr && lastDateStr) {
+        const firstDate = new Date(firstDateStr);
+        const lastDate = new Date(lastDateStr);
+        const diffMs = lastDate.getTime() - firstDate.getTime();
+        const diffDays = diffMs / (1000 * 60 * 60 * 24) + 1;
+
+        if (!isNaN(diffDays) && diffDays > 30) {
+          const msPerDay = 24 * 60 * 60 * 1000;
+          const weekMap = new Map<number, {
+            fecha_inicio: string;
+            fecha_fin: string;
+            llamadas: number;
+            agendas: number;
+          }>();
+
+          result.forEach((item: any) => {
+            const fechaStr = item.fecha ? String(item.fecha).split('T')[0] : '';
+            if (!fechaStr) return;
+            const d = new Date(fechaStr);
+            if (isNaN(d.getTime())) return;
+
+            const weekIndex = Math.floor((d.getTime() - firstDate.getTime()) / (7 * msPerDay));
+            const llamadas = typeof item.llamadas === 'number' ? item.llamadas : 0;
+            const agendas = typeof item.agendas === 'number' ? item.agendas : 0;
+
+            const existing = weekMap.get(weekIndex);
+            if (existing) {
+              existing.llamadas += llamadas;
+              existing.agendas += agendas;
+              if (fechaStr < existing.fecha_inicio) existing.fecha_inicio = fechaStr;
+              if (fechaStr > existing.fecha_fin) existing.fecha_fin = fechaStr;
+            } else {
+              weekMap.set(weekIndex, {
+                fecha_inicio: fechaStr,
+                fecha_fin: fechaStr,
+                llamadas,
+                agendas,
+              });
+            }
+          });
+
+          const weeklyResult = Array.from(weekMap.entries())
+            .sort((a, b) => a[0] - b[0])
+            .map(([_, value]) => {
+              const formatShort = (iso: string) => {
+                const d = new Date(iso);
+                if (isNaN(d.getTime())) return iso;
+                return d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
+              };
+
+              const label = `${formatShort(value.fecha_inicio)} al ${formatShort(value.fecha_fin)}`;
+
+              return {
+                label,
+                fecha_inicio: value.fecha_inicio,
+                fecha_fin: value.fecha_fin,
+                llamadas: value.llamadas,
+                agendas: value.agendas,
+              };
+            });
+
+          return weeklyResult;
+        }
+      }
+    }
+
+    return result;
+  }, [timePeriod, effectiveCallsData, hourlyAgendasData, dailyCallsData, dashboardData]);
+
+  // Determinar si estamos en un rango "largo" (agrupado por semanas o todos los datos)
+  const isLongRange = useMemo(() => {
+    // Si estamos mostrando todos los datos, siempre considerar rango largo
+    if (timePeriod === 'all') return true;
+
+    // Si los datos combinados tienen campos de rango semanal, también es rango largo
+    if (combinedCallsAgendasData && combinedCallsAgendasData.length > 0) {
+      const hasWeeklyRange = combinedCallsAgendasData.some(
+        (item: any) => item.fecha_inicio && item.fecha_fin
+      );
+      if (hasWeeklyRange) return true;
+    }
+
+    return false;
+  }, [timePeriod, combinedCallsAgendasData]);
   
   // Métricas calculadas con datos filtrados
   const filteredMetrics = useMemo(() => {
@@ -2219,9 +2302,17 @@ export function Dashboard({
             )}
           </div>
 
-          {/* Bloque: Llamadas contestadas / Agendas + Agendas por tipo de propiedad */}
-          {(combinedCallsAgendasData && combinedCallsAgendasData.length > 0) || (hasAgendasInPeriod && agendaPropertyTypeData && agendaPropertyTypeData.length > 0) ? (
-            <div className={`grid gap-4 mb-8 ${hasAgendasInPeriod && agendaPropertyTypeData && agendaPropertyTypeData.length > 0 ? 'md:grid-cols-2' : 'md:grid-cols-1'}`}>
+        {/* Bloque: Llamadas contestadas / Agendas + Agendas por tipo de propiedad */}
+        {(combinedCallsAgendasData && combinedCallsAgendasData.length > 0) || (hasAgendasInPeriod && agendaPropertyTypeData && agendaPropertyTypeData.length > 0) ? (
+          <div
+            className={`grid gap-4 mb-8 ${
+              isLongRange
+                ? 'md:grid-cols-1'
+                : (hasAgendasInPeriod && agendaPropertyTypeData && agendaPropertyTypeData.length > 0
+                    ? 'md:grid-cols-2'
+                    : 'md:grid-cols-1')
+            }`}
+          >
               {combinedCallsAgendasData && combinedCallsAgendasData.length > 0 && (
                 <Card className="shadow-lg border border-slate-200">
                   <CardHeader>
@@ -2328,16 +2419,27 @@ export function Dashboard({
                               return [value, label];
                             }}
                           />
-                          <RechartsLegend />
+                          <RechartsLegend 
+                            verticalAlign="bottom" 
+                            height={agendaPropertyTypeData.length > 3 ? 80 : 36}
+                            wrapperStyle={{ fontSize: '12px' }}
+                            formatter={(value, entry: any) => {
+                              const pct = entry?.payload?.porcentaje;
+                              if (pct != null && pct !== undefined) {
+                                return `${value} (${Number(pct).toFixed(1)}%)`;
+                              }
+                              return value;
+                            }}
+                          />
                           <RechartsPie
                             data={agendaPropertyTypeData}
                             dataKey="porcentaje"
                             nameKey="label"
                             cx="50%"
-                            cy="50%"
-                            outerRadius={90}
+                            cy={agendaPropertyTypeData.length > 3 ? "40%" : "50%"}
+                            outerRadius={agendaPropertyTypeData.length > 3 ? 75 : 90}
                             labelLine={false}
-                            label={(entry: any) => `${entry.label}: ${entry.porcentaje.toFixed(2)}%`}
+                            label={agendaPropertyTypeData.length > 3 ? false : (entry: any) => `${entry.label}: ${entry.porcentaje.toFixed(2)}%`}
                           >
                             {agendaPropertyTypeData.map((entry: any, index: number) => {
                               const label = (entry.label || '').toString().toLowerCase();
@@ -2362,7 +2464,7 @@ export function Dashboard({
               )}
             </div>
           ) : null}
-n           
+       
           {/* Resumen detallado de llamadas efectivas por hora */}
           {dashboardData?.dashboard_data?.llamadas_efectivas_por_hora && (
             <Card className="mb-8">

@@ -26,7 +26,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
   const [dateTo, setDateTo] = useState('');
   const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
   const [currentPage, setCurrentPage] = useState(1);
-  const [activeTab, setActiveTab] = useState<'list' | 'calendar'>('list');
+  const [activeTab, setActiveTab] = useState<'list' | 'calendar' | 'calendarScheduled'>('list');
   const [selectedAgenda, setSelectedAgenda] = useState<Agenda | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -51,11 +51,11 @@ export function Agendas({ onNavigate }: AgendasProps) {
       console.log('Cargando agendas para client_id:', clientId);
       console.log('Filtros de fecha aplicados:', { dateFrom, dateTo });
       
-      // Usar fetchAllAgendas para obtener todas las agendas con filtros de fecha
+      // Usar fetchAllAgendas para obtener todas las agendas con filtros de fecha y tipo
       const agendasData = await fetchAllAgendas(
         clientId,
-        undefined, // searchTerm
-        undefined, // filterType
+        undefined, // searchTerm (la búsqueda se aplica en el cliente)
+        filterType !== 'all' ? filterType : undefined, // filtro por tipo de agenda
         dateFrom || undefined,
         dateTo || undefined,
         sortOrder, // sort_order
@@ -79,10 +79,10 @@ export function Agendas({ onNavigate }: AgendasProps) {
     }
   };
 
-  // Cargar agendas al montar el componente o cuando cambien los filtros de fecha, ordenamiento o agente
+  // Cargar agendas al montar el componente o cuando cambien los filtros de fecha, tipo, ordenamiento o agente
   useEffect(() => {
     loadAgendas();
-  }, [clientId, dateFrom, dateTo, sortOrder, filterAgentId]);
+  }, [clientId, dateFrom, dateTo, sortOrder, filterAgentId, filterType]);
 
   // Cargar promedio de llamadas por agenda
   useEffect(() => {
@@ -108,7 +108,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
     loadAverageCalls();
   }, [clientId, dateFrom, dateTo]);
 
-  // Filtrar agendas (solo búsqueda y tipo, las fechas se filtran en la API)
+  // Filtrar agendas (búsqueda y tipo; fechas y agente se filtran en la API)
   useEffect(() => {
     // Asegurar que agendas sea un array antes de filtrarlo
     const validAgendas = Array.isArray(agendas) ? agendas : [];
@@ -125,12 +125,12 @@ export function Agendas({ onNavigate }: AgendasProps) {
       );
     }
 
-    // Filtrar por tipo
+    // Filtrar por tipo de agenda (además del filtro en la API, reforzamos en el cliente)
     if (filterType !== 'all') {
       filtered = filtered.filter(agenda => agenda.tipo_agenda === filterType);
     }
 
-    // NOTA: Los filtros de fecha (dateFrom, dateTo) se aplican en la API
+    // NOTA: Los filtros de fecha (dateFrom, dateTo) y agente se aplican en la API
     // No se filtran aquí para evitar duplicación
 
     setFilteredAgendas(filtered);
@@ -462,6 +462,17 @@ export function Agendas({ onNavigate }: AgendasProps) {
           >
             <CalendarDays className="w-5 h-5" />
             Calendario
+          </button>
+          <button
+            onClick={() => setActiveTab('calendarScheduled')}
+            className={`flex items-center gap-2 px-6 py-3 font-medium transition-colors ${
+              activeTab === 'calendarScheduled'
+                ? 'text-emerald-700 border-b-2 border-emerald-700'
+                : 'text-slate-600 hover:text-slate-800'
+            }`}
+          >
+            <CalendarDays className="w-5 h-5" />
+            Calendario de Agendas
           </button>
         </div>
 
@@ -828,14 +839,17 @@ export function Agendas({ onNavigate }: AgendasProps) {
           </div>
         )}
 
-        {/* Pestaña del Calendario */}
+        {/* Pestaña del Calendario (creación) */}
         {activeTab === 'calendar' && (
           <div>
             <div className="mb-6">
-              <h3 className="text-xl font-semibold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800 mb-2">Calendario de Agendas</h3>
-              <p className="text-slate-600 text-sm">Visualiza tus agendas en formato calendario y filtra por tipo</p>
+              <h3 className="text-xl font-semibold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800 mb-2">
+                Calendario
+              </h3>
+              <p className="text-slate-600 text-sm">
+                Agendas ubicadas según la fecha en que fueron creadas.
+              </p>
             </div>
-            
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <RefreshCw className="animate-spin w-8 h-8 text-blue-600 mr-3" />
@@ -850,9 +864,43 @@ export function Agendas({ onNavigate }: AgendasProps) {
               </div>
             ) : (
               <AgendaCalendar 
-                agendas={agendas} 
+                agendas={filteredAgendas} 
                 onAgendaClick={openAgendaModal}
                 onLoadAllAgendas={clientId ? () => fetchAllAgendas(clientId) : undefined}
+                mode="created"
+              />
+            )}
+          </div>
+        )}
+
+        {activeTab === 'calendarScheduled' && (
+          <div>
+            <div className="mb-6">
+              <h3 className="text-xl font-semibold text-transparent bg-clip-text bg-gradient-to-r from-emerald-700 to-teal-800 mb-2">
+                Calendario de Agendas
+              </h3>
+              <p className="text-slate-600 text-sm">
+                Visualiza tus agendas posicionadas en la fecha en que fueron agendadas (fecha de visita).
+              </p>
+            </div>
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <RefreshCw className="animate-spin w-8 h-8 text-emerald-600 mr-3" />
+                <span className="text-slate-600">Cargando calendario...</span>
+              </div>
+            ) : error ? (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <div className="flex items-center">
+                  <AlertCircle className="w-5 h-5 text-red-600 mr-2" />
+                  <span className="text-red-700">{error}</span>
+                </div>
+              </div>
+            ) : (
+              <AgendaCalendar 
+                agendas={filteredAgendas} 
+                onAgendaClick={openAgendaModal}
+                onLoadAllAgendas={clientId ? () => fetchAllAgendas(clientId) : undefined}
+                mode="scheduled"
               />
             )}
           </div>
