@@ -675,6 +675,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
   const [showAddPhoneModal, setShowAddPhoneModal] = useState(false);
   const [showDeletePhoneModal, setShowDeletePhoneModal] = useState(false);
   const [phoneToDelete, setPhoneToDelete] = useState<RetellPhoneNumber | null>(null);
+  const [workspaceFilter, setWorkspaceFilter] = useState<string | null>(null);
   
   // Usar el contexto para obtener la API key, números de teléfono y el estado de llamadas
   const { 
@@ -690,10 +691,53 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
   const phoneNumbers = contextPhoneNumbers;
   const loading = contextLoadingPhoneNumbers;
   
-  // Filtrar números de teléfono si hay un filtro activo
-  const filteredPhoneNumbers = phoneFilter 
+  // Obtener nombre de workspace a partir de la URL del webhook
+  const getWorkspaceFromWebhook = (webhookUrl?: string): string | null => {
+    if (!webhookUrl) return null;
+
+    try {
+      const url = new URL(webhookUrl);
+      const segments = url.pathname.split('/').filter(Boolean);
+      const lastSegment = segments[segments.length - 1] || '';
+
+      // Intentar cortar por "-workspace" o el typo "-worspace" si existe
+      const workspaceSlug = lastSegment
+        .split(/-workspace|-worspace/i)[0]
+        .trim() || lastSegment.trim();
+
+      if (!workspaceSlug) return null;
+
+      const prettyName = workspaceSlug
+        .replace(/[-_]+/g, ' ')
+        .trim()
+        .split(' ')
+        .filter(Boolean)
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+
+      return prettyName || null;
+    } catch {
+      return null;
+    }
+  };
+
+  // Obtener lista de workspaces únicos disponibles
+  const availableWorkspaces = Array.from(
+    new Set(
+      phoneNumbers
+        .map(phone => getWorkspaceFromWebhook(phone.inbound_webhook_url))
+        .filter((ws): ws is string => !!ws)
+    )
+  );
+  
+  // Filtrar números de teléfono por número específico (URL) y por workspace si hay filtros activos
+  const filteredByPhone = phoneFilter 
     ? phoneNumbers.filter(phone => phone.phone_number === phoneFilter)
     : phoneNumbers;
+
+  const filteredPhoneNumbers = workspaceFilter
+    ? filteredByPhone.filter(phone => getWorkspaceFromWebhook(phone.inbound_webhook_url) === workspaceFilter)
+    : filteredByPhone;
   
   // Cargar los números al montar el componente usando la función del contexto
   useEffect(() => {
@@ -732,7 +776,25 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
         <div className="p-6 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4 bg-gradient-to-r from-slate-50 to-blue-50">
           <h3 className="text-lg font-semibold text-slate-800">Números de Teléfono</h3>
           
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 items-center justify-end">
+            {availableWorkspaces.length > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-600">Workspace:</span>
+                <select
+                  value={workspaceFilter || ''}
+                  onChange={(e) => setWorkspaceFilter(e.target.value || null)}
+                  className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Todos</option>
+                  {availableWorkspaces.map((ws) => (
+                    <option key={ws} value={ws}>
+                      {ws}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <button
               onClick={() => setShowAddPhoneModal(true)}
               className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-700 text-white rounded-lg hover:from-green-700 hover:to-emerald-800 transition-colors flex items-center"
@@ -812,7 +874,16 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
                 <div className="flex-grow">
                   <div className="flex items-center gap-2 mb-2">
                     <Phone className="w-5 h-5 text-blue-600" />
-                    <h4 className="text-slate-800 font-medium text-lg">{phone.phone_number_pretty}</h4>
+                    <div className="flex flex-col">
+                      <h4 className="text-slate-800 font-medium text-lg">
+                        {phone.nickname || phone.phone_number_pretty}
+                      </h4>
+                      {phone.nickname && (
+                        <span className="text-slate-500 text-sm">
+                          {phone.phone_number_pretty}
+                        </span>
+                      )}
+                    </div>
                     <button 
                       onClick={() => copyToClipboard(phone.phone_number)}
                       className="ml-2 p-1 rounded-md hover:bg-slate-200 transition-colors"
@@ -884,6 +955,13 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
                           </a>
                         )}
                       </div>
+                    </div>
+
+                    <div>
+                      <p className="text-slate-500">Workspace</p>
+                      <p className="text-slate-800">
+                        {getWorkspaceFromWebhook(phone.inbound_webhook_url) || 'No especificado'}
+                      </p>
                     </div>
                     
                     {phone.inbound_webhook_url && (
