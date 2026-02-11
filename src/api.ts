@@ -263,6 +263,35 @@ export function calculateStats(calls: RetellCall[]): CallStats {
   };
 }
 
+// Función auxiliar para obtener nombre de workspace a partir de la URL del webhook
+function getWorkspaceNameFromWebhook(webhookUrl?: string): string | null {
+  if (!webhookUrl) return null;
+
+  try {
+    const url = new URL(webhookUrl);
+    const segments = url.pathname.split('/').filter(Boolean);
+    const lastSegment = segments[segments.length - 1] || '';
+
+    // Intentar cortar por "-workspace" o el typo "-worspace" si existe
+    const workspaceSlug =
+      lastSegment.split(/-workspace|-worspace/i)[0].trim() || lastSegment.trim();
+
+    if (!workspaceSlug) return null;
+
+    const prettyName = workspaceSlug
+      .replace(/[-_]+/g, ' ')
+      .trim()
+      .split(' ')
+      .filter(Boolean)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+
+    return prettyName || null;
+  } catch {
+    return null;
+  }
+}
+
 // Función para obtener números de teléfono de una sola API key
 async function fetchPhoneNumbersFromSingleApiKey(apiKey: string): Promise<RetellPhoneNumber[]> {
   const response = await fetch('https://api.retellai.com/list-phone-numbers', {
@@ -293,15 +322,27 @@ export async function fetchPhoneNumbers(apiKey: string | string[]): Promise<Rete
   if (Array.isArray(apiKey)) {
     console.log(`📞 Obteniendo números de teléfono de ${apiKey.length} API keys`);
     
-    // Obtener números de todas las API keys en paralelo
-    const promises = apiKey.map(key => 
-      fetchPhoneNumbersFromSingleApiKey(key).catch(err => {
-        console.error(`❌ Error obteniendo números de teléfono para API key ${key.substring(0, 10)}...:`, err);
-        return []; // Devolver array vacío en caso de error para no romper el flujo
+    // Obtener números de todas las API keys en paralelo y adjuntar metadata de workspace
+    const results = await Promise.all(
+      apiKey.map(async (key) => {
+        const numbers = await fetchPhoneNumbersFromSingleApiKey(key).catch((err) => {
+          console.error(
+            `❌ Error obteniendo números de teléfono para API key ${key.substring(0, 10)}...:`,
+            err
+          );
+          return [] as RetellPhoneNumber[]; // Devolver array vacío en caso de error para no romper el flujo
+        });
+
+        return numbers.map((phone) => {
+          const workspaceName = getWorkspaceNameFromWebhook(phone.inbound_webhook_url);
+          return {
+            ...phone,
+            workspace_api_key: key,
+            workspace_name: workspaceName || undefined,
+          };
+        });
       })
     );
-    
-    const results = await Promise.all(promises);
     
     // Combinar todos los resultados y eliminar duplicados por phone_number
     const allNumbers = results.flat();
@@ -313,8 +354,16 @@ export async function fetchPhoneNumbers(apiKey: string | string[]): Promise<Rete
     return uniqueNumbers;
   }
   
-  // Si es una sola API key, usar la función original
-  return fetchPhoneNumbersFromSingleApiKey(apiKey);
+  // Si es una sola API key, usar la función original y adjuntar metadata de workspace
+  const numbers = await fetchPhoneNumbersFromSingleApiKey(apiKey);
+  return numbers.map((phone) => {
+    const workspaceName = getWorkspaceNameFromWebhook(phone.inbound_webhook_url);
+    return {
+      ...phone,
+      workspace_api_key: apiKey,
+      workspace_name: workspaceName || undefined,
+    };
+  });
 }
 
 interface CreatePhoneCallParams {

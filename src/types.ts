@@ -121,6 +121,9 @@ export interface RetellPhoneNumber {
   nickname?: string;
   inbound_webhook_url?: string;
   last_modification_timestamp: number;
+  // Campos enriquecidos en frontend a partir de la API de Retell
+  workspace_name?: string;
+  workspace_api_key?: string;
 }
 
 export interface RetellAgent {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Phone, Copy, RefreshCw, ExternalLink, X, Send, Plus, ChevronDown, User, Trash2, AlertTriangle } from 'lucide-react';
 import { RetellPhoneNumber, RetellAgent } from '../types';
 import { createPhoneCall, fetchAgents, importPhoneNumber, deletePhoneNumber } from '../api';
@@ -334,29 +334,113 @@ function CallModal({ phoneNumber, onClose, apiKey }: CallModalProps) {
 interface AddPhoneModalProps {
   onClose: () => void;
   onSuccess: () => void;
-  apiKey: string | null;
 }
 
 // Componente para el modal de añadir número de teléfono
-function AddPhoneModal({ onClose, onSuccess, apiKey }: AddPhoneModalProps) {
+function AddPhoneModal({ onClose, onSuccess }: AddPhoneModalProps) {
+  const { apiKey, apiKeyTest, clientId, phoneNumbers: contextPhoneNumbers } = useCallsContext();
   const [phoneNumber, setPhoneNumber] = useState('');
   const [nickname, setNickname] = useState('');
   const [terminationUri, setTerminationUri] = useState('');
   const [sipUsername, setSipUsername] = useState('');
   const [sipPassword, setSipPassword] = useState('');
+  const [transport, setTransport] = useState<'TCP' | 'UDP' | 'TLS'>('TCP');
+  const [selectedWorkspaceApiKey, setSelectedWorkspaceApiKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [agents, setAgents] = useState<RetellAgent[]>([]);
+  const [selectedAgent, setSelectedAgent] = useState<RetellAgent | null>(null);
+  const [loadingAgents, setLoadingAgents] = useState(false);
+  const [agentsError, setAgentsError] = useState<string | null>(null);
+
+  // Prefijar URI de terminación para cliente específico
+  useEffect(() => {
+    if (clientId === 'mas_sol001' && !terminationUri) {
+      setTerminationUri('http://livekit2.netelip.com - http://livekit.netelip.com');
+    }
+  }, [clientId, terminationUri]);
+
+  // Construir opciones de workspace a partir de apiKeyTest (todas las API keys de los workspaces)
+  const workspaceOptions = (() => {
+    const options: { label: string; apiKey: string }[] = [];
+
+    if (apiKeyTest && apiKeyTest.length > 0) {
+      apiKeyTest.forEach((key, index) => {
+        const phoneForKey = contextPhoneNumbers.find(
+          (p) => p.workspace_api_key === key
+        );
+        const workspaceName = phoneForKey?.workspace_name || null;
+
+        options.push({
+          label: workspaceName || `Workspace ${index + 1}`,
+          apiKey: key,
+        });
+      });
+    } else if (apiKey) {
+      const phoneForKey = contextPhoneNumbers[0];
+      const workspaceName = phoneForKey?.workspace_name || null;
+
+      options.push({
+        label: workspaceName || `Workspace principal`,
+        apiKey,
+      });
+    }
+
+    return options;
+  })();
+
+  // Seleccionar por defecto el primer workspace disponible
+  useEffect(() => {
+    if (!selectedWorkspaceApiKey && workspaceOptions.length > 0) {
+      setSelectedWorkspaceApiKey(workspaceOptions[0].apiKey);
+    }
+  }, [selectedWorkspaceApiKey, workspaceOptions]);
+
+  // Cargar agentes cuando se selecciona un workspace
+  useEffect(() => {
+    const loadAgents = async () => {
+      if (!selectedWorkspaceApiKey) return;
+
+      setLoadingAgents(true);
+      setAgentsError(null);
+
+      try {
+        const agentsData = await fetchAgents(selectedWorkspaceApiKey);
+        setAgents(agentsData);
+        setSelectedAgent(null);
+      } catch (err) {
+        console.error('Error cargando agentes para workspace:', err);
+        setAgentsError(err instanceof Error ? err.message : 'Error al cargar los agentes');
+      } finally {
+        setLoadingAgents(false);
+      }
+    };
+
+    loadAgents();
+  }, [selectedWorkspaceApiKey]);
 
   // Función para añadir el número de teléfono
   const handleAddPhone = async () => {
-    if (!apiKey) {
-      setError('API key no configurada');
+    const effectiveApiKey = selectedWorkspaceApiKey || apiKey;
+
+    if (!effectiveApiKey) {
+      setError('API key no configurada. Selecciona un workspace válido.');
       return;
     }
 
     if (!phoneNumber.trim()) {
       setError('El número de teléfono es obligatorio');
+      return;
+    }
+
+    if (!selectedWorkspaceApiKey) {
+      setError('Debes seleccionar un workspace');
+      return;
+    }
+
+    if (!selectedAgent) {
+      setError('Debes seleccionar un agente para el número');
       return;
     }
 
@@ -366,7 +450,9 @@ function AddPhoneModal({ onClose, onSuccess, apiKey }: AddPhoneModalProps) {
 
     try {
       const phoneData: any = {
-        phone_number: phoneNumber.trim()
+        phone_number: phoneNumber.trim(),
+        inbound_agent_id: selectedAgent.agent_id,
+        outbound_agent_id: selectedAgent.agent_id,
       };
 
       // Añadir campos opcionales solo si tienen valor
@@ -382,8 +468,11 @@ function AddPhoneModal({ onClose, onSuccess, apiKey }: AddPhoneModalProps) {
       if (sipPassword.trim()) {
         phoneData.sip_trunk_auth_password = sipPassword.trim();
       }
+      if (transport) {
+        phoneData.transport = transport;
+      }
 
-      const result = await importPhoneNumber(apiKey, phoneData);
+      const result = await importPhoneNumber(effectiveApiKey, phoneData);
       setSuccess(`Número de teléfono añadido con éxito. ID: ${result.phone_number_id || 'N/A'}`);
       
       // Limpiar el formulario
@@ -421,6 +510,25 @@ function AddPhoneModal({ onClose, onSuccess, apiKey }: AddPhoneModalProps) {
         
         <div className="p-5 space-y-5 bg-white">
           <div>
+            <label className="block text-slate-600 mb-1">Workspace *</label>
+            <select
+              value={selectedWorkspaceApiKey || ''}
+              onChange={(e) => setSelectedWorkspaceApiKey(e.target.value || null)}
+              className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Selecciona un workspace</option>
+              {workspaceOptions.map((ws) => (
+                <option key={ws.apiKey} value={ws.apiKey}>
+                  {ws.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-slate-500 mt-1">
+              El workspace determina en qué cuenta de Retell se creará este número.
+            </p>
+          </div>
+
+          <div>
             <label className="block text-slate-600 mb-1">Número de teléfono *</label>
             <input
               type="text"
@@ -439,9 +547,46 @@ function AddPhoneModal({ onClose, onSuccess, apiKey }: AddPhoneModalProps) {
               type="text"
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
-              placeholder="Mi número principal"
+              placeholder="Nombre"
               className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+          </div>
+
+          <div>
+            <label className="block text-slate-600 mb-1">Agente (workspace seleccionado) *</label>
+            {loadingAgents ? (
+              <div className="flex items-center bg-slate-50 p-3 rounded-lg border border-slate-200 text-slate-600">
+                <svg className="animate-spin mr-2 h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Cargando agentes...
+              </div>
+            ) : agentsError ? (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                {agentsError}
+              </div>
+            ) : agents.length === 0 ? (
+              <div className="flex items-center bg-slate-50 p-3 rounded-lg border border-slate-200 text-slate-600">
+                No se encontraron agentes para este workspace
+              </div>
+            ) : (
+              <select
+                value={selectedAgent?.agent_id || ''}
+                onChange={(e) => {
+                  const agent = agents.find(a => a.agent_id === e.target.value) || null;
+                  setSelectedAgent(agent);
+                }}
+                className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Selecciona un agente</option>
+                {agents.map((agent) => (
+                  <option key={agent.agent_id} value={agent.agent_id}>
+                    {agent.agent_name || agent.agent_id}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           <div>
@@ -453,6 +598,22 @@ function AddPhoneModal({ onClose, onSuccess, apiKey }: AddPhoneModalProps) {
               placeholder="sip:termination@example.com"
               className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+          </div>
+
+          <div>
+            <label className="block text-slate-600 mb-1">Transporte (opcional)</label>
+            <select
+              value={transport}
+              onChange={(e) => setTransport(e.target.value as 'TCP' | 'UDP' | 'TLS')}
+              className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="TCP">TCP</option>
+              <option value="UDP">UDP</option>
+              <option value="TLS">TLS</option>
+            </select>
+            <p className="text-xs text-slate-500 mt-1">
+              Protocolo de transporte para el número (por defecto TCP).
+            </p>
           </div>
 
           <div>
@@ -542,8 +703,10 @@ function DeletePhoneModal({ phoneNumber, onClose, onSuccess, apiKey }: DeletePho
 
   // Función para eliminar el número de teléfono
   const handleDeletePhone = async () => {
-    if (!apiKey) {
-      setError('API key no configurada');
+    const effectiveApiKey = phoneNumber.workspace_api_key || apiKey;
+
+    if (!effectiveApiKey) {
+      setError('API key no configurada para este workspace');
       return;
     }
 
@@ -551,7 +714,7 @@ function DeletePhoneModal({ phoneNumber, onClose, onSuccess, apiKey }: DeletePho
     setError(null);
 
     try {
-      await deletePhoneNumber(apiKey, phoneNumber.phone_number);
+      await deletePhoneNumber(effectiveApiKey, phoneNumber.phone_number);
       
       // Crear notificación de éxito
       const notification = document.createElement('div');
@@ -721,12 +884,36 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
     }
   };
 
-  // Obtener lista de workspaces únicos disponibles
+  // Mapear cada workspace_api_key a un nombre de workspace (bonito o genérico)
+  const workspaceNameByApiKey = useMemo(() => {
+    const mapping: Record<string, string> = {};
+
+    const apiKeys = Array.from(
+      new Set(
+        phoneNumbers
+          .map((p) => p.workspace_api_key)
+          .filter((k): k is string => !!k)
+      )
+    );
+
+    apiKeys.forEach((key, index) => {
+      const phoneForKey = phoneNumbers.find((p) => p.workspace_api_key === key);
+
+      const fromMetadata = phoneForKey?.workspace_name;
+      const fromWebhook = phoneForKey?.inbound_webhook_url
+        ? getWorkspaceFromWebhook(phoneForKey.inbound_webhook_url)
+        : null;
+
+      mapping[key] = fromMetadata || fromWebhook || `Workspace ${index + 1}`;
+    });
+
+    return mapping;
+  }, [phoneNumbers]);
+
+  // Obtener lista de workspaces únicos disponibles (labels)
   const availableWorkspaces = Array.from(
     new Set(
-      phoneNumbers
-        .map(phone => getWorkspaceFromWebhook(phone.inbound_webhook_url))
-        .filter((ws): ws is string => !!ws)
+      Object.values(workspaceNameByApiKey).filter((ws) => !!ws)
     )
   );
   
@@ -736,7 +923,16 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
     : phoneNumbers;
 
   const filteredPhoneNumbers = workspaceFilter
-    ? filteredByPhone.filter(phone => getWorkspaceFromWebhook(phone.inbound_webhook_url) === workspaceFilter)
+    ? filteredByPhone.filter(phone => {
+        const labelFromApiKey = phone.workspace_api_key
+          ? workspaceNameByApiKey[phone.workspace_api_key]
+          : undefined;
+        const labelFromWebhook = phone.inbound_webhook_url
+          ? getWorkspaceFromWebhook(phone.inbound_webhook_url)
+          : null;
+        const finalLabel = labelFromApiKey || labelFromWebhook;
+        return finalLabel === workspaceFilter;
+      })
     : filteredByPhone;
   
   // Cargar los números al montar el componente usando la función del contexto
@@ -960,7 +1156,14 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
                     <div>
                       <p className="text-slate-500">Workspace</p>
                       <p className="text-slate-800">
-                        {getWorkspaceFromWebhook(phone.inbound_webhook_url) || 'No especificado'}
+              {phone.workspace_api_key
+                ? workspaceNameByApiKey[phone.workspace_api_key] ||
+                  (phone.inbound_webhook_url
+                    ? getWorkspaceFromWebhook(phone.inbound_webhook_url)
+                    : 'No especificado')
+                : phone.inbound_webhook_url
+                ? getWorkspaceFromWebhook(phone.inbound_webhook_url) || 'No especificado'
+                : 'No especificado'}
                       </p>
                     </div>
                     
@@ -1014,7 +1217,6 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
         <AddPhoneModal
           onClose={() => setShowAddPhoneModal(false)}
           onSuccess={() => contextLoadPhoneNumbers(true)}
-          apiKey={apiKey}
         />
       )}
 
