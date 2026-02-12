@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Phone, Copy, RefreshCw, ExternalLink, X, Send, Plus, ChevronDown, User, Trash2, AlertTriangle } from 'lucide-react';
 import { RetellPhoneNumber, RetellAgent } from '../types';
-import { createPhoneCall, fetchAgents, importPhoneNumber, deletePhoneNumber, fetchFolders } from '../api';
+import { createPhoneCall, fetchAgents, importPhoneNumber, deletePhoneNumber, fetchFolders, getCallCountsByFromNumber } from '../api';
 import { useCallsContext } from '../context/CallsContext';
 import { getUserData } from '../lib/supabase';
 
@@ -922,7 +922,9 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
   const [phoneToDelete, setPhoneToDelete] = useState<RetellPhoneNumber | null>(null);
   const [workspaceFilter, setWorkspaceFilter] = useState<string | null>(null);
   const [workspaceFoldersByApiKey, setWorkspaceFoldersByApiKey] = useState<Record<string, string>>({});
-  
+  const [callCountsByPhone, setCallCountsByPhone] = useState<Record<string, { total: number; efectivas: number; fallidas: number }>>({});
+  const [loadingCallCounts, setLoadingCallCounts] = useState(true);
+
   // Usar el contexto para obtener la API key, números de teléfono y el estado de llamadas
   const { 
     apiKey, 
@@ -1002,7 +1004,50 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
 
     loadFoldersForWorkspaces();
   }, [apiKey, apiKeyTest, clientId]);
-  
+
+  // Cargar conteos de llamadas por número desde call_logs (por from_number)
+  useEffect(() => {
+    const loadCallCounts = async () => {
+      if (!clientId) {
+        setLoadingCallCounts(false);
+        return;
+      }
+      setLoadingCallCounts(true);
+      try {
+        const rows = await getCallCountsByFromNumber(clientId);
+        const map: Record<string, { total: number; efectivas: number; fallidas: number }> = {};
+        rows.forEach((r) => {
+          const key = r.from_number || '';
+          const keyNorm = (r.from_number_norm != null && r.from_number_norm !== '') ? r.from_number_norm : key.replace(/^\+/, '');
+          const value = { total: r.total, efectivas: r.efectivas, fallidas: r.fallidas };
+          if (key) map[key] = value;
+          if (keyNorm && keyNorm !== key) map[keyNorm] = value;
+        });
+        setCallCountsByPhone(map);
+      } catch (e) {
+        console.error('Error al cargar conteos de llamadas por número:', e);
+      } finally {
+        setLoadingCallCounts(false);
+      }
+    };
+    loadCallCounts();
+  }, [clientId]);
+
+  const getCallCountsForPhone = (phoneNumber: string): { total: number; efectivas: number; fallidas: number } | null => {
+    const withPlus = phoneNumber.startsWith('+') ? phoneNumber : `+${phoneNumber}`;
+    const withoutPlus = phoneNumber.replace(/^\+/, '');
+    return callCountsByPhone[withPlus] ?? callCountsByPhone[withoutPlus] ?? callCountsByPhone[phoneNumber] ?? null;
+  };
+
+  const getCallCountBadgeColor = (total: number): string => {
+    if (total < 15000) return 'bg-green-100 text-green-800 border-green-200';
+    if (total <= 35000) return 'bg-amber-100 text-amber-800 border-amber-200';
+    return 'bg-red-100 text-red-800 border-red-200';
+  };
+
+  // No mostrar contenido hasta que estén cargados números y conteos de llamadas
+  const loadingAll = loading || loadingCallCounts;
+
   // Obtener nombre de workspace a partir de la URL del webhook
   const getWorkspaceFromWebhook = (webhookUrl?: string): string | null => {
     if (!webhookUrl) return null;
@@ -1151,14 +1196,14 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
             
             <button
               onClick={() => contextLoadPhoneNumbers(true)}
-              disabled={loading}
+              disabled={loadingAll}
               className={`px-4 py-2 rounded-lg text-white flex items-center ${
-                loading
+                loadingAll
                   ? 'bg-slate-400 cursor-not-allowed'
                   : 'bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800'
               }`}
             >
-              {loading ? (
+              {loadingAll ? (
                 <>
                   <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -1177,22 +1222,22 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
         </div>
         
         <div className="divide-y divide-slate-200">
-          {/* Estado de carga */}
-          {loading && (
+          {/* Estado de carga: no mostrar nada hasta que carguen números y conteos */}
+          {loadingAll && (
             <div className="p-6 text-center text-slate-600">
-              Cargando números de teléfono...
+              Cargando datos...
             </div>
           )}
           
           {/* Mostrar error si lo hay */}
-          {error && (
+          {!loadingAll && error && (
             <div className="p-6 text-center text-red-600">
               {error}
             </div>
           )}
           
           {/* No se encontraron resultados */}
-          {!loading && !error && filteredPhoneNumbers.length === 0 && (
+          {!loadingAll && !error && filteredPhoneNumbers.length === 0 && (
             <div className="p-6 text-center text-slate-600">
               {phoneFilter ? (
                 <div className="space-y-4">
@@ -1214,7 +1259,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
           )}
           
           {/* Lista de números de teléfono */}
-          {!loading && !error && filteredPhoneNumbers.map((phone) => (
+          {!loadingAll && !error && filteredPhoneNumbers.map((phone) => (
             <div key={phone.phone_number} className="p-6 hover:bg-slate-50 transition-colors">
               <div className="flex items-start justify-between">
                 <div className="flex-grow">
@@ -1241,8 +1286,33 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
                       <span className="text-green-600 text-sm">¡Copiado!</span>
                     )}
                   </div>
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-sm text-slate-600">
+                    {/* Llamadas realizadas - primera fila del grid */}
+                    <div className="md:col-span-2 mb-2 p-3 rounded-lg bg-slate-50 border border-slate-200">
+                      <p className="text-slate-500 text-sm font-medium mb-2">Llamadas realizadas</p>
+                      <div className="flex flex-wrap items-center gap-3">
+                        {(() => {
+                          const counts = getCallCountsForPhone(phone.phone_number);
+                          const total = counts?.total ?? 0;
+                          const efectivas = counts?.efectivas ?? 0;
+                          const fallidas = counts?.fallidas ?? 0;
+                          return (
+                            <>
+                              <span className={`inline-flex items-center px-3 py-1.5 rounded-lg border text-sm font-semibold ${getCallCountBadgeColor(total)}`}>
+                                Total: {total.toLocaleString()}
+                              </span>
+                              <span className="text-slate-600 text-sm">
+                                Efectivas: <span className="font-semibold text-green-700">{efectivas.toLocaleString()}</span>
+                                {' · '}
+                                Fallidas: <span className="font-semibold text-red-700">{fallidas.toLocaleString()}</span>
+                              </span>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    </div>
+
                     {phone.nickname && (
                       <div>
                         <p className="text-slate-500">Nombre</p>
