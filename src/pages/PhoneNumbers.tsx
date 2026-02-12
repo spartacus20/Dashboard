@@ -148,8 +148,14 @@ function CallModal({ phoneNumber, onClose, apiKey }: CallModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md">
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex justify-between items-center border-b border-slate-200 p-4 bg-gradient-to-r from-slate-50 to-blue-50">
           <h3 className="text-lg font-medium text-slate-800">Realizar llamada</h3>
           <button 
@@ -344,6 +350,7 @@ function AddPhoneModal({ onClose, onSuccess, workspaceNameByApiKey }: AddPhoneMo
   const [phoneNumber, setPhoneNumber] = useState('');
   const [nickname, setNickname] = useState('');
   const [terminationUri, setTerminationUri] = useState('');
+  const [inboundWebhookUrl, setInboundWebhookUrl] = useState('');
   const [sipUsername, setSipUsername] = useState('');
   const [sipPassword, setSipPassword] = useState('');
   const [transport, setTransport] = useState<'TCP' | 'UDP' | 'TLS'>('TCP');
@@ -498,6 +505,9 @@ function AddPhoneModal({ onClose, onSuccess, workspaceNameByApiKey }: AddPhoneMo
       if (terminationUri.trim()) {
         phoneData.termination_uri = terminationUri.trim();
       }
+      if (inboundWebhookUrl.trim()) {
+        phoneData.inbound_webhook_url = inboundWebhookUrl.trim();
+      }
       if (sipUsername.trim()) {
         phoneData.sip_trunk_auth_username = sipUsername.trim();
       }
@@ -515,6 +525,7 @@ function AddPhoneModal({ onClose, onSuccess, workspaceNameByApiKey }: AddPhoneMo
       setPhoneNumber('');
       setNickname('');
       setTerminationUri('');
+      setInboundWebhookUrl('');
       setSipUsername('');
       setSipPassword('');
       
@@ -655,6 +666,20 @@ function AddPhoneModal({ onClose, onSuccess, workspaceNameByApiKey }: AddPhoneMo
                 className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             )}
+          </div>
+
+          <div>
+            <label className="block text-slate-600 mb-1">Webhook URL (opcional)</label>
+            <input
+              type="text"
+              value={inboundWebhookUrl}
+              onChange={(e) => setInboundWebhookUrl(e.target.value)}
+              placeholder="https://example.com/inbound-webhook"
+              className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p className="text-xs text-slate-500 mt-1">
+              Si se establece, Retell enviará un webhook para cada llamada entrante a este número.
+            </p>
           </div>
 
           <div>
@@ -1328,7 +1353,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
         <CallModal 
           phoneNumber={selectedPhone}
           onClose={() => setSelectedPhone(null)}
-          apiKey={apiKey}
+          apiKey={selectedPhone.workspace_api_key || apiKey}
         />
       )}
 
