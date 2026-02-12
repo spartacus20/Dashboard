@@ -1,4 +1,4 @@
-import { RetellCall, FilterCriteria, CallStats, RetellPhoneNumber, RetellAgent, RetellBatchCall, ClientData, Agenda, Callback, CallbackResponse, CallsByPhoneResponse } from './types';
+import { RetellCall, FilterCriteria, CallStats, RetellPhoneNumber, RetellAgent, RetellBatchCall, ClientData, Agenda, Callback, CallbackResponse, CallsByPhoneResponse, RetellFolder } from './types';
 import { get_client_id } from './lib/supabase';
 
 // Obtener la URL base según el entorno
@@ -391,6 +391,28 @@ export async function createPhoneCall(apiKey: string, params: CreatePhoneCallPar
   return await response.json();
 }
 
+export async function fetchFolders(apiKey: string): Promise<RetellFolder[]> {
+  const response = await fetch('https://api.retellai.com/get-folders', {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Error al obtener folders: ${response.status} ${response.statusText} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  if (!Array.isArray(data)) {
+    throw new Error('Formato de respuesta inesperado al obtener folders');
+  }
+
+  return data;
+}
+
 export async function fetchAgents(apiKey: string): Promise<RetellAgent[]> {
   const response = await fetch('https://api.retellai.com/list-agents', {
     method: 'GET',
@@ -578,6 +600,28 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
         sessionStorage.setItem('metadata_llamadas', JSON.stringify(clientData.metadata_llamadas));
         console.log('✅ metadata_llamadas guardado en sessionStorage');
       }
+
+      // Guardar uri_retell (URIs de terminación) en sessionStorage si está disponible
+      if (clientData.uri_retell) {
+        let uriRetell: string[] | null = null;
+        if (Array.isArray(clientData.uri_retell)) {
+          uriRetell = clientData.uri_retell;
+        } else if (typeof clientData.uri_retell === 'string') {
+          try {
+            const parsed = JSON.parse(clientData.uri_retell);
+            if (Array.isArray(parsed)) {
+              uriRetell = parsed.filter((v): v is string => typeof v === 'string');
+            }
+          } catch (e) {
+            console.warn('Error parseando uri_retell (string) desde get-client:', e);
+          }
+        }
+
+        if (uriRetell && uriRetell.length > 0) {
+          sessionStorage.setItem('uri_retell', JSON.stringify(uriRetell));
+          console.log('✅ uri_retell guardado en sessionStorage:', uriRetell);
+        }
+      }
       
       // Guardar client_test SOLO si se está obteniendo por email (no por client_id)
       // Esto preserva el client_test original del usuario cuando se cambia el client_id
@@ -667,6 +711,28 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
       if (data.metadata_llamadas) {
         sessionStorage.setItem('metadata_llamadas', JSON.stringify(data.metadata_llamadas));
         console.log('✅ metadata_llamadas guardado en sessionStorage (formato objeto)');
+      }
+
+      // Guardar uri_retell (URIs de terminación) en sessionStorage si está disponible - formato objeto
+      if (data.uri_retell) {
+        let uriRetell: string[] | null = null;
+        if (Array.isArray(data.uri_retell)) {
+          uriRetell = data.uri_retell;
+        } else if (typeof data.uri_retell === 'string') {
+          try {
+            const parsed = JSON.parse(data.uri_retell);
+            if (Array.isArray(parsed)) {
+              uriRetell = parsed.filter((v): v is string => typeof v === 'string');
+            }
+          } catch (e) {
+            console.warn('Error parseando uri_retell (string, formato objeto) desde get-client:', e);
+          }
+        }
+
+        if (uriRetell && uriRetell.length > 0) {
+          sessionStorage.setItem('uri_retell', JSON.stringify(uriRetell));
+          console.log('✅ uri_retell guardado en sessionStorage (formato objeto):', uriRetell);
+        }
       }
       
       // Guardar client_test SOLO si se está obteniendo por email (no por client_id)

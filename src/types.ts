@@ -194,6 +194,15 @@ export interface RetellBatchCall {
   tasks_url: string;
 }
 
+export interface RetellFolder {
+  orgId: string;
+  agentIds: string[];
+  folderName: string;
+  createdTimestamp: number;
+  folderId: string;
+  userModifiedTimestamp: number;
+}
+
 export interface BatchCallTask {
   id?: string; 
   phone_number: string;
@@ -213,6 +222,7 @@ export interface ClientData {
   client_id: string;
   api_key: string;
   api_key_test?: string[]; // Array de API keys para múltiples números de teléfono
+  uri_retell?: string[]; // Lista de URIs de terminación de Retell
   full_name?: string;
   created_at?: string;
   updated_at?: string;

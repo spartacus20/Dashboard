@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Phone, Copy, RefreshCw, ExternalLink, X, Send, Plus, ChevronDown, User, Trash2, AlertTriangle } from 'lucide-react';
 import { RetellPhoneNumber, RetellAgent } from '../types';
-import { createPhoneCall, fetchAgents, importPhoneNumber, deletePhoneNumber } from '../api';
+import { createPhoneCall, fetchAgents, importPhoneNumber, deletePhoneNumber, fetchFolders } from '../api';
 import { useCallsContext } from '../context/CallsContext';
+import { getUserData } from '../lib/supabase';
 
 interface PhoneNumbersProps {
   onNavigate: (page: 'dashboard' | 'recordings' | 'phones') => void;
@@ -334,10 +335,11 @@ function CallModal({ phoneNumber, onClose, apiKey }: CallModalProps) {
 interface AddPhoneModalProps {
   onClose: () => void;
   onSuccess: () => void;
+  workspaceNameByApiKey: Record<string, string>;
 }
 
 // Componente para el modal de añadir número de teléfono
-function AddPhoneModal({ onClose, onSuccess }: AddPhoneModalProps) {
+function AddPhoneModal({ onClose, onSuccess, workspaceNameByApiKey }: AddPhoneModalProps) {
   const { apiKey, apiKeyTest, clientId, phoneNumbers: contextPhoneNumbers } = useCallsContext();
   const [phoneNumber, setPhoneNumber] = useState('');
   const [nickname, setNickname] = useState('');
@@ -354,23 +356,58 @@ function AddPhoneModal({ onClose, onSuccess }: AddPhoneModalProps) {
   const [loadingAgents, setLoadingAgents] = useState(false);
   const [agentsError, setAgentsError] = useState<string | null>(null);
 
-  // Prefijar URI de terminación para cliente específico
+  // Cargar lista de URIs de terminación desde sessionStorage (uri_retell)
+  const [terminationUriOptions, setTerminationUriOptions] = useState<string[]>([]);
+
   useEffect(() => {
-    if (clientId === 'mas_sol001' && !terminationUri) {
-      setTerminationUri('http://livekit2.netelip.com - http://livekit.netelip.com');
+    // 1) Intentar leer de sessionStorage (uri_retell guardado explícitamente)
+    const raw = sessionStorage.getItem('uri_retell');
+    let options: string[] | null = null;
+
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          options = parsed.filter((v): v is string => typeof v === 'string' && v.trim().length > 0);
+        }
+      } catch (e) {
+        console.error('Error parseando uri_retell desde sessionStorage:', e);
+      }
     }
-  }, [clientId, terminationUri]);
+
+    // 2) Si no hay en sessionStorage, intentar desde userData guardado en sesión (login)
+    if (!options) {
+      const userData = getUserData();
+      if (userData && userData.uri_retell) {
+        try {
+          if (Array.isArray(userData.uri_retell)) {
+            options = userData.uri_retell.filter(
+              (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0
+            );
+          } else if (typeof userData.uri_retell === 'string') {
+            const parsed = JSON.parse(userData.uri_retell);
+            if (Array.isArray(parsed)) {
+              options = parsed.filter((v: unknown): v is string => typeof v === 'string' && v.trim().length > 0);
+            }
+          }
+        } catch (e) {
+          console.error('Error parseando uri_retell desde userData:', e);
+        }
+      }
+    }
+
+    if (options && options.length > 0) {
+      setTerminationUriOptions(options);
+    }
+  }, []);
 
   // Construir opciones de workspace a partir de apiKeyTest (todas las API keys de los workspaces)
-  const workspaceOptions = (() => {
+  const workspaceOptions = useMemo(() => {
     const options: { label: string; apiKey: string }[] = [];
 
     if (apiKeyTest && apiKeyTest.length > 0) {
       apiKeyTest.forEach((key, index) => {
-        const phoneForKey = contextPhoneNumbers.find(
-          (p) => p.workspace_api_key === key
-        );
-        const workspaceName = phoneForKey?.workspace_name || null;
+        const workspaceName = workspaceNameByApiKey[key] || null;
 
         options.push({
           label: workspaceName || `Workspace ${index + 1}`,
@@ -378,8 +415,7 @@ function AddPhoneModal({ onClose, onSuccess }: AddPhoneModalProps) {
         });
       });
     } else if (apiKey) {
-      const phoneForKey = contextPhoneNumbers[0];
-      const workspaceName = phoneForKey?.workspace_name || null;
+      const workspaceName = workspaceNameByApiKey[apiKey] || null;
 
       options.push({
         label: workspaceName || `Workspace principal`,
@@ -388,7 +424,7 @@ function AddPhoneModal({ onClose, onSuccess }: AddPhoneModalProps) {
     }
 
     return options;
-  })();
+  }, [apiKey, apiKeyTest, workspaceNameByApiKey]);
 
   // Seleccionar por defecto el primer workspace disponible
   useEffect(() => {
@@ -596,14 +632,29 @@ function AddPhoneModal({ onClose, onSuccess }: AddPhoneModalProps) {
           </div>
 
           <div>
-            <label className="block text-slate-600 mb-1">URI de terminación (opcional)</label>
-            <input
-              type="text"
-              value={terminationUri}
-              onChange={(e) => setTerminationUri(e.target.value)}
-              placeholder="sip:termination@example.com"
-              className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <label className="block text-slate-600 mb-1">Terminación URI</label>
+            {terminationUriOptions.length > 0 ? (
+              <select
+                value={terminationUri}
+                onChange={(e) => setTerminationUri(e.target.value)}
+                className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Selecciona una URI de terminación</option>
+                {terminationUriOptions.map((uri) => (
+                  <option key={uri} value={uri}>
+                    {uri}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={terminationUri}
+                onChange={(e) => setTerminationUri(e.target.value)}
+                placeholder="sip:termination@example.com"
+                className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            )}
           </div>
 
           <div>
@@ -845,10 +896,13 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
   const [showDeletePhoneModal, setShowDeletePhoneModal] = useState(false);
   const [phoneToDelete, setPhoneToDelete] = useState<RetellPhoneNumber | null>(null);
   const [workspaceFilter, setWorkspaceFilter] = useState<string | null>(null);
+  const [workspaceFoldersByApiKey, setWorkspaceFoldersByApiKey] = useState<Record<string, string>>({});
   
   // Usar el contexto para obtener la API key, números de teléfono y el estado de llamadas
   const { 
     apiKey, 
+    apiKeyTest,
+    clientId,
     phoneNumbers: contextPhoneNumbers, 
     loadingPhoneNumbers: contextLoadingPhoneNumbers,
     loadPhoneNumbers: contextLoadPhoneNumbers,
@@ -859,6 +913,70 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
   // Usar los números de teléfono del contexto en lugar de estado local
   const phoneNumbers = contextPhoneNumbers;
   const loading = contextLoadingPhoneNumbers;
+
+  // Cargar folders (workspaces) desde Retell para cada API key y mapearlos por similitud con clientId
+  useEffect(() => {
+    const loadFoldersForWorkspaces = async () => {
+      const apiKeysToUse = apiKeyTest && apiKeyTest.length > 0
+        ? apiKeyTest
+        : apiKey
+          ? [apiKey]
+          : [];
+
+      if (apiKeysToUse.length === 0) return;
+
+      const newMapping: Record<string, string> = {};
+
+      for (const key of apiKeysToUse) {
+        try {
+          const folders = await fetchFolders(key);
+          if (!folders || folders.length === 0) continue;
+
+          // Si solo hay una carpeta, usar esa directamente
+          if (folders.length === 1) {
+            newMapping[key] = folders[0].folderName;
+            continue;
+          }
+
+          // Normalizar clientId para comparación
+          const baseClientId = (clientId || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+          let bestFolder = folders[0];
+          let bestScore = -1;
+
+          for (const folder of folders) {
+            const normalizedName = folder.folderName.toLowerCase().replace(/[^a-z0-9]+/g, '');
+            let score = 0;
+
+            if (baseClientId && normalizedName.includes(baseClientId)) {
+              score = baseClientId.length;
+            } else if (baseClientId) {
+              // Longitud de prefijo común como heurística simple
+              const maxLen = Math.min(baseClientId.length, normalizedName.length);
+              while (score < maxLen && baseClientId[score] === normalizedName[score]) {
+                score++;
+              }
+            }
+
+            if (score > bestScore) {
+              bestScore = score;
+              bestFolder = folder;
+            }
+          }
+
+          newMapping[key] = bestFolder.folderName;
+        } catch (e) {
+          console.error('Error al cargar folders para workspace:', key, e);
+        }
+      }
+
+      if (Object.keys(newMapping).length > 0) {
+        setWorkspaceFoldersByApiKey(newMapping);
+      }
+    };
+
+    loadFoldersForWorkspaces();
+  }, [apiKey, apiKeyTest, clientId]);
   
   // Obtener nombre de workspace a partir de la URL del webhook
   const getWorkspaceFromWebhook = (webhookUrl?: string): string | null => {
@@ -905,16 +1023,17 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
     apiKeys.forEach((key, index) => {
       const phoneForKey = phoneNumbers.find((p) => p.workspace_api_key === key);
 
+      const fromFolders = workspaceFoldersByApiKey[key];
       const fromMetadata = phoneForKey?.workspace_name;
       const fromWebhook = phoneForKey?.inbound_webhook_url
         ? getWorkspaceFromWebhook(phoneForKey.inbound_webhook_url)
         : null;
 
-      mapping[key] = fromMetadata || fromWebhook || `Workspace ${index + 1}`;
+      mapping[key] = fromFolders || fromMetadata || fromWebhook || `Workspace ${index + 1}`;
     });
 
     return mapping;
-  }, [phoneNumbers]);
+  }, [phoneNumbers, workspaceFoldersByApiKey]);
 
   // Obtener lista de workspaces únicos disponibles (labels)
   const availableWorkspaces = Array.from(
@@ -1112,11 +1231,6 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
                     </div>
                     
                     <div>
-                      <p className="text-slate-500">Código de área</p>
-                      <p className="text-slate-800">{phone.area_code}</p>
-                    </div>
-                    
-                    <div>
                       <p className="text-slate-500">Última modificación</p>
                       <p className="text-slate-800">{formatDate(phone.last_modification_timestamp)}</p>
                     </div>
@@ -1223,6 +1337,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
         <AddPhoneModal
           onClose={() => setShowAddPhoneModal(false)}
           onSuccess={() => contextLoadPhoneNumbers(true)}
+          workspaceNameByApiKey={workspaceNameByApiKey}
         />
       )}
 
