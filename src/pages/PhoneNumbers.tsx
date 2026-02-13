@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Phone, Copy, RefreshCw, ExternalLink, X, Send, Plus, ChevronDown, User, Trash2, AlertTriangle } from 'lucide-react';
 import { RetellPhoneNumber, RetellAgent } from '../types';
-import { createPhoneCall, fetchAgents, importPhoneNumber, deletePhoneNumber } from '../api';
+import { createPhoneCall, fetchAgents, importPhoneNumber, deletePhoneNumber, fetchFolders, getCallCountsByFromNumber } from '../api';
 import { useCallsContext } from '../context/CallsContext';
+import { getUserData } from '../lib/supabase';
 
 interface PhoneNumbersProps {
   onNavigate: (page: 'dashboard' | 'recordings' | 'phones') => void;
@@ -147,8 +148,14 @@ function CallModal({ phoneNumber, onClose, apiKey }: CallModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md">
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex justify-between items-center border-b border-slate-200 p-4 bg-gradient-to-r from-slate-50 to-blue-50">
           <h3 className="text-lg font-medium text-slate-800">Realizar llamada</h3>
           <button 
@@ -334,29 +341,149 @@ function CallModal({ phoneNumber, onClose, apiKey }: CallModalProps) {
 interface AddPhoneModalProps {
   onClose: () => void;
   onSuccess: () => void;
-  apiKey: string | null;
+  workspaceNameByApiKey: Record<string, string>;
 }
 
 // Componente para el modal de añadir número de teléfono
-function AddPhoneModal({ onClose, onSuccess, apiKey }: AddPhoneModalProps) {
+function AddPhoneModal({ onClose, onSuccess, workspaceNameByApiKey }: AddPhoneModalProps) {
+  const { apiKey, apiKeyTest, clientId, phoneNumbers: contextPhoneNumbers } = useCallsContext();
   const [phoneNumber, setPhoneNumber] = useState('');
   const [nickname, setNickname] = useState('');
   const [terminationUri, setTerminationUri] = useState('');
+  const [inboundWebhookUrl, setInboundWebhookUrl] = useState('');
   const [sipUsername, setSipUsername] = useState('');
   const [sipPassword, setSipPassword] = useState('');
+  const [transport, setTransport] = useState<'TCP' | 'UDP' | 'TLS'>('TCP');
+  const [selectedWorkspaceApiKey, setSelectedWorkspaceApiKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [agents, setAgents] = useState<RetellAgent[]>([]);
+  const [selectedAgent, setSelectedAgent] = useState<RetellAgent | null>(null);
+  const [loadingAgents, setLoadingAgents] = useState(false);
+  const [agentsError, setAgentsError] = useState<string | null>(null);
+
+  // Cargar lista de URIs de terminación desde sessionStorage (uri_retell)
+  const [terminationUriOptions, setTerminationUriOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    // 1) Intentar leer de sessionStorage (uri_retell guardado explícitamente)
+    const raw = sessionStorage.getItem('uri_retell');
+    let options: string[] | null = null;
+
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          options = parsed.filter((v): v is string => typeof v === 'string' && v.trim().length > 0);
+        }
+      } catch (e) {
+        console.error('Error parseando uri_retell desde sessionStorage:', e);
+      }
+    }
+
+    // 2) Si no hay en sessionStorage, intentar desde userData guardado en sesión (login)
+    if (!options) {
+      const userData = getUserData();
+      if (userData && userData.uri_retell) {
+        try {
+          if (Array.isArray(userData.uri_retell)) {
+            options = userData.uri_retell.filter(
+              (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0
+            );
+          } else if (typeof userData.uri_retell === 'string') {
+            const parsed = JSON.parse(userData.uri_retell);
+            if (Array.isArray(parsed)) {
+              options = parsed.filter((v: unknown): v is string => typeof v === 'string' && v.trim().length > 0);
+            }
+          }
+        } catch (e) {
+          console.error('Error parseando uri_retell desde userData:', e);
+        }
+      }
+    }
+
+    if (options && options.length > 0) {
+      setTerminationUriOptions(options);
+    }
+  }, []);
+
+  // Construir opciones de workspace a partir de apiKeyTest (todas las API keys de los workspaces)
+  const workspaceOptions = useMemo(() => {
+    const options: { label: string; apiKey: string }[] = [];
+
+    if (apiKeyTest && apiKeyTest.length > 0) {
+      apiKeyTest.forEach((key, index) => {
+        const workspaceName = workspaceNameByApiKey[key] || null;
+
+        options.push({
+          label: workspaceName || `Workspace ${index + 1}`,
+          apiKey: key,
+        });
+      });
+    } else if (apiKey) {
+      const workspaceName = workspaceNameByApiKey[apiKey] || null;
+
+      options.push({
+        label: workspaceName || `Workspace principal`,
+        apiKey,
+      });
+    }
+
+    return options;
+  }, [apiKey, apiKeyTest, workspaceNameByApiKey]);
+
+  // Seleccionar por defecto el primer workspace disponible
+  useEffect(() => {
+    if (!selectedWorkspaceApiKey && workspaceOptions.length > 0) {
+      setSelectedWorkspaceApiKey(workspaceOptions[0].apiKey);
+    }
+  }, [selectedWorkspaceApiKey, workspaceOptions]);
+
+  // Cargar agentes cuando se selecciona un workspace
+  useEffect(() => {
+    const loadAgents = async () => {
+      if (!selectedWorkspaceApiKey) return;
+
+      setLoadingAgents(true);
+      setAgentsError(null);
+
+      try {
+        const agentsData = await fetchAgents(selectedWorkspaceApiKey);
+        setAgents(agentsData);
+        setSelectedAgent(null);
+      } catch (err) {
+        console.error('Error cargando agentes para workspace:', err);
+        setAgentsError(err instanceof Error ? err.message : 'Error al cargar los agentes');
+      } finally {
+        setLoadingAgents(false);
+      }
+    };
+
+    loadAgents();
+  }, [selectedWorkspaceApiKey]);
 
   // Función para añadir el número de teléfono
   const handleAddPhone = async () => {
-    if (!apiKey) {
-      setError('API key no configurada');
+    const effectiveApiKey = selectedWorkspaceApiKey || apiKey;
+
+    if (!effectiveApiKey) {
+      setError('API key no configurada. Selecciona un workspace válido.');
       return;
     }
 
     if (!phoneNumber.trim()) {
       setError('El número de teléfono es obligatorio');
+      return;
+    }
+
+    if (!selectedWorkspaceApiKey) {
+      setError('Debes seleccionar un workspace');
+      return;
+    }
+
+    if (!selectedAgent) {
+      setError('Debes seleccionar un agente para el número');
       return;
     }
 
@@ -366,7 +493,9 @@ function AddPhoneModal({ onClose, onSuccess, apiKey }: AddPhoneModalProps) {
 
     try {
       const phoneData: any = {
-        phone_number: phoneNumber.trim()
+        phone_number: phoneNumber.trim(),
+        inbound_agent_id: selectedAgent.agent_id,
+        outbound_agent_id: selectedAgent.agent_id,
       };
 
       // Añadir campos opcionales solo si tienen valor
@@ -376,20 +505,27 @@ function AddPhoneModal({ onClose, onSuccess, apiKey }: AddPhoneModalProps) {
       if (terminationUri.trim()) {
         phoneData.termination_uri = terminationUri.trim();
       }
+      if (inboundWebhookUrl.trim()) {
+        phoneData.inbound_webhook_url = inboundWebhookUrl.trim();
+      }
       if (sipUsername.trim()) {
         phoneData.sip_trunk_auth_username = sipUsername.trim();
       }
       if (sipPassword.trim()) {
         phoneData.sip_trunk_auth_password = sipPassword.trim();
       }
+      if (transport) {
+        phoneData.transport = transport;
+      }
 
-      const result = await importPhoneNumber(apiKey, phoneData);
+      const result = await importPhoneNumber(effectiveApiKey, phoneData);
       setSuccess(`Número de teléfono añadido con éxito. ID: ${result.phone_number_id || 'N/A'}`);
       
       // Limpiar el formulario
       setPhoneNumber('');
       setNickname('');
       setTerminationUri('');
+      setInboundWebhookUrl('');
       setSipUsername('');
       setSipPassword('');
       
@@ -407,9 +543,15 @@ function AddPhoneModal({ onClose, onSuccess, apiKey }: AddPhoneModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md">
-        <div className="flex justify-between items-center border-b border-slate-200 p-4 bg-gradient-to-r from-slate-50 to-blue-50">
+    <div 
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md max-h-[90vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex justify-between items-center border-b border-slate-200 p-4 bg-gradient-to-r from-slate-50 to-blue-50 flex-shrink-0">
           <h3 className="text-lg font-medium text-slate-800">Añadir Número de Teléfono</h3>
           <button 
             onClick={onClose}
@@ -419,7 +561,26 @@ function AddPhoneModal({ onClose, onSuccess, apiKey }: AddPhoneModalProps) {
           </button>
         </div>
         
-        <div className="p-5 space-y-5 bg-white">
+        <div className="p-5 space-y-5 bg-white flex-1 overflow-y-auto">
+          <div>
+            <label className="block text-slate-600 mb-1">Workspace *</label>
+            <select
+              value={selectedWorkspaceApiKey || ''}
+              onChange={(e) => setSelectedWorkspaceApiKey(e.target.value || null)}
+              className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Selecciona un workspace</option>
+              {workspaceOptions.map((ws) => (
+                <option key={ws.apiKey} value={ws.apiKey}>
+                  {ws.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-slate-500 mt-1">
+              El workspace determina en qué cuenta de Retell se creará este número.
+            </p>
+          </div>
+
           <div>
             <label className="block text-slate-600 mb-1">Número de teléfono *</label>
             <input
@@ -439,20 +600,102 @@ function AddPhoneModal({ onClose, onSuccess, apiKey }: AddPhoneModalProps) {
               type="text"
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
-              placeholder="Mi número principal"
+              placeholder="Nombre"
               className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
           <div>
-            <label className="block text-slate-600 mb-1">URI de terminación (opcional)</label>
+            <label className="block text-slate-600 mb-1">Agente (workspace seleccionado) *</label>
+            {loadingAgents ? (
+              <div className="flex items-center bg-slate-50 p-3 rounded-lg border border-slate-200 text-slate-600">
+                <svg className="animate-spin mr-2 h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Cargando agentes...
+              </div>
+            ) : agentsError ? (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                {agentsError}
+              </div>
+            ) : agents.length === 0 ? (
+              <div className="flex items-center bg-slate-50 p-3 rounded-lg border border-slate-200 text-slate-600">
+                No se encontraron agentes para este workspace
+              </div>
+            ) : (
+              <select
+                value={selectedAgent?.agent_id || ''}
+                onChange={(e) => {
+                  const agent = agents.find(a => a.agent_id === e.target.value) || null;
+                  setSelectedAgent(agent);
+                }}
+                className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Selecciona un agente</option>
+                {agents.map((agent) => (
+                  <option key={agent.agent_id} value={agent.agent_id}>
+                    {agent.agent_name || agent.agent_id}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-slate-600 mb-1">Terminación URI</label>
+            {terminationUriOptions.length > 0 ? (
+              <select
+                value={terminationUri}
+                onChange={(e) => setTerminationUri(e.target.value)}
+                className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Selecciona una URI de terminación</option>
+                {terminationUriOptions.map((uri) => (
+                  <option key={uri} value={uri}>
+                    {uri}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={terminationUri}
+                onChange={(e) => setTerminationUri(e.target.value)}
+                placeholder="sip:termination@example.com"
+                className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            )}
+          </div>
+
+          <div>
+            <label className="block text-slate-600 mb-1">Webhook URL (opcional)</label>
             <input
               type="text"
-              value={terminationUri}
-              onChange={(e) => setTerminationUri(e.target.value)}
-              placeholder="sip:termination@example.com"
+              value={inboundWebhookUrl}
+              onChange={(e) => setInboundWebhookUrl(e.target.value)}
+              placeholder="https://example.com/inbound-webhook"
               className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            <p className="text-xs text-slate-500 mt-1">
+              Si se establece, Retell enviará un webhook para cada llamada entrante a este número.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-slate-600 mb-1">Transporte (opcional)</label>
+            <select
+              value={transport}
+              onChange={(e) => setTransport(e.target.value as 'TCP' | 'UDP' | 'TLS')}
+              className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="TCP">TCP</option>
+              <option value="UDP">UDP</option>
+              <option value="TLS">TLS</option>
+            </select>
+            <p className="text-xs text-slate-500 mt-1">
+              Protocolo de transporte para el número (por defecto TCP).
+            </p>
           </div>
 
           <div>
@@ -542,8 +785,10 @@ function DeletePhoneModal({ phoneNumber, onClose, onSuccess, apiKey }: DeletePho
 
   // Función para eliminar el número de teléfono
   const handleDeletePhone = async () => {
-    if (!apiKey) {
-      setError('API key no configurada');
+    const effectiveApiKey = phoneNumber.workspace_api_key || apiKey;
+
+    if (!effectiveApiKey) {
+      setError('API key no configurada para este workspace');
       return;
     }
 
@@ -551,7 +796,7 @@ function DeletePhoneModal({ phoneNumber, onClose, onSuccess, apiKey }: DeletePho
     setError(null);
 
     try {
-      await deletePhoneNumber(apiKey, phoneNumber.phone_number);
+      await deletePhoneNumber(effectiveApiKey, phoneNumber.phone_number);
       
       // Crear notificación de éxito
       const notification = document.createElement('div');
@@ -675,10 +920,16 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
   const [showAddPhoneModal, setShowAddPhoneModal] = useState(false);
   const [showDeletePhoneModal, setShowDeletePhoneModal] = useState(false);
   const [phoneToDelete, setPhoneToDelete] = useState<RetellPhoneNumber | null>(null);
-  
+  const [workspaceFilter, setWorkspaceFilter] = useState<string | null>(null);
+  const [workspaceFoldersByApiKey, setWorkspaceFoldersByApiKey] = useState<Record<string, string>>({});
+  const [callCountsByPhone, setCallCountsByPhone] = useState<Record<string, { total: number; efectivas: number; fallidas: number }>>({});
+  const [loadingCallCounts, setLoadingCallCounts] = useState(true);
+
   // Usar el contexto para obtener la API key, números de teléfono y el estado de llamadas
   const { 
     apiKey, 
+    apiKeyTest,
+    clientId,
     phoneNumbers: contextPhoneNumbers, 
     loadingPhoneNumbers: contextLoadingPhoneNumbers,
     loadPhoneNumbers: contextLoadPhoneNumbers,
@@ -689,11 +940,195 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
   // Usar los números de teléfono del contexto en lugar de estado local
   const phoneNumbers = contextPhoneNumbers;
   const loading = contextLoadingPhoneNumbers;
+
+  // Cargar folders (workspaces) desde Retell para cada API key y mapearlos por similitud con clientId
+  useEffect(() => {
+    const loadFoldersForWorkspaces = async () => {
+      const apiKeysToUse = apiKeyTest && apiKeyTest.length > 0
+        ? apiKeyTest
+        : apiKey
+          ? [apiKey]
+          : [];
+
+      if (apiKeysToUse.length === 0) return;
+
+      const newMapping: Record<string, string> = {};
+
+      for (const key of apiKeysToUse) {
+        try {
+          const folders = await fetchFolders(key);
+          if (!folders || folders.length === 0) continue;
+
+          // Si solo hay una carpeta, usar esa directamente
+          if (folders.length === 1) {
+            newMapping[key] = folders[0].folderName;
+            continue;
+          }
+
+          // Normalizar clientId para comparación
+          const baseClientId = (clientId || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+          let bestFolder = folders[0];
+          let bestScore = -1;
+
+          for (const folder of folders) {
+            const normalizedName = folder.folderName.toLowerCase().replace(/[^a-z0-9]+/g, '');
+            let score = 0;
+
+            if (baseClientId && normalizedName.includes(baseClientId)) {
+              score = baseClientId.length;
+            } else if (baseClientId) {
+              // Longitud de prefijo común como heurística simple
+              const maxLen = Math.min(baseClientId.length, normalizedName.length);
+              while (score < maxLen && baseClientId[score] === normalizedName[score]) {
+                score++;
+              }
+            }
+
+            if (score > bestScore) {
+              bestScore = score;
+              bestFolder = folder;
+            }
+          }
+
+          newMapping[key] = bestFolder.folderName;
+        } catch (e) {
+          console.error('Error al cargar folders para workspace:', key, e);
+        }
+      }
+
+      if (Object.keys(newMapping).length > 0) {
+        setWorkspaceFoldersByApiKey(newMapping);
+      }
+    };
+
+    loadFoldersForWorkspaces();
+  }, [apiKey, apiKeyTest, clientId]);
+
+  // Cargar conteos de llamadas por número desde call_logs (por from_number)
+  useEffect(() => {
+    const loadCallCounts = async () => {
+      if (!clientId) {
+        setLoadingCallCounts(false);
+        return;
+      }
+      setLoadingCallCounts(true);
+      try {
+        const rows = await getCallCountsByFromNumber(clientId);
+        const map: Record<string, { total: number; efectivas: number; fallidas: number }> = {};
+        rows.forEach((r) => {
+          const key = r.from_number || '';
+          const keyNorm = (r.from_number_norm != null && r.from_number_norm !== '') ? r.from_number_norm : key.replace(/^\+/, '');
+          const value = { total: r.total, efectivas: r.efectivas, fallidas: r.fallidas };
+          if (key) map[key] = value;
+          if (keyNorm && keyNorm !== key) map[keyNorm] = value;
+        });
+        setCallCountsByPhone(map);
+      } catch (e) {
+        console.error('Error al cargar conteos de llamadas por número:', e);
+      } finally {
+        setLoadingCallCounts(false);
+      }
+    };
+    loadCallCounts();
+  }, [clientId]);
+
+  const getCallCountsForPhone = (phoneNumber: string): { total: number; efectivas: number; fallidas: number } | null => {
+    const withPlus = phoneNumber.startsWith('+') ? phoneNumber : `+${phoneNumber}`;
+    const withoutPlus = phoneNumber.replace(/^\+/, '');
+    return callCountsByPhone[withPlus] ?? callCountsByPhone[withoutPlus] ?? callCountsByPhone[phoneNumber] ?? null;
+  };
+
+  const getCallCountBadgeColor = (total: number): string => {
+    if (total < 15000) return 'bg-green-100 text-green-800 border-green-200';
+    if (total <= 35000) return 'bg-amber-100 text-amber-800 border-amber-200';
+    return 'bg-red-100 text-red-800 border-red-200';
+  };
+
+  // No mostrar contenido hasta que estén cargados números y conteos de llamadas
+  const loadingAll = loading || loadingCallCounts;
+
+  // Obtener nombre de workspace a partir de la URL del webhook
+  const getWorkspaceFromWebhook = (webhookUrl?: string): string | null => {
+    if (!webhookUrl) return null;
+
+    try {
+      const url = new URL(webhookUrl);
+      const segments = url.pathname.split('/').filter(Boolean);
+      const lastSegment = segments[segments.length - 1] || '';
+
+      // Intentar cortar por "-workspace" o el typo "-worspace" si existe
+      const workspaceSlug = lastSegment
+        .split(/-workspace|-worspace/i)[0]
+        .trim() || lastSegment.trim();
+
+      if (!workspaceSlug) return null;
+
+      const prettyName = workspaceSlug
+        .replace(/[-_]+/g, ' ')
+        .trim()
+        .split(' ')
+        .filter(Boolean)
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+
+      return prettyName || null;
+    } catch {
+      return null;
+    }
+  };
+
+  // Mapear cada workspace_api_key a un nombre de workspace (bonito o genérico)
+  const workspaceNameByApiKey = useMemo(() => {
+    const mapping: Record<string, string> = {};
+
+    const apiKeys = Array.from(
+      new Set(
+        phoneNumbers
+          .map((p) => p.workspace_api_key)
+          .filter((k): k is string => !!k)
+      )
+    );
+
+    apiKeys.forEach((key, index) => {
+      const phoneForKey = phoneNumbers.find((p) => p.workspace_api_key === key);
+
+      const fromFolders = workspaceFoldersByApiKey[key];
+      const fromMetadata = phoneForKey?.workspace_name;
+      const fromWebhook = phoneForKey?.inbound_webhook_url
+        ? getWorkspaceFromWebhook(phoneForKey.inbound_webhook_url)
+        : null;
+
+      mapping[key] = fromFolders || fromMetadata || fromWebhook || `Workspace ${index + 1}`;
+    });
+
+    return mapping;
+  }, [phoneNumbers, workspaceFoldersByApiKey]);
+
+  // Obtener lista de workspaces únicos disponibles (labels)
+  const availableWorkspaces = Array.from(
+    new Set(
+      Object.values(workspaceNameByApiKey).filter((ws) => !!ws)
+    )
+  );
   
-  // Filtrar números de teléfono si hay un filtro activo
-  const filteredPhoneNumbers = phoneFilter 
+  // Filtrar números de teléfono por número específico (URL) y por workspace si hay filtros activos
+  const filteredByPhone = phoneFilter 
     ? phoneNumbers.filter(phone => phone.phone_number === phoneFilter)
     : phoneNumbers;
+
+  const filteredPhoneNumbers = workspaceFilter
+    ? filteredByPhone.filter(phone => {
+        const labelFromApiKey = phone.workspace_api_key
+          ? workspaceNameByApiKey[phone.workspace_api_key]
+          : undefined;
+        const labelFromWebhook = phone.inbound_webhook_url
+          ? getWorkspaceFromWebhook(phone.inbound_webhook_url)
+          : null;
+        const finalLabel = labelFromApiKey || labelFromWebhook;
+        return finalLabel === workspaceFilter;
+      })
+    : filteredByPhone;
   
   // Cargar los números al montar el componente usando la función del contexto
   useEffect(() => {
@@ -732,7 +1167,25 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
         <div className="p-6 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4 bg-gradient-to-r from-slate-50 to-blue-50">
           <h3 className="text-lg font-semibold text-slate-800">Números de Teléfono</h3>
           
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 items-center justify-end">
+            {availableWorkspaces.length > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-600">Workspace:</span>
+                <select
+                  value={workspaceFilter || ''}
+                  onChange={(e) => setWorkspaceFilter(e.target.value || null)}
+                  className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Todos</option>
+                  {availableWorkspaces.map((ws) => (
+                    <option key={ws} value={ws}>
+                      {ws}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <button
               onClick={() => setShowAddPhoneModal(true)}
               className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-700 text-white rounded-lg hover:from-green-700 hover:to-emerald-800 transition-colors flex items-center"
@@ -743,14 +1196,14 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
             
             <button
               onClick={() => contextLoadPhoneNumbers(true)}
-              disabled={loading}
+              disabled={loadingAll}
               className={`px-4 py-2 rounded-lg text-white flex items-center ${
-                loading
+                loadingAll
                   ? 'bg-slate-400 cursor-not-allowed'
                   : 'bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800'
               }`}
             >
-              {loading ? (
+              {loadingAll ? (
                 <>
                   <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -769,22 +1222,22 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
         </div>
         
         <div className="divide-y divide-slate-200">
-          {/* Estado de carga */}
-          {loading && (
+          {/* Estado de carga: no mostrar nada hasta que carguen números y conteos */}
+          {loadingAll && (
             <div className="p-6 text-center text-slate-600">
-              Cargando números de teléfono...
+              Cargando datos...
             </div>
           )}
           
           {/* Mostrar error si lo hay */}
-          {error && (
+          {!loadingAll && error && (
             <div className="p-6 text-center text-red-600">
               {error}
             </div>
           )}
           
           {/* No se encontraron resultados */}
-          {!loading && !error && filteredPhoneNumbers.length === 0 && (
+          {!loadingAll && !error && filteredPhoneNumbers.length === 0 && (
             <div className="p-6 text-center text-slate-600">
               {phoneFilter ? (
                 <div className="space-y-4">
@@ -806,13 +1259,22 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
           )}
           
           {/* Lista de números de teléfono */}
-          {!loading && !error && filteredPhoneNumbers.map((phone) => (
+          {!loadingAll && !error && filteredPhoneNumbers.map((phone) => (
             <div key={phone.phone_number} className="p-6 hover:bg-slate-50 transition-colors">
               <div className="flex items-start justify-between">
                 <div className="flex-grow">
                   <div className="flex items-center gap-2 mb-2">
                     <Phone className="w-5 h-5 text-blue-600" />
-                    <h4 className="text-slate-800 font-medium text-lg">{phone.phone_number_pretty}</h4>
+                    <div className="flex flex-col">
+                      <h4 className="text-slate-800 font-medium text-lg">
+                        {phone.nickname || phone.phone_number_pretty}
+                      </h4>
+                      {phone.nickname && (
+                        <span className="text-slate-500 text-sm">
+                          {phone.phone_number_pretty}
+                        </span>
+                      )}
+                    </div>
                     <button 
                       onClick={() => copyToClipboard(phone.phone_number)}
                       className="ml-2 p-1 rounded-md hover:bg-slate-200 transition-colors"
@@ -824,8 +1286,33 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
                       <span className="text-green-600 text-sm">¡Copiado!</span>
                     )}
                   </div>
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-sm text-slate-600">
+                    {/* Llamadas realizadas - primera fila del grid */}
+                    <div className="md:col-span-2 mb-2 p-3 rounded-lg bg-slate-50 border border-slate-200">
+                      <p className="text-slate-500 text-sm font-medium mb-2">Llamadas realizadas</p>
+                      <div className="flex flex-wrap items-center gap-3">
+                        {(() => {
+                          const counts = getCallCountsForPhone(phone.phone_number);
+                          const total = counts?.total ?? 0;
+                          const efectivas = counts?.efectivas ?? 0;
+                          const fallidas = counts?.fallidas ?? 0;
+                          return (
+                            <>
+                              <span className={`inline-flex items-center px-3 py-1.5 rounded-lg border text-sm font-semibold ${getCallCountBadgeColor(total)}`}>
+                                Total: {total.toLocaleString()}
+                              </span>
+                              <span className="text-slate-600 text-sm">
+                                Efectivas: <span className="font-semibold text-green-700">{efectivas.toLocaleString()}</span>
+                                {' · '}
+                                Fallidas: <span className="font-semibold text-red-700">{fallidas.toLocaleString()}</span>
+                              </span>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    </div>
+
                     {phone.nickname && (
                       <div>
                         <p className="text-slate-500">Nombre</p>
@@ -836,11 +1323,6 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
                     <div>
                       <p className="text-slate-500">Tipo</p>
                       <p className="text-slate-800">{phone.phone_number_type}</p>
-                    </div>
-                    
-                    <div>
-                      <p className="text-slate-500">Código de área</p>
-                      <p className="text-slate-800">{phone.area_code}</p>
                     </div>
                     
                     <div>
@@ -885,6 +1367,20 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
                         )}
                       </div>
                     </div>
+
+                    <div>
+                      <p className="text-slate-500">Workspace</p>
+                      <p className="text-slate-800">
+              {phone.workspace_api_key
+                ? workspaceNameByApiKey[phone.workspace_api_key] ||
+                  (phone.inbound_webhook_url
+                    ? getWorkspaceFromWebhook(phone.inbound_webhook_url)
+                    : 'No especificado')
+                : phone.inbound_webhook_url
+                ? getWorkspaceFromWebhook(phone.inbound_webhook_url) || 'No especificado'
+                : 'No especificado'}
+                      </p>
+                    </div>
                     
                     {phone.inbound_webhook_url && (
                       <div className="col-span-1 md:col-span-2">
@@ -927,7 +1423,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
         <CallModal 
           phoneNumber={selectedPhone}
           onClose={() => setSelectedPhone(null)}
-          apiKey={apiKey}
+          apiKey={selectedPhone.workspace_api_key || apiKey}
         />
       )}
 
@@ -936,7 +1432,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
         <AddPhoneModal
           onClose={() => setShowAddPhoneModal(false)}
           onSuccess={() => contextLoadPhoneNumbers(true)}
-          apiKey={apiKey}
+          workspaceNameByApiKey={workspaceNameByApiKey}
         />
       )}
 

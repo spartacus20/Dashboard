@@ -1,4 +1,4 @@
-import { RetellCall, FilterCriteria, CallStats, RetellPhoneNumber, RetellAgent, RetellBatchCall, ClientData, Agenda, Callback, CallbackResponse, CallsByPhoneResponse } from './types';
+import { RetellCall, FilterCriteria, CallStats, RetellPhoneNumber, RetellAgent, RetellBatchCall, ClientData, Agenda, Callback, CallbackResponse, CallsByPhoneResponse, RetellFolder } from './types';
 import { get_client_id } from './lib/supabase';
 
 // Obtener la URL base según el entorno
@@ -263,6 +263,35 @@ export function calculateStats(calls: RetellCall[]): CallStats {
   };
 }
 
+// Función auxiliar para obtener nombre de workspace a partir de la URL del webhook
+function getWorkspaceNameFromWebhook(webhookUrl?: string): string | null {
+  if (!webhookUrl) return null;
+
+  try {
+    const url = new URL(webhookUrl);
+    const segments = url.pathname.split('/').filter(Boolean);
+    const lastSegment = segments[segments.length - 1] || '';
+
+    // Intentar cortar por "-workspace" o el typo "-worspace" si existe
+    const workspaceSlug =
+      lastSegment.split(/-workspace|-worspace/i)[0].trim() || lastSegment.trim();
+
+    if (!workspaceSlug) return null;
+
+    const prettyName = workspaceSlug
+      .replace(/[-_]+/g, ' ')
+      .trim()
+      .split(' ')
+      .filter(Boolean)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+
+    return prettyName || null;
+  } catch {
+    return null;
+  }
+}
+
 // Función para obtener números de teléfono de una sola API key
 async function fetchPhoneNumbersFromSingleApiKey(apiKey: string): Promise<RetellPhoneNumber[]> {
   const response = await fetch('https://api.retellai.com/list-phone-numbers', {
@@ -293,15 +322,27 @@ export async function fetchPhoneNumbers(apiKey: string | string[]): Promise<Rete
   if (Array.isArray(apiKey)) {
     console.log(`📞 Obteniendo números de teléfono de ${apiKey.length} API keys`);
     
-    // Obtener números de todas las API keys en paralelo
-    const promises = apiKey.map(key => 
-      fetchPhoneNumbersFromSingleApiKey(key).catch(err => {
-        console.error(`❌ Error obteniendo números de teléfono para API key ${key.substring(0, 10)}...:`, err);
-        return []; // Devolver array vacío en caso de error para no romper el flujo
+    // Obtener números de todas las API keys en paralelo y adjuntar metadata de workspace
+    const results = await Promise.all(
+      apiKey.map(async (key) => {
+        const numbers = await fetchPhoneNumbersFromSingleApiKey(key).catch((err) => {
+          console.error(
+            `❌ Error obteniendo números de teléfono para API key ${key.substring(0, 10)}...:`,
+            err
+          );
+          return [] as RetellPhoneNumber[]; // Devolver array vacío en caso de error para no romper el flujo
+        });
+
+        return numbers.map((phone) => {
+          const workspaceName = getWorkspaceNameFromWebhook(phone.inbound_webhook_url);
+          return {
+            ...phone,
+            workspace_api_key: key,
+            workspace_name: workspaceName || undefined,
+          };
+        });
       })
     );
-    
-    const results = await Promise.all(promises);
     
     // Combinar todos los resultados y eliminar duplicados por phone_number
     const allNumbers = results.flat();
@@ -313,8 +354,16 @@ export async function fetchPhoneNumbers(apiKey: string | string[]): Promise<Rete
     return uniqueNumbers;
   }
   
-  // Si es una sola API key, usar la función original
-  return fetchPhoneNumbersFromSingleApiKey(apiKey);
+  // Si es una sola API key, usar la función original y adjuntar metadata de workspace
+  const numbers = await fetchPhoneNumbersFromSingleApiKey(apiKey);
+  return numbers.map((phone) => {
+    const workspaceName = getWorkspaceNameFromWebhook(phone.inbound_webhook_url);
+    return {
+      ...phone,
+      workspace_api_key: apiKey,
+      workspace_name: workspaceName || undefined,
+    };
+  });
 }
 
 interface CreatePhoneCallParams {
@@ -340,6 +389,28 @@ export async function createPhoneCall(apiKey: string, params: CreatePhoneCallPar
   }
 
   return await response.json();
+}
+
+export async function fetchFolders(apiKey: string): Promise<RetellFolder[]> {
+  const response = await fetch('https://api.retellai.com/get-folders', {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Error al obtener folders: ${response.status} ${response.statusText} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  if (!Array.isArray(data)) {
+    throw new Error('Formato de respuesta inesperado al obtener folders');
+  }
+
+  return data;
 }
 
 export async function fetchAgents(apiKey: string): Promise<RetellAgent[]> {
@@ -529,6 +600,28 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
         sessionStorage.setItem('metadata_llamadas', JSON.stringify(clientData.metadata_llamadas));
         console.log('✅ metadata_llamadas guardado en sessionStorage');
       }
+
+      // Guardar uri_retell (URIs de terminación) en sessionStorage si está disponible
+      if (clientData.uri_retell) {
+        let uriRetell: string[] | null = null;
+        if (Array.isArray(clientData.uri_retell)) {
+          uriRetell = clientData.uri_retell;
+        } else if (typeof clientData.uri_retell === 'string') {
+          try {
+            const parsed = JSON.parse(clientData.uri_retell);
+            if (Array.isArray(parsed)) {
+              uriRetell = parsed.filter((v): v is string => typeof v === 'string');
+            }
+          } catch (e) {
+            console.warn('Error parseando uri_retell (string) desde get-client:', e);
+          }
+        }
+
+        if (uriRetell && uriRetell.length > 0) {
+          sessionStorage.setItem('uri_retell', JSON.stringify(uriRetell));
+          console.log('✅ uri_retell guardado en sessionStorage:', uriRetell);
+        }
+      }
       
       // Guardar client_test SOLO si se está obteniendo por email (no por client_id)
       // Esto preserva el client_test original del usuario cuando se cambia el client_id
@@ -618,6 +711,28 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
       if (data.metadata_llamadas) {
         sessionStorage.setItem('metadata_llamadas', JSON.stringify(data.metadata_llamadas));
         console.log('✅ metadata_llamadas guardado en sessionStorage (formato objeto)');
+      }
+
+      // Guardar uri_retell (URIs de terminación) en sessionStorage si está disponible - formato objeto
+      if (data.uri_retell) {
+        let uriRetell: string[] | null = null;
+        if (Array.isArray(data.uri_retell)) {
+          uriRetell = data.uri_retell;
+        } else if (typeof data.uri_retell === 'string') {
+          try {
+            const parsed = JSON.parse(data.uri_retell);
+            if (Array.isArray(parsed)) {
+              uriRetell = parsed.filter((v): v is string => typeof v === 'string');
+            }
+          } catch (e) {
+            console.warn('Error parseando uri_retell (string, formato objeto) desde get-client:', e);
+          }
+        }
+
+        if (uriRetell && uriRetell.length > 0) {
+          sessionStorage.setItem('uri_retell', JSON.stringify(uriRetell));
+          console.log('✅ uri_retell guardado en sessionStorage (formato objeto):', uriRetell);
+        }
       }
       
       // Guardar client_test SOLO si se está obteniendo por email (no por client_id)
@@ -2431,6 +2546,33 @@ export async function getCallsByPhone(
     return data;
   } catch (error) {
     console.error('Error al obtener llamadas por teléfono:', error);
+    throw error;
+  }
+}
+
+export interface CallCountByFromNumber {
+  from_number: string;
+  from_number_norm: string | null;
+  total: number;
+  fallidas: number;
+  efectivas: number;
+}
+
+export async function getCallCountsByFromNumber(clientId: string): Promise<CallCountByFromNumber[]> {
+  try {
+    const response = await fetch(`${BASE_URL}/api/calls/call-counts-by-from-number`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: clientId }),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error en call-counts-by-from-number: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error al obtener conteos por número:', error);
     throw error;
   }
 }
