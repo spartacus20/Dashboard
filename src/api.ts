@@ -1703,6 +1703,51 @@ export async function deleteAgenda(agendaId: number, clientId: string): Promise<
   }
 }
 
+// Actualizar estado de una agenda (aprobada / revisada)
+export async function updateAgendaStatus(
+  params: { id: number; aprobada?: boolean; revisada?: boolean }
+): Promise<Agenda> {
+  try {
+    const clientId = getClientId();
+    if (!clientId) {
+      throw new Error('No se encontró client_id. Por favor, inicia sesión nuevamente.');
+    }
+
+    const body: any = {
+      id: params.id,
+      client_id: clientId,
+    };
+
+    if (typeof params.aprobada === 'boolean') {
+      body.aprobada = params.aprobada;
+    }
+    if (typeof params.revisada === 'boolean') {
+      body.revisada = params.revisada;
+    }
+
+    const baseAgendaUrl = GET_AGENDAS_WEBHOOK_URL.replace('/get-agenda', '');
+
+    const response = await fetch(`${baseAgendaUrl}/update-status`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error al actualizar agenda: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    return data.agenda as Agenda;
+  } catch (error) {
+    console.error('Error al actualizar estado de agenda:', error);
+    throw error;
+  }
+}
+
 // Función para importar un número de teléfono
 export async function importPhoneNumber(
   apiKey: string,

@@ -280,6 +280,8 @@ export interface Agenda {
   recordings?: string;
   transcript?: string;
   agent_id?: string;
+  aprobada?: boolean | null;
+  revisada?: boolean | null;
 }
 
 export interface Callback {
