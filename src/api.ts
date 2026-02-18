@@ -601,6 +601,26 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
         console.log('✅ metadata_llamadas guardado en sessionStorage');
       }
 
+      // Guardar metadata (incluye filtro_solar y otros permisos de módulos) en sessionStorage
+      if (clientData.metadata) {
+        sessionStorage.setItem('metadata', JSON.stringify(clientData.metadata));
+        console.log('✅ metadata guardado en sessionStorage para client_id:', clientData.client_id);
+        // Notificar al resto de la app que el metadata cambió (por ejemplo, al cambiar de client_id)
+        window.dispatchEvent(
+          new CustomEvent('metadataUpdated', {
+            detail: { metadata: clientData.metadata },
+          })
+        );
+      } else {
+        // Si no hay metadata, limpiar y notificar
+        sessionStorage.removeItem('metadata');
+        window.dispatchEvent(
+          new CustomEvent('metadataUpdated', {
+            detail: { metadata: null },
+          })
+        );
+      }
+
       // Guardar uri_retell (URIs de terminación) en sessionStorage si está disponible
       if (clientData.uri_retell) {
         let uriRetell: string[] | null = null;
@@ -711,6 +731,25 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
       if (data.metadata_llamadas) {
         sessionStorage.setItem('metadata_llamadas', JSON.stringify(data.metadata_llamadas));
         console.log('✅ metadata_llamadas guardado en sessionStorage (formato objeto)');
+      }
+
+      // Guardar metadata (incluye filtro_solar y otros permisos de módulos) en sessionStorage
+      if ((data as any).metadata) {
+        const metadata = (data as any).metadata;
+        sessionStorage.setItem('metadata', JSON.stringify(metadata));
+        console.log('✅ metadata guardado en sessionStorage (formato objeto)');
+        window.dispatchEvent(
+          new CustomEvent('metadataUpdated', {
+            detail: { metadata },
+          })
+        );
+      } else {
+        sessionStorage.removeItem('metadata');
+        window.dispatchEvent(
+          new CustomEvent('metadataUpdated', {
+            detail: { metadata: null },
+          })
+        );
       }
 
       // Guardar uri_retell (URIs de terminación) en sessionStorage si está disponible - formato objeto
@@ -1571,7 +1610,7 @@ export async function getAverageCallsPerAgenda(
   clientId?: string,
   dateFrom?: string,
   dateTo?: string
-): Promise<{ total_agendas: number; total_calls: number; average_calls: number }> {
+): Promise<{ total_agendas_in_range: number; total_agendas: number; total_calls: number; average_calls: number }> {
   try {
     const actualClientId = clientId || getClientId();
     
@@ -1606,6 +1645,7 @@ export async function getAverageCallsPerAgenda(
 
     const data = await response.json();
     return {
+      total_agendas_in_range: data.total_agendas_in_range ?? data.total_agendas ?? 0,
       total_agendas: data.total_agendas || 0,
       total_calls: data.total_calls || 0,
       average_calls: data.average_calls || 0
@@ -1659,6 +1699,51 @@ export async function deleteAgenda(agendaId: number, clientId: string): Promise<
     return;
   } catch (error) {
     console.error('Error al eliminar agenda:', error);
+    throw error;
+  }
+}
+
+// Actualizar estado de una agenda (aprobada / revisada)
+export async function updateAgendaStatus(
+  params: { id: number; aprobada?: boolean; revisada?: boolean }
+): Promise<Agenda> {
+  try {
+    const clientId = getClientId();
+    if (!clientId) {
+      throw new Error('No se encontró client_id. Por favor, inicia sesión nuevamente.');
+    }
+
+    const body: any = {
+      id: params.id,
+      client_id: clientId,
+    };
+
+    if (typeof params.aprobada === 'boolean') {
+      body.aprobada = params.aprobada;
+    }
+    if (typeof params.revisada === 'boolean') {
+      body.revisada = params.revisada;
+    }
+
+    const baseAgendaUrl = GET_AGENDAS_WEBHOOK_URL.replace('/get-agenda', '');
+
+    const response = await fetch(`${baseAgendaUrl}/update-status`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error al actualizar agenda: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    return data.agenda as Agenda;
+  } catch (error) {
+    console.error('Error al actualizar estado de agenda:', error);
     throw error;
   }
 }
@@ -2522,11 +2607,14 @@ export async function getCallsByPhone(
 ): Promise<CallsByPhoneResponse> {
   try {
     const url = `${BASE_URL}/api/calls/get-calls-by-phone`;
+    const clientId = getClientId();
     const body = {
       phone_number: params.phone_number,
       per_page: params.per_page ?? 50,
       page: params.page ?? 1,
-      sort_order: params.sort_order ?? 'DESC'
+      sort_order: params.sort_order ?? 'DESC',
+      // Enviar también el client_id para limitar la búsqueda en servidor
+      ...(clientId ? { client_id: clientId } : {})
     };
 
     const response = await fetch(url, {

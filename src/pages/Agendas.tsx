@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { fetchAgendas, fetchAllAgendas, deleteAgenda, getAverageCallsPerAgenda } from '../api';
+import { fetchAgendas, fetchAllAgendas, deleteAgenda, getAverageCallsPerAgenda, updateAgendaStatus } from '../api';
 import { Agenda } from '../types';
 import { useCallsContext } from '../context/CallsContext';
 import { Calendar, Clock, MapPin, Phone, User, Building, Search, Filter, RefreshCw, AlertCircle, X, List, CalendarDays, Download, Trash2, BarChart3 } from 'lucide-react';
@@ -22,8 +22,12 @@ export function Agendas({ onNavigate }: AgendasProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [filterAgentId, setFilterAgentId] = useState('all');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [filterApproved, setFilterApproved] = useState<'all' | 'true' | 'false' | 'null'>('all');
+  const [filterReviewed, setFilterReviewed] = useState<'all' | 'true' | 'false' | 'null'>('all');
+  const todayStr = () => new Date().toISOString().slice(0, 10);
+  const [dateFrom, setDateFrom] = useState(todayStr);
+  const [dateTo, setDateTo] = useState(todayStr);
+  const [datePreset, setDatePreset] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('today');
   const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
   const [currentPage, setCurrentPage] = useState(1);
   const [activeTab, setActiveTab] = useState<'list' | 'calendar' | 'calendarScheduled'>('list');
@@ -33,8 +37,10 @@ export function Agendas({ onNavigate }: AgendasProps) {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [agendaToDelete, setAgendaToDelete] = useState<Agenda | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [averageStats, setAverageStats] = useState<{ average_calls: number; total_agendas: number; total_calls: number } | null>(null);
+  const [averageStats, setAverageStats] = useState<{ average_calls: number; total_agendas: number; total_agendas_in_range: number; total_calls: number } | null>(null);
   const [loadingAverage, setLoadingAverage] = useState(false);
+  // Permiso para ver estadísticas de Paneles Solares / Baterías según metadata.filtro_solar
+  const [hasFiltroSolar, setHasFiltroSolar] = useState(false);
   const itemsPerPage = 10;
 
   // Cargar agendas
@@ -79,6 +85,43 @@ export function Agendas({ onNavigate }: AgendasProps) {
     }
   };
 
+  // Verificar permiso filtro_solar desde sessionStorage y escuchar cambios de metadata
+  useEffect(() => {
+    const updateFromSession = () => {
+      try {
+        const metadataStr = sessionStorage.getItem('metadata');
+        if (metadataStr) {
+          const metadata = JSON.parse(metadataStr);
+          setHasFiltroSolar(metadata?.filtro_solar === true);
+        } else {
+          setHasFiltroSolar(false);
+        }
+      } catch (error) {
+        console.error('Error al leer metadata del sessionStorage en Agendas:', error);
+        setHasFiltroSolar(false);
+      }
+    };
+
+    const handleMetadataUpdate = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      if (customEvent.detail?.metadata) {
+        setHasFiltroSolar(customEvent.detail.metadata.filtro_solar === true);
+      } else {
+        updateFromSession();
+      }
+    };
+
+    // Leer al montar
+    updateFromSession();
+
+    // Escuchar actualizaciones globales de metadata (por ejemplo, al cambiar de client_id)
+    window.addEventListener('metadataUpdated', handleMetadataUpdate);
+
+    return () => {
+      window.removeEventListener('metadataUpdated', handleMetadataUpdate);
+    };
+  }, []);
+
   // Cargar agendas al montar el componente o cuando cambien los filtros de fecha, tipo, ordenamiento o agente
   useEffect(() => {
     loadAgendas();
@@ -96,7 +139,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
           dateFrom || undefined,
           dateTo || undefined
         );
-        setAverageStats({ average_calls: stats.average_calls, total_agendas: stats.total_agendas, total_calls: stats.total_calls });
+        setAverageStats({ average_calls: stats.average_calls, total_agendas: stats.total_agendas, total_agendas_in_range: stats.total_agendas_in_range ?? stats.total_agendas, total_calls: stats.total_calls });
       } catch (err) {
         console.error('Error al cargar promedio de llamadas:', err);
         setAverageStats(null);
@@ -108,7 +151,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
     loadAverageCalls();
   }, [clientId, dateFrom, dateTo]);
 
-  // Filtrar agendas (búsqueda y tipo; fechas y agente se filtran en la API)
+  // Filtrar agendas (búsqueda, tipo y estados; fechas y agente se filtran en la API)
   useEffect(() => {
     // Asegurar que agendas sea un array antes de filtrarlo
     const validAgendas = Array.isArray(agendas) ? agendas : [];
@@ -130,12 +173,34 @@ export function Agendas({ onNavigate }: AgendasProps) {
       filtered = filtered.filter(agenda => agenda.tipo_agenda === filterType);
     }
 
+    // Filtrar por estado \"aprobada\"
+    if (filterApproved !== 'all') {
+      filtered = filtered.filter(agenda => {
+        const val = agenda.aprobada;
+        if (filterApproved === 'true') return val === true;
+        if (filterApproved === 'false') return val === false;
+        if (filterApproved === 'null') return val === null || typeof val === 'undefined';
+        return true;
+      });
+    }
+
+    // Filtrar por estado \"revisada\"
+    if (filterReviewed !== 'all') {
+      filtered = filtered.filter(agenda => {
+        const val = agenda.revisada;
+        if (filterReviewed === 'true') return val === true;
+        if (filterReviewed === 'false') return val === false;
+        if (filterReviewed === 'null') return val === null || typeof val === 'undefined';
+        return true;
+      });
+    }
+
     // NOTA: Los filtros de fecha (dateFrom, dateTo) y agente se aplican en la API
     // No se filtran aquí para evitar duplicación
 
     setFilteredAgendas(filtered);
     setCurrentPage(1); // Reset a primera página cuando cambian los filtros
-  }, [agendas, searchTerm, filterType]);
+  }, [agendas, searchTerm, filterType, filterApproved, filterReviewed]);
 
   // Obtener tipos únicos para el filtro
   const uniqueTypes = [...new Set((Array.isArray(agendas) ? agendas : []).map(agenda => agenda.tipo_agenda))].filter(Boolean);
@@ -164,10 +229,54 @@ export function Agendas({ onNavigate }: AgendasProps) {
     }
   };
 
+  // Aplicar presets de fecha (hoy, semana, mes, todas, personalizado)
+  const applyDatePreset = (preset: 'all' | 'today' | 'week' | 'month' | 'custom') => {
+    setDatePreset(preset);
+
+    const today = new Date();
+
+    const format = (d: Date) =>
+      d.toISOString().slice(0, 10); // YYYY-MM-DD
+
+    if (preset === 'all') {
+      setDateFrom('');
+      setDateTo('');
+      return;
+    }
+
+    if (preset === 'today') {
+      const start = new Date(today);
+      const end = new Date(today);
+      setDateFrom(format(start));
+      setDateTo(format(end));
+      return;
+    }
+
+    if (preset === 'week') {
+      const start = new Date(today);
+      const day = start.getDay() || 7; // 1-7, donde 1 = lunes si queremos ajustar
+      // Llevar al lunes de esta semana
+      start.setDate(start.getDate() - (day - 1));
+      setDateFrom(format(start));
+      setDateTo(format(today));
+      return;
+    }
+
+    if (preset === 'month') {
+      const start = new Date(today.getFullYear(), today.getMonth(), 1);
+      setDateFrom(format(start));
+      setDateTo(format(today));
+      return;
+    }
+
+    // 'custom' no toca las fechas, solo marca el estado
+  };
+
   // Limpiar filtros de fecha
   const clearDateFilters = () => {
     setDateFrom('');
     setDateTo('');
+    setDatePreset('all');
   };
 
   // Abrir modal con agenda seleccionada
@@ -250,6 +359,12 @@ export function Agendas({ onNavigate }: AgendasProps) {
     } finally {
       setDeleting(false);
     }
+  };
+
+  // Actualizar estado (aprobada / revisada) desde el modal y refrescar lista
+  const handleStatusUpdated = () => {
+    // Recargar agendas para reflejar cambios hechos en el modal
+    loadAgendas();
   };
 
   // Exportar agendas a CSV
@@ -375,57 +490,61 @@ export function Agendas({ onNavigate }: AgendasProps) {
 
         {/* Cards de estadísticas */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          {/* Card de Paneles Solares */}
-          <div className="bg-white rounded-lg p-6 shadow-lg border border-slate-200 hover:shadow-xl transition-shadow">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div className="p-3 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-lg">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                  </svg>
+          {/* Card de Paneles Solares (solo si filtro_solar = true en metadata) */}
+          {hasFiltroSolar && (
+            <div className="bg-white rounded-lg p-6 shadow-lg border border-slate-200 hover:shadow-xl transition-shadow">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="p-3 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-lg">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-800">Paneles Solares</h3>
+                    <p className="text-sm text-slate-600">Agendas de instalación</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-800">Paneles Solares</h3>
-                  <p className="text-sm text-slate-600">Agendas de instalación</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-500 to-orange-600">
-                  {panelesSolaresCount}
-                </div>
-                <div className="text-xs text-slate-500">
-                  {panelesSolaresCount === 1 ? 'agenda' : 'agendas'}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Card de Baterías */}
-          <div className="bg-white rounded-lg p-6 shadow-lg border border-slate-200 hover:shadow-xl transition-shadow">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div className="p-3 bg-gradient-to-br from-green-400 to-emerald-500 rounded-lg">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-800">Baterías</h3>
-                  <p className="text-sm text-slate-600">Agendas de instalación</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-green-500 to-emerald-600">
-                  {bateriasCount}
-                </div>
-                <div className="text-xs text-slate-500">
-                  {bateriasCount === 1 ? 'agenda' : 'agendas'}
+                <div className="text-right">
+                  <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-500 to-orange-600">
+                    {panelesSolaresCount}
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {panelesSolaresCount === 1 ? 'agenda' : 'agendas'}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
 
-          {/* Card de Total */}
+          {/* Card de Baterías (solo si filtro_solar = true en metadata) */}
+          {hasFiltroSolar && (
+            <div className="bg-white rounded-lg p-6 shadow-lg border border-slate-200 hover:shadow-xl transition-shadow">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="p-3 bg-gradient-to-br from-green-400 to-emerald-500 rounded-lg">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-800">Baterías</h3>
+                    <p className="text-sm text-slate-600">Agendas de instalación</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-green-500 to-emerald-600">
+                    {bateriasCount}
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {bateriasCount === 1 ? 'agenda' : 'agendas'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Card de Total: mismo número que Promedio de llamadas por agenda (total_agendas_in_range) */}
           <div className="bg-white rounded-lg p-6 shadow-lg border border-slate-200 hover:shadow-xl transition-shadow">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
@@ -441,10 +560,10 @@ export function Agendas({ onNavigate }: AgendasProps) {
               </div>
               <div className="text-right">
                 <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-indigo-600">
-                  {agendas.length}
+                  {averageStats != null ? (averageStats.total_agendas_in_range ?? averageStats.total_agendas) : agendas.length}
                 </div>
                 <div className="text-xs text-slate-500">
-                  {agendas.length === 1 ? 'agenda' : 'agendas'}
+                  {(averageStats != null ? (averageStats.total_agendas_in_range ?? averageStats.total_agendas) : agendas.length) === 1 ? 'agenda' : 'agendas'}
                 </div>
               </div>
             </div>
@@ -491,24 +610,105 @@ export function Agendas({ onNavigate }: AgendasProps) {
         {/* Contenido de las pestañas */}
         {activeTab === 'list' && (
           <div>
-            {/* Card: Promedio de llamadas por agenda con gráfico */}
-            {loadingAverage && (
-              <div className="mb-6 p-4 bg-slate-50 rounded-lg border border-slate-200 text-slate-500 text-sm">
-                Calculando promedio de llamadas...
-              </div>
-            )}
-            {!loadingAverage && averageStats !== null && (
-              <Card className="mb-6 shadow-lg border-slate-200">
-                <CardHeader className="pb-2">
-                  <div className="flex items-center gap-2">
-                    <BarChart3 className="w-5 h-5 text-violet-600" />
-                    <CardTitle className="text-lg">Promedio de llamadas por agenda</CardTitle>
+            {/* Card: Promedio de llamadas por agenda con gráfico y rango rápido */}
+            <Card className="mb-6 shadow-lg border-slate-200">
+              <CardHeader className="pb-2">
+                <div className="flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5 text-violet-600" />
+                  <CardTitle className="text-lg">Promedio de llamadas por agenda</CardTitle>
+                </div>
+                <CardDescription>
+                  {averageStats
+                    ? `${(averageStats.total_agendas_in_range ?? averageStats.total_agendas).toLocaleString('es-ES')} agendas · ${averageStats.total_calls.toLocaleString('es-ES')} llamadas totales`
+                    : 'Selecciona un rango para ver el promedio'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Rango rápido: dentro de la card */}
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-slate-500 text-sm font-medium">Rango:</span>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => applyDatePreset('today')}
+                      className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
+                        datePreset === 'today'
+                          ? 'bg-violet-600 text-white border-violet-600'
+                          : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      Hoy
+                    </button>
+                    <button
+                      onClick={() => applyDatePreset('week')}
+                      className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
+                        datePreset === 'week'
+                          ? 'bg-violet-600 text-white border-violet-600'
+                          : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      Esta semana
+                    </button>
+                    <button
+                      onClick={() => applyDatePreset('month')}
+                      className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
+                        datePreset === 'month'
+                          ? 'bg-violet-600 text-white border-violet-600'
+                          : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      Este mes
+                    </button>
+                    <button
+                      onClick={() => applyDatePreset('all')}
+                      className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
+                        datePreset === 'all'
+                          ? 'bg-violet-600 text-white border-violet-600'
+                          : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      Todas las agendas
+                    </button>
                   </div>
-                  <CardDescription>
-                    {agendas.length.toLocaleString('es-ES')} agendas · {averageStats.total_calls.toLocaleString('es-ES')} llamadas totales
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="date"
+                      value={dateFrom}
+                      onChange={(e) => {
+                        setDateFrom(e.target.value);
+                        setDatePreset('custom');
+                      }}
+                      className="px-2 py-1.5 border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                      title="Fecha desde"
+                    />
+                    <span className="text-slate-400 text-sm">–</span>
+                    <input
+                      type="date"
+                      value={dateTo}
+                      onChange={(e) => {
+                        setDateTo(e.target.value);
+                        setDatePreset('custom');
+                      }}
+                      className="px-2 py-1.5 border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                      title="Fecha hasta"
+                    />
+                    {(dateFrom || dateTo) && (
+                      <button
+                        onClick={clearDateFilters}
+                        className="flex items-center gap-1 px-2 py-1.5 text-slate-600 hover:text-slate-800 text-sm rounded-lg hover:bg-slate-100 transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                        Limpiar
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {loadingAverage && (
+                  <div className="py-6 text-center text-slate-500 text-sm">
+                    Calculando promedio de llamadas...
+                  </div>
+                )}
+                {!loadingAverage && averageStats !== null && (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
                     <div className="text-center md:text-left">
                       <p className="text-3xl font-bold text-violet-600">
@@ -527,55 +727,11 @@ export function Agendas({ onNavigate }: AgendasProps) {
                       />
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Información de la lista */}
-            <div className="mb-6">
-              <p className="text-slate-600">
-                {filteredAgendas.length} de {agendas.length} agendas
-                {(searchTerm || filterType !== 'all' || filterAgentId !== 'all' || dateFrom || dateTo) && (
-                  <span className="text-blue-600 ml-2 font-medium">(filtradas)</span>
                 )}
-                {(dateFrom || dateTo) && (
-                  <span className="text-green-600 ml-2 text-sm">(fechas filtradas en servidor)</span>
-                )}
-              </p>
-              
-              {/* Mostrar filtros activos */}
-              {(searchTerm || filterType !== 'all' || filterAgentId !== 'all' || dateFrom || dateTo) && (
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {searchTerm && (
-                    <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full border border-blue-200">
-                      Búsqueda: "{searchTerm}"
-                    </span>
-                  )}
-                  {filterType !== 'all' && (
-                    <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full border border-blue-200">
-                      Tipo: {filterType}
-                    </span>
-                  )}
-                  {filterAgentId !== 'all' && (
-                    <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full border border-blue-200">
-                      Agente: {filterAgentId}
-                    </span>
-                  )}
-                  {dateFrom && (
-                    <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full border border-blue-200">
-                      Desde: {new Date(dateFrom).toLocaleDateString('es-ES')}
-                    </span>
-                  )}
-                  {dateTo && (
-                    <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full border border-blue-200">
-                      Hasta: {new Date(dateTo).toLocaleDateString('es-ES')}
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
+              </CardContent>
+            </Card>
 
-            {/* Filtros y búsqueda */}
+            {/* Filtros y búsqueda (el rango de fechas se cambia en la card Promedio de llamadas por agenda) */}
             <div className="bg-white rounded-lg p-6 mb-6 shadow-lg border border-slate-200">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
                 {/* Búsqueda */}
@@ -620,28 +776,34 @@ export function Agendas({ onNavigate }: AgendasProps) {
                   </select>
                 </div>
 
-                {/* Fecha desde */}
+                {/* Filtro por aprobada */}
                 <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
-                  <input
-                    type="date"
-                    placeholder="Fecha desde"
-                    value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
+                  <select
+                    value={filterApproved}
+                    onChange={(e) => setFilterApproved(e.target.value as 'all' | 'true' | 'false' | 'null')}
+                    className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
+                  >
+                    <option value="all">Todas (aprobadas)</option>
+                    <option value="true">Solo aprobadas</option>
+                    <option value="false">Solo no aprobadas</option>
+                    <option value="null">Sin estado</option>
+                  </select>
                 </div>
 
-                {/* Fecha hasta */}
+                {/* Filtro por revisada */}
                 <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
-                  <input
-                    type="date"
-                    placeholder="Fecha hasta"
-                    value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
+                  <select
+                    value={filterReviewed}
+                    onChange={(e) => setFilterReviewed(e.target.value as 'all' | 'true' | 'false' | 'null')}
+                    className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
+                  >
+                    <option value="all">Todas (revisadas)</option>
+                    <option value="true">Solo revisadas</option>
+                    <option value="false">Solo no revisadas</option>
+                    <option value="null">Sin estado</option>
+                  </select>
                 </div>
 
                 {/* Ordenamiento */}
@@ -657,19 +819,6 @@ export function Agendas({ onNavigate }: AgendasProps) {
                   </select>
                 </div>
               </div>
-
-              {/* Botón para limpiar filtros de fecha */}
-              {(dateFrom || dateTo) && (
-                <div className="mt-4 flex justify-end">
-                  <button
-                    onClick={clearDateFilters}
-                    className="flex items-center gap-2 px-3 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm rounded-lg transition-colors"
-                  >
-                    <X className="w-4 h-4" />
-                    Limpiar fechas
-                  </button>
-                </div>
-              )}
             </div>
 
             {/* Loading state */}
@@ -755,6 +904,55 @@ export function Agendas({ onNavigate }: AgendasProps) {
                             <div className="flex items-center space-x-2 text-slate-600">
                               <Clock className="w-4 h-4" />
                               <span>Creado: {agenda?.created_at ? formatDate(agenda.created_at) : 'Sin fecha'}</span>
+                            </div>
+
+                            {/* Estados: Aprobada / Revisada (solo visual, se editan en el detalle) */}
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {/* Aprobada (solo display) */}
+                              <div
+                                className={`px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 cursor-default ${
+                                  agenda.aprobada === true
+                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                    : agenda.aprobada === false
+                                      ? 'bg-red-100 text-red-800 border-red-300'
+                                      : 'bg-slate-100 text-slate-500 border-slate-300'
+                                }`}
+                                title="Estado de aprobación"
+                              >
+                                <span
+                                  className={`w-2 h-2 rounded-full ${
+                                    agenda.aprobada === true
+                                      ? 'bg-emerald-500'
+                                      : agenda.aprobada === false
+                                        ? 'bg-red-500'
+                                        : 'bg-slate-400'
+                                  }`}
+                                />
+                                <span>Aprobada</span>
+                              </div>
+
+                              {/* Revisada (solo display) */}
+                              <div
+                                className={`px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 cursor-default ${
+                                  agenda.revisada === true
+                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                    : agenda.revisada === false
+                                      ? 'bg-red-100 text-red-800 border-red-300'
+                                      : 'bg-slate-100 text-slate-500 border-slate-300'
+                                }`}
+                                title="Estado de revisión"
+                              >
+                                <span
+                                  className={`w-2 h-2 rounded-full ${
+                                    agenda.revisada === true
+                                      ? 'bg-emerald-500'
+                                      : agenda.revisada === false
+                                        ? 'bg-red-500'
+                                        : 'bg-slate-400'
+                                  }`}
+                                />
+                                <span>Revisada</span>
+                              </div>
                             </div>
                             {agenda?.agent_id && (
                               <div className="flex items-center space-x-2 text-slate-600">
@@ -925,6 +1123,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
           agenda={selectedAgenda}
           isOpen={modalOpen}
           onClose={closeAgendaModal}
+          onStatusChange={handleStatusUpdated}
         />
 
         {/* Modal de confirmación de eliminación */}

@@ -1,18 +1,32 @@
 import React, { useEffect, useState } from 'react';
 import { Agenda, CallsByPhoneResponse } from '../types';
-import { X, Play, Pause, Volume2, Calendar, Phone, MapPin, User, Clock, RefreshCw, AlertCircle } from 'lucide-react';
-import { getCallsByPhone } from '../api';
+import { X, Play, Volume2, Calendar, Phone, MapPin, User, Clock, RefreshCw, AlertCircle } from 'lucide-react';
+import { getCallsByPhone, updateAgendaStatus } from '../api';
 
 interface AgendaModalProps {
   agenda: Agenda | null;
   isOpen: boolean;
   onClose: () => void;
+  onStatusChange?: () => void;
 }
 
-export function AgendaModal({ agenda, isOpen, onClose }: AgendaModalProps) {
+export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaModalProps) {
   const [callsData, setCallsData] = useState<CallsByPhoneResponse | null>(null);
   const [loadingCalls, setLoadingCalls] = useState(false);
   const [errorCalls, setErrorCalls] = useState<string | null>(null);
+  const [localApproved, setLocalApproved] = useState<boolean | null>(null);
+  const [localReviewed, setLocalReviewed] = useState<boolean | null>(null);
+
+  // Sincronizar estados locales cuando cambia la agenda
+  useEffect(() => {
+    if (agenda) {
+      setLocalApproved(typeof agenda.aprobada === 'boolean' ? agenda.aprobada : null);
+      setLocalReviewed(typeof agenda.revisada === 'boolean' ? agenda.revisada : null);
+    } else {
+      setLocalApproved(null);
+      setLocalReviewed(null);
+    }
+  }, [agenda]);
 
   useEffect(() => {
     const fetchCalls = async () => {
@@ -86,6 +100,33 @@ export function AgendaModal({ agenda, isOpen, onClose }: AgendaModalProps) {
     }
   };
 
+  const handleToggleStatus = async (field: 'aprobada' | 'revisada') => {
+    if (!agenda) return;
+
+    try {
+      if (field === 'aprobada') {
+        const newValue = localApproved === true ? false : true;
+        setLocalApproved(newValue);
+        await updateAgendaStatus({ id: agenda.id, aprobada: newValue });
+      } else {
+        const newValue = localReviewed === true ? false : true;
+        setLocalReviewed(newValue);
+        await updateAgendaStatus({ id: agenda.id, revisada: newValue });
+      }
+
+      if (onStatusChange) {
+        onStatusChange();
+      }
+    } catch (error) {
+      console.error('Error al actualizar estado de agenda desde el modal:', error);
+      // En caso de error, deshacer al valor original de la agenda
+      if (agenda) {
+        setLocalApproved(typeof agenda.aprobada === 'boolean' ? agenda.aprobada : null);
+        setLocalReviewed(typeof agenda.revisada === 'boolean' ? agenda.revisada : null);
+      }
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
@@ -128,6 +169,57 @@ export function AgendaModal({ agenda, isOpen, onClose }: AgendaModalProps) {
               <div className="flex items-center space-x-2 text-slate-600">
                 <Clock className="w-4 h-4" />
                 <span>Creado: {agenda.created_at ? formatDate(agenda.created_at) : 'Sin fecha'}</span>
+              </div>
+
+              {/* Estados: Aprobada / Revisada (editable solo aquí) */}
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => handleToggleStatus('aprobada')}
+                  className={`px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 ${
+                    localApproved === true
+                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                      : localApproved === false
+                        ? 'bg-red-100 text-red-800 border-red-300'
+                        : 'bg-slate-100 text-slate-500 border-slate-300'
+                  }`}
+                  title="Marcar como aprobada / no aprobada"
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      localApproved === true
+                        ? 'bg-emerald-500'
+                        : localApproved === false
+                          ? 'bg-red-500'
+                          : 'bg-slate-400'
+                    }`}
+                  />
+                  <span>Aprobada</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleToggleStatus('revisada')}
+                  className={`px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 ${
+                    localReviewed === true
+                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                      : localReviewed === false
+                        ? 'bg-red-100 text-red-800 border-red-300'
+                        : 'bg-slate-100 text-slate-500 border-slate-300'
+                  }`}
+                  title="Marcar como revisada / no revisada"
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      localReviewed === true
+                        ? 'bg-emerald-500'
+                        : localReviewed === false
+                          ? 'bg-red-500'
+                          : 'bg-slate-400'
+                    }`}
+                  />
+                  <span>Revisada</span>
+                </button>
               </div>
             </div>
 
