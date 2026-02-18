@@ -2841,7 +2841,7 @@ export async function fetchLanzamientoMetrics(
   }
 }
 
-// Obtener métricas de lanzamiento de hoy
+// Obtener métricas de lanzamiento de hoy (por país, derivado del teléfono)
 export async function fetchLanzamientoMetricsToday(): Promise<{
   success: boolean;
   fecha: string;
@@ -2851,8 +2851,11 @@ export async function fetchLanzamientoMetricsToday(): Promise<{
   total_enlaces_enviados: number;
   total_clicks_totales: number;
   total_no_llamar: number;
-  metrics_by_region: Array<{
-    region: string;
+  metrics_by_country: Array<{
+    pais: string;
+    total_llamadas: number;
+    llamadas_contestadas: number;
+    llamadas_fallidas: number;
     enlaces_enviados: number;
     clicks_totales: number;
     no_llamar: number;
@@ -2889,7 +2892,7 @@ export async function fetchLanzamientoMetricsToday(): Promise<{
   }
 }
 
-// Obtener métricas de lanzamiento personalizado
+// Obtener métricas de lanzamiento personalizado (por país, derivado del teléfono)
 export async function fetchLanzamientoMetricsCustom(fechaInicio: string, fechaFin: string): Promise<{
   success: boolean;
   fecha_inicio: string;
@@ -2900,8 +2903,11 @@ export async function fetchLanzamientoMetricsCustom(fechaInicio: string, fechaFi
   total_enlaces_enviados: number;
   total_clicks_totales: number;
   total_no_llamar: number;
-  metrics_by_region: Array<{
-    region: string;
+  metrics_by_country: Array<{
+    pais: string;
+    total_llamadas: number;
+    llamadas_contestadas: number;
+    llamadas_fallidas: number;
     enlaces_enviados: number;
     clicks_totales: number;
     no_llamar: number;

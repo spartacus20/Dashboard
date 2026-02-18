@@ -100,205 +100,334 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
     }
   };
 
-  const handleToggleStatus = async (field: 'aprobada' | 'revisada') => {
+  // Clase de color para texto según estado (verde, rojo o neutro)
+  const getStatusTextClass = (value: boolean | null) => {
+    if (value === true) return 'text-emerald-700';
+    if (value === false) return 'text-red-700';
+    return 'text-slate-800';
+  };
+
+  // Solo actualiza el estado local; la API se llama al cerrar el modal
+  const handleChangeStatus = (
+    field: 'aprobada' | 'revisada',
+    value: 'true' | 'false' | 'null'
+  ) => {
+    const newValue =
+      value === 'true' ? true : value === 'false' ? false : null;
+
+    if (field === 'aprobada') {
+      setLocalApproved(newValue);
+    } else {
+      setLocalReviewed(newValue);
+    }
+  };
+
+  // Persiste cambios de estados al backend cuando se cierra el modal
+  const persistStatusChanges = async () => {
     if (!agenda) return;
 
-    try {
-      if (field === 'aprobada') {
-        const newValue = localApproved === true ? false : true;
-        setLocalApproved(newValue);
-        await updateAgendaStatus({ id: agenda.id, aprobada: newValue });
-      } else {
-        const newValue = localReviewed === true ? false : true;
-        setLocalReviewed(newValue);
-        await updateAgendaStatus({ id: agenda.id, revisada: newValue });
-      }
+    const originalApproved =
+      typeof agenda.aprobada === 'boolean' ? agenda.aprobada : null;
+    const originalReviewed =
+      typeof agenda.revisada === 'boolean' ? agenda.revisada : null;
 
+    const payload: { id: string; aprobada?: boolean | null; revisada?: boolean | null } = {
+      id: agenda.id,
+    };
+
+    if (localApproved !== originalApproved) {
+      payload.aprobada = localApproved;
+    }
+
+    if (localReviewed !== originalReviewed) {
+      payload.revisada = localReviewed;
+    }
+
+    // Si no hay cambios, no llamamos a la API
+    if (
+      typeof payload.aprobada === 'undefined' &&
+      typeof payload.revisada === 'undefined'
+    ) {
+      return;
+    }
+
+    try {
+      await updateAgendaStatus(payload as any);
       if (onStatusChange) {
         onStatusChange();
       }
     } catch (error) {
-      console.error('Error al actualizar estado de agenda desde el modal:', error);
-      // En caso de error, deshacer al valor original de la agenda
-      if (agenda) {
-        setLocalApproved(typeof agenda.aprobada === 'boolean' ? agenda.aprobada : null);
-        setLocalReviewed(typeof agenda.revisada === 'boolean' ? agenda.revisada : null);
-      }
+      console.error(
+        'Error al actualizar estado de agenda desde el modal:',
+        error
+      );
     }
   };
 
+  // Cierre del modal: primero persiste cambios y luego ejecuta onClose
+  const handleClose = async () => {
+    await persistStatusChanges();
+    onClose();
+  };
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
+    <div
+      className="fixed inset-0 bg-slate-900/40 z-50 flex items-center justify-center p-4"
+      onClick={handleClose}
+    >
+      <div
+        className="relative w-full max-w-5xl bg-white shadow-2xl border border-slate-200 rounded-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-slate-200">
-          <div className="flex items-center space-x-3">
-            <User className="w-6 h-6 text-blue-600" />
-            <h2 className="text-xl font-bold text-slate-800">{agenda.nombre}</h2>
+        <header className="flex items-center justify-between px-8 py-6 border-b border-slate-100">
+          <div className="flex items-center gap-4">
+            <div className="p-2.5 bg-blue-500/10 text-blue-600 rounded-xl">
+              <User className="w-7 h-7" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold tracking-tight text-slate-900">
+                {agenda.nombre || 'Sin nombre'}
+              </h2>
+              <p className="text-sm text-slate-500">
+                Teléfono: {agenda.phone_number || 'Sin teléfono'}
+              </p>
+            </div>
           </div>
           <button
-            onClick={onClose}
-            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+            onClick={handleClose}
+            className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-colors"
           >
-            <X className="w-5 h-5 text-slate-600" />
+            <X className="w-5 h-5" />
           </button>
-        </div>
+        </header>
 
-        {/* Content */}
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
-          {/* Información básica */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div className="space-y-3">
-              <div className="flex items-center space-x-2 text-slate-600">
-                <Phone className="w-4 h-4" />
-                <span>{agenda.phone_number}</span>
-              </div>
-              
-              {agenda.agent_id && (
-                <div className="flex items-center space-x-2 text-slate-600">
-                  <User className="w-4 h-4" />
-                  <span>Agente: <span className="font-medium text-blue-600">{agenda.agent_id}</span></span>
+        {/* Contenido principal */}
+        <div className="flex-1 overflow-y-auto px-8 py-6 space-y-8">
+          {/* Info básica y estados */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-8">
+                <div className="flex items-start gap-3">
+                  <Phone className="w-4 h-4 mt-0.5 text-slate-400" />
+                  <div>
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Teléfono
+                    </p>
+                    <p className="text-slate-800 font-medium">
+                      {agenda.phone_number || 'Sin teléfono'}
+                    </p>
+                  </div>
                 </div>
-              )}
-              
-              <div className="flex items-center space-x-2 text-slate-600">
-                <Calendar className="w-4 h-4" />
-                <span>Agendado: {agenda.fecha_agendamiento ? formatDate(agenda.fecha_agendamiento) : 'Sin fecha'}</span>
-              </div>
-              
-              <div className="flex items-center space-x-2 text-slate-600">
-                <Clock className="w-4 h-4" />
-                <span>Creado: {agenda.created_at ? formatDate(agenda.created_at) : 'Sin fecha'}</span>
-              </div>
 
-              {/* Estados: Aprobada / Revisada (editable solo aquí) */}
-              <div className="flex flex-wrap gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => handleToggleStatus('aprobada')}
-                  className={`px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 ${
-                    localApproved === true
-                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                      : localApproved === false
-                        ? 'bg-red-100 text-red-800 border-red-300'
-                        : 'bg-slate-100 text-slate-500 border-slate-300'
-                  }`}
-                  title="Marcar como aprobada / no aprobada"
-                >
-                  <span
-                    className={`w-2 h-2 rounded-full ${
-                      localApproved === true
-                        ? 'bg-emerald-500'
-                        : localApproved === false
-                          ? 'bg-red-500'
-                          : 'bg-slate-400'
-                    }`}
-                  />
-                  <span>Aprobada</span>
-                </button>
+                <div className="flex items-start gap-3">
+                  <MapPin className="w-4 h-4 mt-0.5 text-slate-400" />
+                  <div>
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Dirección
+                    </p>
+                    <p className="text-slate-800 font-medium leading-tight">
+                      {agenda.direccion || 'Sin dirección'}
+                      <br />
+                      <span className="text-slate-500 font-normal text-sm">
+                        {agenda.ciudad || 'Sin ciudad'}
+                        {agenda.region && `, ${agenda.region}`}
+                        {agenda.codigo_postal && ` - ${agenda.codigo_postal}`}
+                      </span>
+                    </p>
+                  </div>
+                </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleToggleStatus('revisada')}
-                  className={`px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 ${
-                    localReviewed === true
-                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                      : localReviewed === false
-                        ? 'bg-red-100 text-red-800 border-red-300'
-                        : 'bg-slate-100 text-slate-500 border-slate-300'
-                  }`}
-                  title="Marcar como revisada / no revisada"
-                >
-                  <span
-                    className={`w-2 h-2 rounded-full ${
-                      localReviewed === true
-                        ? 'bg-emerald-500'
-                        : localReviewed === false
-                          ? 'bg-red-500'
-                          : 'bg-slate-400'
-                    }`}
-                  />
-                  <span>Revisada</span>
-                </button>
+                {agenda.agent_id && (
+                  <div className="flex items-start gap-3">
+                    <User className="w-4 h-4 mt-0.5 text-slate-400" />
+                    <div>
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                        Agente
+                      </p>
+                      <p className="text-blue-600 font-bold">
+                        {agenda.agent_id}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-start gap-3">
+                  <Calendar className="w-4 h-4 mt-0.5 text-slate-400" />
+                  <div>
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Agendado
+                    </p>
+                    <p className="text-slate-800 font-medium">
+                      {agenda.fecha_agendamiento
+                        ? formatDate(agenda.fecha_agendamiento)
+                        : 'Sin fecha'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <Clock className="w-4 h-4 mt-0.5 text-slate-400" />
+                  <div>
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Creado
+                    </p>
+                    <p className="text-slate-800 font-medium">
+                      {agenda.created_at ? formatDate(agenda.created_at) : 'Sin fecha'}
+                    </p>
+                  </div>
+                </div>
+
+                {agenda.tipo_agenda && (
+                  <div className="flex items-start gap-3">
+                    <div className="w-4 h-4 mt-0.5 rounded-full bg-blue-500/10" />
+                    <div>
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                        Tipo de agenda
+                      </p>
+                      <span
+                        className={`inline-flex px-3 py-1 text-xs font-semibold text-white rounded-full mt-0.5 ${getAgendaTypeBadgeClass(
+                          agenda.tipo_agenda
+                        )}`}
+                      >
+                        {agenda.tipo_agenda.toUpperCase()}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="space-y-3">
-              <div className="flex items-start space-x-2 text-slate-600">
-                <MapPin className="w-4 h-4 mt-1" />
-                <div className="space-y-1">
-                  <div>{agenda.direccion}</div>
-                  {agenda.local && (
-                    <div className="text-sm text-slate-500">{agenda.local}</div>
-                  )}
-                  <div className="text-sm">
-                    {agenda.ciudad}
-                    {agenda.region && `, ${agenda.region}`}
-                    {agenda.codigo_postal && ` - ${agenda.codigo_postal}`}
-                  </div>
+            {/* Estados lado derecho */}
+            <div className="space-y-4">
+              <div className="space-y-3">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">
+                  Estado de aprobación
+                </label>
+                <div className="relative">
+                  <select
+                    value={
+                      localApproved === true
+                        ? 'true'
+                        : localApproved === false
+                        ? 'false'
+                        : 'null'
+                    }
+                    onChange={(e) =>
+                      handleChangeStatus(
+                        'aprobada',
+                        e.target.value as 'true' | 'false' | 'null'
+                      )
+                    }
+                    className={`w-full appearance-none px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 pr-9 ${getStatusTextClass(
+                      localApproved
+                    )}`}
+                  >
+                    <option value="null">Sin estado</option>
+                    <option value="true">Aprobada</option>
+                    <option value="false">No aprobada</option>
+                  </select>
+                  <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-400 text-xs">
+                    ▼
+                  </span>
+                </div>
+
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">
+                  Estado de revisión
+                </label>
+                <div className="relative">
+                  <select
+                    value={
+                      localReviewed === true
+                        ? 'true'
+                        : localReviewed === false
+                        ? 'false'
+                        : 'null'
+                    }
+                    onChange={(e) =>
+                      handleChangeStatus(
+                        'revisada',
+                        e.target.value as 'true' | 'false' | 'null'
+                      )
+                    }
+                    className={`w-full appearance-none px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pr-9 ${getStatusTextClass(
+                      localReviewed
+                    )}`}
+                  >
+                    <option value="null">Sin estado</option>
+                    <option value="true">Revisada</option>
+                    <option value="false">No revisada</option>
+                  </select>
+                  <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-400 text-xs">
+                    ▼
+                  </span>
                 </div>
               </div>
-              
-              {agenda.tipo_agenda && (
-                <div className={`inline-block px-3 py-1 text-white text-sm rounded-full ${getAgendaTypeBadgeClass(agenda.tipo_agenda)}`}>
-                  {agenda.tipo_agenda}
-                </div>
-              )}
             </div>
           </div>
 
-          {/* Reproductor de audio */}
+          {/* Grabación de la llamada */}
           {agenda.recordings && (
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold text-slate-800 mb-3 flex items-center">
-                <Volume2 className="w-5 h-5 mr-2 text-blue-600" />
-                Grabación de la llamada
-              </h3>
-              <div className="bg-slate-50 rounded-lg p-4">
-                <audio 
-                  controls 
-                  src={agenda.recordings} 
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Volume2 className="w-5 h-5 text-blue-600" />
+                  <h3 className="font-bold text-lg text-slate-900">
+                    Grabación de la llamada
+                  </h3>
+                </div>
+                {agenda.call_id && (
+                  <div className="text-[10px] font-mono text-slate-400 bg-slate-100 px-2 py-1 rounded">
+                    ID: {agenda.call_id}
+                  </div>
+                )}
+              </div>
+              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                <audio
+                  controls
+                  src={agenda.recordings}
                   className="w-full"
                   preload="metadata"
                 >
                   Tu navegador no soporta el elemento de audio.
                 </audio>
-                <div className="mt-2 text-xs text-slate-500">
-                  Call ID: {agenda.call_id}
-                </div>
               </div>
-            </div>
+            </section>
           )}
 
           {/* Transcripción */}
-          {agenda.transcript && (
-            <div>
-              <h3 className="text-lg font-semibold text-slate-800 mb-3 flex items-center">
-                <Play className="w-5 h-5 mr-2 text-blue-600" />
-                Transcripción de la llamada
-              </h3>
-              <div className="bg-slate-50 rounded-lg p-4">
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Play className="w-5 h-5 text-blue-600" />
+                <h3 className="font-bold text-lg text-slate-900">
+                  Transcripción de la llamada
+                </h3>
+              </div>
+            </div>
+
+            {agenda.transcript ? (
+              <div className="bg-slate-50 rounded-2xl p-4 h-64 overflow-y-auto border border-slate-100">
                 <pre className="text-sm text-slate-700 whitespace-pre-wrap font-sans leading-relaxed">
                   {agenda.transcript}
                 </pre>
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="flex flex-col items-center justify-center py-10 text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                <Volume2 className="w-10 h-10 mb-3 text-slate-300" />
+                <p className="text-sm">No hay transcripción disponible para esta llamada.</p>
+              </div>
+            )}
+          </section>
 
-          {/* Mensaje si no hay transcripción */}
-          {!agenda.transcript && (
-            <div className="text-center py-8 text-slate-500">
-              <Volume2 className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-              <p>No hay transcripción disponible para esta llamada.</p>
+          {/* Llamadas asociadas */}
+          <section className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Phone className="w-5 h-5 text-blue-600" />
+              <h3 className="font-bold text-lg text-slate-900">
+                Llamadas asociadas al número
+              </h3>
             </div>
-          )}
-
-          {/* Llamadas asociadas al teléfono */}
-          <div className="mt-8">
-            <h3 className="text-lg font-semibold text-slate-800 mb-3 flex items-center">
-              <Phone className="w-5 h-5 mr-2 text-blue-600" />
-              Llamadas asociadas al número
-            </h3>
 
             {loadingCalls && (
               <div className="flex items-center justify-center py-6 text-slate-600">
@@ -308,7 +437,7 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
             )}
 
             {errorCalls && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3 text-sm text-red-700 flex items-center">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-2 text-sm text-red-700 flex items-center">
                 <AlertCircle className="w-4 h-4 mr-2" />
                 {errorCalls}
               </div>
@@ -317,46 +446,83 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
             {callsData && (
               <div className="space-y-3">
                 <div className="text-sm text-slate-600">
-                  Total: {callsData.total_llamadas} · Origen: {callsData.resumen?.llamadas_como_origen ?? 0} · Destino: {callsData.resumen?.llamadas_como_destino ?? 0}
+                  Total:{' '}
+                  <span className="font-semibold">
+                    {callsData.total_llamadas}
+                  </span>{' '}
+                  · Origen:{' '}
+                  <span className="font-semibold">
+                    {callsData.resumen?.llamadas_como_origen ?? 0}
+                  </span>{' '}
+                  · Destino:{' '}
+                  <span className="font-semibold">
+                    {callsData.resumen?.llamadas_como_destino ?? 0}
+                  </span>
                 </div>
                 {callsData.llamadas?.length ? (
-                  <div className="divide-y divide-slate-200 border border-slate-200 rounded-lg">
+                  <div className="divide-y divide-slate-200 border border-slate-200 rounded-2xl overflow-hidden bg-white">
                     {callsData.llamadas.map((c) => (
-                      <div key={c.id} className="p-3 text-sm flex items-center justify-between">
+                      <div
+                        key={c.id}
+                        className="p-3 md:p-4 text-sm flex flex-col md:flex-row md:items-center md:justify-between gap-3"
+                      >
                         <div className="flex-1">
-                          <div className="font-medium text-slate-800">
-                            {c.call_type ? c.call_type.toUpperCase() : (c.from_number === agenda.phone_number ? 'ORIGEN' : 'DESTINO')}
+                          <div className="font-semibold text-slate-800">
+                            {c.call_type
+                              ? c.call_type.toUpperCase()
+                              : c.from_number === agenda.phone_number
+                              ? 'ORIGEN'
+                              : 'DESTINO'}
                           </div>
                           <div className="text-slate-600">
                             {c.from_number || '—'} → {c.to_number || '—'}
                           </div>
-                          <div className="text-xs text-slate-500">
-                            {c.created_at ? new Date(c.created_at).toLocaleString('es-ES') : 'Sin fecha'} · {c.status || '—'} · {typeof c.duration === 'number' ? `${c.duration}s` : (c.duration || '—')}
+                          <div className="text-xs text-slate-500 mt-1">
+                            {c.created_at
+                              ? new Date(c.created_at).toLocaleString('es-ES')
+                              : 'Sin fecha'}{' '}
+                            · {c.status || '—'} ·{' '}
+                            {typeof c.duration === 'number'
+                              ? `${c.duration}s`
+                              : c.duration || '—'}
                           </div>
                         </div>
                         {c.recordings && (
-                          <audio controls src={c.recordings} className="ml-4 w-52" preload="metadata" />
+                          <audio
+                            controls
+                            src={c.recordings}
+                            className="md:ml-4 w-full md:w-48"
+                            preload="metadata"
+                          />
                         )}
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="text-slate-500 text-sm">No hay llamadas registradas para este número.</div>
+                  <div className="text-slate-500 text-sm">
+                    No hay llamadas registradas para este número.
+                  </div>
                 )}
               </div>
             )}
-          </div>
+          </section>
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end p-6 border-t border-slate-200">
+        <footer className="px-8 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+          <div className="text-xs text-slate-500 flex items-center gap-2">
+            <Clock className="w-3 h-3" />
+            {agenda.created_at
+              ? `Creado el ${new Date(agenda.created_at).toLocaleString('es-ES')}`
+              : 'Fecha de creación no disponible'}
+          </div>
           <button
-            onClick={onClose}
-            className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors"
+            onClick={handleClose}
+            className="px-6 py-2 text-sm font-semibold bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all active:scale-95"
           >
             Cerrar
           </button>
-        </div>
+        </footer>
       </div>
     </div>
   );

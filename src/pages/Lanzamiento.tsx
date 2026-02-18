@@ -1,9 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Phone, PhoneCall, PhoneOff, Link, MousePointer, Ban, RefreshCw, Calendar, TrendingUp, Globe, CalendarDays, Lock, Activity } from 'lucide-react';
+import { Phone, PhoneCall, PhoneOff, Link, MousePointer, Ban, RefreshCw, Calendar, TrendingUp, Globe, CalendarDays, Lock, Activity, ChevronLeft, ChevronRight, Check, ChevronDown } from 'lucide-react';
 import { fetchLanzamientoMetricsToday, fetchLanzamientoMetricsCustom, fetchAsistenciaFunnelMetrics } from '../api';
 import { useCallsContext } from '../context/CallsContext';
+
+interface MetricByCountry {
+  pais: string;
+  total_llamadas: number;
+  llamadas_contestadas: number;
+  llamadas_fallidas: number;
+  enlaces_enviados: number;
+  clicks_totales: number;
+  no_llamar: number;
+}
 
 interface LanzamientoMetrics {
   total_llamadas: number;
@@ -12,32 +22,7 @@ interface LanzamientoMetrics {
   total_enlaces_enviados: number;
   total_clicks_totales: number;
   total_no_llamar: number;
-  porRegion: {
-    europa: {
-      total_llamadas: number;
-      llamadas_contestadas: number;
-      llamadas_fallidas: number;
-      enlaces_enviados: number;
-      clicks_totales: number;
-      no_llamar: number;
-    };
-    latam: {
-      total_llamadas: number;
-      llamadas_contestadas: number;
-      llamadas_fallidas: number;
-      enlaces_enviados: number;
-      clicks_totales: number;
-      no_llamar: number;
-    };
-    espana: {
-      total_llamadas: number;
-      llamadas_contestadas: number;
-      llamadas_fallidas: number;
-      enlaces_enviados: number;
-      clicks_totales: number;
-      no_llamar: number;
-    };
-  };
+  porPais: MetricByCountry[];
 }
 
 interface FunnelTotals {
@@ -107,6 +92,48 @@ function getPaisesByRegion(region: string): string[] {
   return item.paises.split(', ').map((p) => p.trim());
 }
 
+const COUNTRY_FLAGS: Record<string, string> = {
+  España: '🇪🇸',
+  Argentina: '🇦🇷',
+  México: '🇲🇽',
+  Colombia: '🇨🇴',
+  Chile: '🇨🇱',
+  Perú: '🇵🇪',
+  Brasil: '🇧🇷',
+  Venezuela: '🇻🇪',
+  Ecuador: '🇪🇨',
+  'República Dominicana': '🇩🇴',
+  Uruguay: '🇺🇾',
+  Paraguay: '🇵🇾',
+  Bolivia: '🇧🇴',
+  'Costa Rica': '🇨🇷',
+  Panamá: '🇵🇦',
+  Nicaragua: '🇳🇮',
+  'El Salvador': '🇸🇻',
+  Guatemala: '🇬🇹',
+  Honduras: '🇭🇳',
+  Cuba: '🇨🇺',
+  Haití: '🇭🇹',
+  Curazao: '🇨🇼',
+  Guyana: '🇬🇾',
+  Surinam: '🇸🇷',
+  'Guayana Francesa': '🇬🇫',
+  'USA / Canadá': '🇺🇸',
+  'Reino Unido': '🇬🇧',
+  Alemania: '🇩🇪',
+  Francia: '🇫🇷',
+  Italia: '🇮🇹',
+  Irlanda: '🇮🇪',
+  Portugal: '🇵🇹',
+  'Países Bajos': '🇳🇱',
+  Bélgica: '🇧🇪',
+  no_detectado: '🌐',
+};
+
+function getFlagForCountry(pais: string): string {
+  return COUNTRY_FLAGS[pais] ?? '🌐';
+}
+
 const Lanzamiento: React.FC = () => {
   const { launchEnabled } = useCallsContext();
   const [metrics, setMetrics] = useState<LanzamientoMetrics | null>(null);
@@ -121,42 +148,76 @@ const Lanzamiento: React.FC = () => {
   const requestCounterRef = useRef<number>(0);
   const [regionFilter, setRegionFilter] = useState<string>('');
   const [countryFilter, setCountryFilter] = useState<string>('');
+  const [paisesSeleccionados, setPaisesSeleccionados] = useState<string[]>([]);
+  const [dropdownPaisesOpen, setDropdownPaisesOpen] = useState(false);
+  const carouselRef = useRef<HTMLDivElement>(null);
+  const dropdownPaisesRef = useRef<HTMLDivElement>(null);
+
+  // Cerrar dropdown al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownPaisesRef.current && !dropdownPaisesRef.current.contains(e.target as Node)) {
+        setDropdownPaisesOpen(false);
+      }
+    };
+    if (dropdownPaisesOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [dropdownPaisesOpen]);
 
   const paisesOptions = regionFilter ? getPaisesByRegion(regionFilter) : [];
 
-  // Función helper para procesar los datos de la API y asegurar que siempre se muestren las 3 regiones
+  // Países a mostrar: si hay selección manual, esos (en orden); si no, Top 5 por llamadas
+  const paisesParaMostrar = (() => {
+    if (!metrics?.porPais?.length) return [];
+    const byPais = new Map(metrics.porPais.map((p) => [p.pais, p]));
+    if (paisesSeleccionados.length > 0) {
+      return paisesSeleccionados.map((nombre) => byPais.get(nombre)).filter(Boolean) as MetricByCountry[];
+    }
+    const sorted = [...metrics.porPais].sort((a, b) => b.total_llamadas - a.total_llamadas);
+    return sorted.slice(0, 5);
+  })();
+
+  const togglePais = (pais: string) => {
+    setPaisesSeleccionados((prev) =>
+      prev.includes(pais) ? prev.filter((p) => p !== pais) : [...prev, pais]
+    );
+  };
+
+  const mostrarTop5 = () => {
+    setPaisesSeleccionados([]);
+    setDropdownPaisesOpen(false);
+  };
+
+  const scrollCarousel = (direction: 'left' | 'right') => {
+    const el = carouselRef.current;
+    if (!el) return;
+    const cardWidth = 300;
+    const gap = 24;
+    const scrollAmount = cardWidth + gap;
+    el.scrollBy({ left: direction === 'left' ? -scrollAmount : scrollAmount, behavior: 'smooth' });
+  };
+
+  // Procesar datos de la API (métricas por país, derivado del teléfono)
   const processApiData = (apiData: any): LanzamientoMetrics => {
-    // Crear un mapa de las regiones recibidas
-    const regionMap = new Map();
-    apiData.metrics_by_region.forEach((region: any) => {
-      regionMap.set(region.region.toLowerCase(), region);
-    });
-
-    // Función helper para obtener datos de región o valores por defecto
-    const getRegionData = (regionName: string) => {
-      const regionData = regionMap.get(regionName.toLowerCase());
-      return {
-        total_llamadas: regionData?.total_llamadas || 0,
-        llamadas_contestadas: regionData?.llamadas_contestadas || 0,
-        llamadas_fallidas: regionData?.llamadas_fallidas || 0,
-        enlaces_enviados: regionData?.enlaces_enviados || 0,
-        clicks_totales: regionData?.clicks_totales || 0,
-        no_llamar: regionData?.no_llamar || 0,
-      };
-    };
-
+    const metricsByCountry = Array.isArray(apiData.metrics_by_country) ? apiData.metrics_by_country : [];
     return {
-      total_llamadas: apiData.total_llamadas,
-      llamadas_contestadas: apiData.llamadas_contestadas,
-      llamadas_fallidas: apiData.llamadas_fallidas,
-      total_enlaces_enviados: apiData.total_enlaces_enviados,
-      total_clicks_totales: apiData.total_clicks_totales,
-      total_no_llamar: apiData.total_no_llamar,
-      porRegion: {
-        europa: getRegionData('Europa'),
-        latam: getRegionData('Latam'),
-        espana: getRegionData('España'),
-      },
+      total_llamadas: apiData.total_llamadas ?? 0,
+      llamadas_contestadas: apiData.llamadas_contestadas ?? 0,
+      llamadas_fallidas: apiData.llamadas_fallidas ?? 0,
+      total_enlaces_enviados: apiData.total_enlaces_enviados ?? 0,
+      total_clicks_totales: apiData.total_clicks_totales ?? 0,
+      total_no_llamar: apiData.total_no_llamar ?? 0,
+      porPais: metricsByCountry.map((item: any) => ({
+        pais: item.pais ?? 'no_detectado',
+        total_llamadas: parseInt(item.total_llamadas, 10) || 0,
+        llamadas_contestadas: parseInt(item.llamadas_contestadas, 10) || 0,
+        llamadas_fallidas: parseInt(item.llamadas_fallidas, 10) || 0,
+        enlaces_enviados: parseInt(item.enlaces_enviados, 10) || 0,
+        clicks_totales: parseInt(item.clicks_totales, 10) || 0,
+        no_llamar: parseInt(item.no_llamar, 10) || 0,
+      })),
     };
   };
 
@@ -673,29 +734,118 @@ const Lanzamiento: React.FC = () => {
             />
           </div>
 
-          {/* Métricas por región */}
+          {/* Métricas por país: Top 5 por defecto o países agregados (se pueden quitar) */}
           <div>
-            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-              <Globe className="h-6 w-6" />
-              Métricas por Región
-            </h2>
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              <RegionCard 
-                region="Europa" 
-                data={metrics.porRegion.europa} 
-                flag="🇪🇺"
-              />
-              <RegionCard 
-                region="Latam" 
-                data={metrics.porRegion.latam} 
-                flag="🌎"
-              />
-              <RegionCard 
-                region="España" 
-                data={metrics.porRegion.espana} 
-                flag="🇪🇸"
-              />
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+              <h2 className="text-2xl font-bold flex items-center gap-2">
+                <Globe className="h-6 w-6" />
+                Métricas por País
+              </h2>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  variant={paisesSeleccionados.length === 0 ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={mostrarTop5}
+                >
+                  Top 5 por llamadas
+                </Button>
+                <div className="relative" ref={dropdownPaisesRef}>
+                  <button
+                    type="button"
+                    onClick={() => setDropdownPaisesOpen((v) => !v)}
+                    className="flex items-center gap-2 min-w-[200px] px-3 py-2 border border-gray-300 rounded-md bg-white text-sm text-left hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <span className="flex-1">
+                      {paisesSeleccionados.length > 0
+                        ? `Países (${paisesSeleccionados.length})`
+                        : 'Seleccionar países...'}
+                    </span>
+                    <ChevronDown className={`w-4 h-4 flex-shrink-0 transition-transform ${dropdownPaisesOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {dropdownPaisesOpen && (
+                    <div className="absolute top-full left-0 mt-1 w-full min-w-[240px] max-h-[280px] overflow-y-auto border border-gray-200 rounded-md bg-white shadow-lg z-50 py-1">
+                      {[...metrics.porPais]
+                        .sort((a, b) => b.total_llamadas - a.total_llamadas)
+                        .map((p) => {
+                          const selected = paisesSeleccionados.includes(p.pais);
+                          return (
+                            <button
+                              key={p.pais}
+                              type="button"
+                              onClick={() => togglePais(p.pais)}
+                              className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100 ${selected ? 'bg-blue-50 text-blue-800' : 'text-gray-800'}`}
+                            >
+                              <span className="w-5 flex justify-center">
+                                {selected ? <Check className="w-4 h-4 text-blue-600" /> : null}
+                              </span>
+                              <span>{getFlagForCountry(p.pais)}</span>
+                              <span className="flex-1 truncate">{p.pais}</span>
+                              <span className="text-gray-500 text-xs">({p.total_llamadas})</span>
+                            </button>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+                {paisesSeleccionados.length > 0 && (
+                  <span className="text-sm text-gray-500">
+                    {paisesSeleccionados.length} seleccionado{paisesSeleccionados.length !== 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
             </div>
+
+            {paisesParaMostrar.length === 0 ? (
+              <p className="text-gray-500 py-6">No hay datos por país en el período seleccionado.</p>
+            ) : (
+              <div className="relative flex items-center gap-2">
+                {paisesParaMostrar.length > 3 && (
+                  <button
+                    type="button"
+                    onClick={() => scrollCarousel('left')}
+                    className="flex-shrink-0 p-2 rounded-full border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors shadow-sm"
+                    aria-label="Anterior"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                )}
+                <div className="w-full max-w-[calc(340px*3+24*2)] overflow-hidden">
+                  <div
+                    ref={carouselRef}
+                    className="flex overflow-x-auto gap-6 pb-2 scroll-smooth snap-x snap-mandatory [&::-webkit-scrollbar]:hidden"
+                    style={{
+                      scrollSnapType: 'x mandatory',
+                      scrollbarWidth: 'none',
+                      msOverflowStyle: 'none',
+                    }}
+                  >
+                    {paisesParaMostrar.map((item) => (
+                      <div
+                        key={item.pais}
+                        data-carousel-card
+                        className="flex-shrink-0 w-[300px] snap-start"
+                      >
+                        <RegionCard
+                          region={item.pais}
+                          data={item}
+                          flag={getFlagForCountry(item.pais)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {paisesParaMostrar.length > 3 && (
+                  <button
+                    type="button"
+                    onClick={() => scrollCarousel('right')}
+                    className="flex-shrink-0 p-2 rounded-full border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors shadow-sm"
+                    aria-label="Siguiente"
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Filtros de Funnel (debajo de Métricas por Región, encima del Funnel) */}
