@@ -14,17 +14,17 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
   const [callsData, setCallsData] = useState<CallsByPhoneResponse | null>(null);
   const [loadingCalls, setLoadingCalls] = useState(false);
   const [errorCalls, setErrorCalls] = useState<string | null>(null);
-  const [localApproved, setLocalApproved] = useState<boolean | null>(null);
-  const [localReviewed, setLocalReviewed] = useState<boolean | null>(null);
+  const [localApproved, setLocalApproved] = useState<boolean>(false);
+  const [localReviewed, setLocalReviewed] = useState<boolean>(false);
 
-  // Sincronizar estados locales cuando cambia la agenda
+  // Sincronizar estados locales cuando cambia la agenda (null/undefined = false)
   useEffect(() => {
     if (agenda) {
-      setLocalApproved(typeof agenda.aprobada === 'boolean' ? agenda.aprobada : null);
-      setLocalReviewed(typeof agenda.revisada === 'boolean' ? agenda.revisada : null);
+      setLocalApproved(agenda.aprobada === true);
+      setLocalReviewed(agenda.revisada === true);
     } else {
-      setLocalApproved(null);
-      setLocalReviewed(null);
+      setLocalApproved(false);
+      setLocalReviewed(false);
     }
   }, [agenda]);
 
@@ -100,21 +100,17 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
     }
   };
 
-  // Clase de color para texto según estado (verde, rojo o neutro)
-  const getStatusTextClass = (value: boolean | null) => {
-    if (value === true) return 'text-emerald-700';
-    if (value === false) return 'text-red-700';
-    return 'text-slate-800';
+  // Clase de color para texto según estado (verde o rojo)
+  const getStatusTextClass = (value: boolean) => {
+    return value ? 'text-emerald-700' : 'text-red-700';
   };
 
   // Solo actualiza el estado local; la API se llama al cerrar el modal
   const handleChangeStatus = (
     field: 'aprobada' | 'revisada',
-    value: 'true' | 'false' | 'null'
+    value: 'true' | 'false'
   ) => {
-    const newValue =
-      value === 'true' ? true : value === 'false' ? false : null;
-
+    const newValue = value === 'true';
     if (field === 'aprobada') {
       setLocalApproved(newValue);
     } else {
@@ -122,17 +118,15 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
     }
   };
 
-  // Persiste cambios de estados al backend cuando se cierra el modal
+  // Persiste cambios de estados al backend cuando se cierra el modal (null/undefined = false)
   const persistStatusChanges = async () => {
     if (!agenda) return;
 
-    const originalApproved =
-      typeof agenda.aprobada === 'boolean' ? agenda.aprobada : null;
-    const originalReviewed =
-      typeof agenda.revisada === 'boolean' ? agenda.revisada : null;
+    const originalApproved = agenda.aprobada === true;
+    const originalReviewed = agenda.revisada === true;
 
-    const payload: { id: string; aprobada?: boolean | null; revisada?: boolean | null } = {
-      id: agenda.id,
+    const payload: { id: string; aprobada?: boolean; revisada?: boolean } = {
+      id: String(agenda.id),
     };
 
     if (localApproved !== originalApproved) {
@@ -306,24 +300,17 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
                 </label>
                 <div className="relative">
                   <select
-                    value={
-                      localApproved === true
-                        ? 'true'
-                        : localApproved === false
-                        ? 'false'
-                        : 'null'
-                    }
+                    value={localApproved ? 'true' : 'false'}
                     onChange={(e) =>
                       handleChangeStatus(
                         'aprobada',
-                        e.target.value as 'true' | 'false' | 'null'
+                        e.target.value as 'true' | 'false'
                       )
                     }
                     className={`w-full appearance-none px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 pr-9 ${getStatusTextClass(
                       localApproved
                     )}`}
                   >
-                    <option value="null">Sin estado</option>
                     <option value="true">Aprobada</option>
                     <option value="false">No aprobada</option>
                   </select>
@@ -337,24 +324,17 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
                 </label>
                 <div className="relative">
                   <select
-                    value={
-                      localReviewed === true
-                        ? 'true'
-                        : localReviewed === false
-                        ? 'false'
-                        : 'null'
-                    }
+                    value={localReviewed ? 'true' : 'false'}
                     onChange={(e) =>
                       handleChangeStatus(
                         'revisada',
-                        e.target.value as 'true' | 'false' | 'null'
+                        e.target.value as 'true' | 'false'
                       )
                     }
                     className={`w-full appearance-none px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pr-9 ${getStatusTextClass(
                       localReviewed
                     )}`}
                   >
-                    <option value="null">Sin estado</option>
                     <option value="true">Revisada</option>
                     <option value="false">No revisada</option>
                   </select>

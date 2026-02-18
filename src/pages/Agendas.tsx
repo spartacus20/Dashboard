@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { fetchAgendas, fetchAllAgendas, deleteAgenda, getAverageCallsPerAgenda, updateAgendaStatus } from '../api';
 import { Agenda } from '../types';
 import { useCallsContext } from '../context/CallsContext';
-import { Calendar, Clock, MapPin, Phone, User, Building, Search, Filter, RefreshCw, AlertCircle, X, List, CalendarDays, Download, Trash2, BarChart3 } from 'lucide-react';
+import { Calendar, Clock, MapPin, Phone, User, Building, Search, Filter, RefreshCw, AlertCircle, X, List, CalendarDays, Download, Trash2, BarChart3, CheckCircle, Eye } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Chart } from '../components/ui/chart';
 import { AgendaModal } from '../components/AgendaModal';
@@ -22,8 +22,8 @@ export function Agendas({ onNavigate }: AgendasProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [filterAgentId, setFilterAgentId] = useState('all');
-  const [filterApproved, setFilterApproved] = useState<'all' | 'true' | 'false' | 'null'>('all');
-  const [filterReviewed, setFilterReviewed] = useState<'all' | 'true' | 'false' | 'null'>('all');
+  const [filterApproved, setFilterApproved] = useState<'all' | 'true' | 'false'>('all');
+  const [filterReviewed, setFilterReviewed] = useState<'all' | 'true' | 'false'>('all');
   const todayStr = () => new Date().toISOString().slice(0, 10);
   const [dateFrom, setDateFrom] = useState(todayStr);
   const [dateTo, setDateTo] = useState(todayStr);
@@ -39,9 +39,21 @@ export function Agendas({ onNavigate }: AgendasProps) {
   const [deleting, setDeleting] = useState(false);
   const [averageStats, setAverageStats] = useState<{ average_calls: number; total_agendas: number; total_agendas_in_range: number; total_calls: number } | null>(null);
   const [loadingAverage, setLoadingAverage] = useState(false);
+  // Animación de entrada de las cards Aprobadas/Revisadas cuando termina de cargar
+  const [cardsContentVisible, setCardsContentVisible] = useState(false);
   // Permiso para ver estadísticas de Paneles Solares / Baterías según metadata.filtro_solar
   const [hasFiltroSolar, setHasFiltroSolar] = useState(false);
   const itemsPerPage = 10;
+
+  // Mostrar contenido de cards con fade-in cuando termina la carga; ocultar al cargar de nuevo
+  useEffect(() => {
+    if (loading) {
+      setCardsContentVisible(false);
+    } else {
+      const t = setTimeout(() => setCardsContentVisible(true), 50);
+      return () => clearTimeout(t);
+    }
+  }, [loading]);
 
   // Cargar agendas
   const loadAgendas = async () => {
@@ -173,24 +185,22 @@ export function Agendas({ onNavigate }: AgendasProps) {
       filtered = filtered.filter(agenda => agenda.tipo_agenda === filterType);
     }
 
-    // Filtrar por estado \"aprobada\"
+    // Filtrar por estado \"aprobada\" (null/undefined se tratan como false)
     if (filterApproved !== 'all') {
       filtered = filtered.filter(agenda => {
-        const val = agenda.aprobada;
-        if (filterApproved === 'true') return val === true;
-        if (filterApproved === 'false') return val === false;
-        if (filterApproved === 'null') return val === null || typeof val === 'undefined';
+        const val = agenda.aprobada === true;
+        if (filterApproved === 'true') return val;
+        if (filterApproved === 'false') return !val;
         return true;
       });
     }
 
-    // Filtrar por estado \"revisada\"
+    // Filtrar por estado \"revisada\" (null/undefined se tratan como false)
     if (filterReviewed !== 'all') {
       filtered = filtered.filter(agenda => {
-        const val = agenda.revisada;
-        if (filterReviewed === 'true') return val === true;
-        if (filterReviewed === 'false') return val === false;
-        if (filterReviewed === 'null') return val === null || typeof val === 'undefined';
+        const val = agenda.revisada === true;
+        if (filterReviewed === 'true') return val;
+        if (filterReviewed === 'false') return !val;
         return true;
       });
     }
@@ -731,6 +741,128 @@ export function Agendas({ onNavigate }: AgendasProps) {
               </CardContent>
             </Card>
 
+            {/* Cards Aprobadas y Revisadas (debajo del promedio) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6 w-full">
+              <Card className="shadow-lg border-slate-200 flex flex-col">
+                <CardHeader className="pb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-10 h-10 bg-violet-600/10 rounded-lg flex items-center justify-center">
+                      <CheckCircle className="w-5 h-5 text-violet-600" />
+                    </div>
+                    <CardTitle className="text-lg">Aprobadas</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className="flex-1 flex items-center justify-between gap-4 min-h-[100px]">
+                  {loading ? (
+                    <>
+                      <div className="flex-1 space-y-2">
+                        <div className="h-9 w-20 bg-slate-200 rounded animate-pulse" />
+                        <div className="h-4 w-32 bg-slate-100 rounded animate-pulse" />
+                      </div>
+                      <div className="flex items-end gap-1.5 h-14">
+                        {[6, 10, 5, 12, 8, 14].map((h, i) => (
+                          <div key={i} className="w-2.5 bg-slate-200 rounded-t-sm animate-pulse" style={{ height: `${h * 4}px` }} />
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div
+                      className={`flex-1 flex items-center justify-between gap-4 w-full transition-all duration-300 ${
+                        cardsContentVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
+                      }`}
+                    >
+                      <div>
+                        <p className="text-3xl font-bold text-violet-600">
+                          {agendas.filter(a => a.aprobada === true).length.toLocaleString('es-ES')}
+                        </p>
+                        <p className="text-sm text-slate-600">en el rango seleccionado</p>
+                      </div>
+                      <div className="flex items-end gap-1.5 h-14 pt-2">
+                        <div className="w-2.5 h-6 bg-violet-600/20 rounded-t-sm" />
+                        <div className="w-2.5 h-10 bg-violet-600/20 rounded-t-sm" />
+                        <div className="w-2.5 h-5 bg-violet-600/20 rounded-t-sm" />
+                        <div className="w-2.5 h-12 bg-violet-600/20 rounded-t-sm" />
+                        <div className="w-2.5 h-8 bg-violet-600/20 rounded-t-sm" />
+                        <div className="w-2.5 h-14 bg-violet-600 rounded-t-sm" />
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+              <Card className="shadow-lg border-slate-200 flex flex-col">
+                <CardHeader className="pb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-10 h-10 bg-violet-600/10 rounded-lg flex items-center justify-center">
+                      <Eye className="w-5 h-5 text-violet-600" />
+                    </div>
+                    <CardTitle className="text-lg">Revisadas</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className="flex-1 flex items-center justify-between gap-4 min-h-[100px]">
+                  {loading ? (
+                    <>
+                      <div className="flex-1 space-y-2">
+                        <div className="h-9 w-20 bg-slate-200 rounded animate-pulse" />
+                        <div className="h-4 w-32 bg-slate-100 rounded animate-pulse" />
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="w-16 h-16 rounded-full bg-slate-200 animate-pulse" />
+                        <div className="space-y-2">
+                          <div className="h-3 w-14 bg-slate-100 rounded animate-pulse" />
+                          <div className="h-4 w-24 bg-slate-100 rounded animate-pulse" />
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div
+                      className={`flex-1 flex items-center justify-between gap-4 w-full transition-all duration-300 ${
+                        cardsContentVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
+                      }`}
+                    >
+                      <div>
+                        <p className="text-3xl font-bold text-violet-600">
+                          {agendas.filter(a => a.revisada === true).length.toLocaleString('es-ES')}
+                        </p>
+                        <p className="text-sm text-slate-600">en el rango seleccionado</p>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="relative w-16 h-16 flex items-center justify-center flex-shrink-0">
+                          <svg className="w-full h-full transform -rotate-90" viewBox="0 0 64 64">
+                            <circle className="text-slate-100" cx="32" cy="32" fill="transparent" r="28" stroke="currentColor" strokeWidth="5" />
+                            <circle
+                              className="text-violet-600 transition-all duration-500 ease-out"
+                              cx="32"
+                              cy="32"
+                              fill="transparent"
+                              r="28"
+                              stroke="currentColor"
+                              strokeDasharray={2 * Math.PI * 28}
+                              strokeDashoffset={2 * Math.PI * 28 * (1 - (agendas.length ? agendas.filter(a => a.revisada === true).length / agendas.length : 0))}
+                              strokeLinecap="round"
+                              strokeWidth="5"
+                            />
+                          </svg>
+                          <span className="absolute text-sm font-bold text-violet-600">
+                            {agendas.length ? Math.round((agendas.filter(a => a.revisada === true).length / agendas.length) * 100) : 0}%
+                          </span>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-slate-500">Progreso</p>
+                          <p className="text-sm text-slate-600">
+                            {agendas.length && agendas.filter(a => a.revisada === true).length === agendas.length
+                              ? 'Todas revisadas'
+                              : agendas.length
+                                ? 'Cerca de la meta'
+                                : 'Sin datos'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
             {/* Filtros y búsqueda (el rango de fechas se cambia en la card Promedio de llamadas por agenda) */}
             <div className="bg-white rounded-lg p-6 mb-6 shadow-lg border border-slate-200">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
@@ -781,13 +913,12 @@ export function Agendas({ onNavigate }: AgendasProps) {
                   <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
                   <select
                     value={filterApproved}
-                    onChange={(e) => setFilterApproved(e.target.value as 'all' | 'true' | 'false' | 'null')}
+                    onChange={(e) => setFilterApproved(e.target.value as 'all' | 'true' | 'false')}
                     className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
                   >
                     <option value="all">Todas (aprobadas)</option>
                     <option value="true">Solo aprobadas</option>
                     <option value="false">Solo no aprobadas</option>
-                    <option value="null">Sin estado</option>
                   </select>
                 </div>
 
@@ -796,13 +927,12 @@ export function Agendas({ onNavigate }: AgendasProps) {
                   <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
                   <select
                     value={filterReviewed}
-                    onChange={(e) => setFilterReviewed(e.target.value as 'all' | 'true' | 'false' | 'null')}
+                    onChange={(e) => setFilterReviewed(e.target.value as 'all' | 'true' | 'false')}
                     className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
                   >
                     <option value="all">Todas (revisadas)</option>
                     <option value="true">Solo revisadas</option>
                     <option value="false">Solo no revisadas</option>
-                    <option value="null">Sin estado</option>
                   </select>
                 </div>
 
@@ -861,132 +991,156 @@ export function Agendas({ onNavigate }: AgendasProps) {
                       <div
                         key={agenda.id}
                         onClick={() => openAgendaModal(agenda)}
-                        className="bg-white rounded-lg p-6 hover:bg-slate-50 transition-colors shadow-lg border border-slate-200 relative cursor-pointer"
+                        className="relative bg-white border border-slate-200 shadow-xl shadow-slate-200/50 rounded-[16px] overflow-hidden transition-all duration-200 hover:shadow-2xl hover:-translate-y-[1px] cursor-pointer"
                       >
-                        {/* Botón de eliminar en la esquina superior derecha */}
-                        <button
-                          onClick={(e) => openDeleteModal(agenda, e)}
-                          className="absolute top-4 right-4 p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors z-10"
-                          title="Eliminar agenda"
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </button>
-
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                          {/* Información principal */}
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between pr-12">
-                              <div className="flex items-center space-x-2 flex-1">
-                                <User className="w-5 h-5 text-blue-600" />
-                                <h3 className="text-lg font-semibold text-slate-800">
+                        <div className="p-6">
+                          <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-4">
+                            <div className="flex items-start gap-4">
+                              <div className="p-3 bg-blue-50 rounded-xl text-blue-600">
+                                <User className="w-6 h-6" />
+                              </div>
+                              <div>
+                                <h3 className="text-xl font-bold text-slate-800 leading-tight">
                                   {agenda?.nombre || 'Sin nombre'}
                                 </h3>
+                                <div className="flex flex-wrap items-center gap-3 mt-2 text-slate-600">
+                                  <div className="flex items-center gap-2">
+                                    <Phone className="w-4 h-4 text-slate-400" />
+                                    <span className="text-sm font-medium">
+                                      {agenda?.phone_number || 'Sin teléfono'}
+                                    </span>
+                                  </div>
+                                  {agenda?.agent_id && (
+                                    <>
+                                      <span className="h-4 w-px bg-slate-200" />
+                                      <div className="flex items-center gap-2">
+                                        <User className="w-4 h-4 text-slate-400" />
+                                        <span className="text-sm font-medium text-blue-600">
+                                          {agenda.agent_id}
+                                        </span>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
                               </div>
+                            </div>
+
+                            {/* Botón eliminar alineado a la derecha */}
+                            <div className="flex items-start gap-2">
+                              <button
+                                onClick={(e) => openDeleteModal(agenda, e)}
+                                className="p-2.5 text-red-500 hover:text-red-700 hover:bg-red-50 transition-colors bg-slate-50 rounded-lg"
+                                title="Eliminar agenda"
+                              >
+                                <Trash2 className="w-5 h-5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pb-2">
+                            {/* Fechas y tipo de agenda */}
+                            <div className="space-y-4">
+                              <div className="space-y-3 text-slate-600">
+                                <div className="flex items-center gap-3">
+                                  <Calendar className="w-4 h-4 text-slate-400" />
+                                  <div className="text-sm">
+                                    <span className="text-slate-400">Agendado:</span>
+                                    <span className="font-semibold ml-1">
+                                      {agenda?.fecha_agendamiento ? formatDate(agenda.fecha_agendamiento) : 'Sin fecha'}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <Clock className="w-4 h-4 text-slate-400" />
+                                  <div className="text-sm">
+                                    <span className="text-slate-400">Creado:</span>
+                                    <span className="font-medium ml-1">
+                                      {agenda?.created_at ? formatDate(agenda.created_at) : 'Sin fecha'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
                               {agenda?.tipo_agenda && (
                                 <span
-                                  className={`px-2 py-1 text-white text-xs rounded-full ${getAgendaTypeBadgeClass(agenda.tipo_agenda)}`}
+                                  className={`inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black text-white shadow-sm uppercase tracking-[0.1em] ${getAgendaTypeBadgeClass(agenda.tipo_agenda)}`}
                                 >
                                   {agenda.tipo_agenda}
                                 </span>
                               )}
                             </div>
 
-                            <div className="flex items-center space-x-2 text-slate-600">
-                              <Phone className="w-4 h-4" />
-                              <span>{agenda?.phone_number || 'Sin teléfono'}</span>
-                            </div>
-
-                            <div className="flex items-center space-x-2 text-slate-600">
-                              <Calendar className="w-4 h-4" />
-                              <span>Agendado: {agenda?.fecha_agendamiento ? formatDate(agenda.fecha_agendamiento) : 'Sin fecha'}</span>
-                            </div>
-
-                            <div className="flex items-center space-x-2 text-slate-600">
-                              <Clock className="w-4 h-4" />
-                              <span>Creado: {agenda?.created_at ? formatDate(agenda.created_at) : 'Sin fecha'}</span>
-                            </div>
-
-                            {/* Estados: Aprobada / Revisada (solo visual, se editan en el detalle) */}
-                            <div className="flex flex-wrap gap-2 mt-2">
-                              {/* Aprobada (solo display) */}
-                              <div
-                                className={`px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 cursor-default ${
-                                  agenda.aprobada === true
-                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                                    : agenda.aprobada === false
-                                      ? 'bg-red-100 text-red-800 border-red-300'
-                                      : 'bg-slate-100 text-slate-500 border-slate-300'
-                                }`}
-                                title="Estado de aprobación"
-                              >
-                                <span
-                                  className={`w-2 h-2 rounded-full ${
-                                    agenda.aprobada === true
-                                      ? 'bg-emerald-500'
-                                      : agenda.aprobada === false
-                                        ? 'bg-red-500'
-                                        : 'bg-slate-400'
-                                  }`}
-                                />
-                                <span>Aprobada</span>
-                              </div>
-
-                              {/* Revisada (solo display) */}
-                              <div
-                                className={`px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 cursor-default ${
-                                  agenda.revisada === true
-                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                                    : agenda.revisada === false
-                                      ? 'bg-red-100 text-red-800 border-red-300'
-                                      : 'bg-slate-100 text-slate-500 border-slate-300'
-                                }`}
-                                title="Estado de revisión"
-                              >
-                                <span
-                                  className={`w-2 h-2 rounded-full ${
-                                    agenda.revisada === true
-                                      ? 'bg-emerald-500'
-                                      : agenda.revisada === false
-                                        ? 'bg-red-500'
-                                        : 'bg-slate-400'
-                                  }`}
-                                />
-                                <span>Revisada</span>
-                              </div>
-                            </div>
-                            {agenda?.agent_id && (
-                              <div className="flex items-center space-x-2 text-slate-600">
-                                <User className="w-4 h-4" />
-                                <span>Agente: <span className="font-medium text-blue-600">{agenda.agent_id}</span></span>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Información de ubicación */}
-                          <div className="space-y-3">
-                            <div className="flex items-start space-x-2 text-slate-600">
-                              <MapPin className="w-4 h-4 mt-1" />
-                              <div className="space-y-1">
-                                <div>{agenda?.direccion || 'Sin dirección'}</div>
-                                {agenda?.local && (
-                                  <div className="flex items-center space-x-2">
-                                    <Building className="w-3 h-3" />
-                                    <span className="text-sm">{agenda.local}</span>
-                                  </div>
-                                )}
-                                <div className="text-sm">
+                            {/* Información de ubicación */}
+                            <div className="flex gap-3 text-slate-600 md:border-l md:border-slate-100 md:pl-6">
+                              <MapPin className="w-5 h-5 mt-1 text-slate-400" />
+                              <div className="text-sm">
+                                <p className="font-semibold text-slate-700">
+                                  {agenda?.direccion || 'Sin dirección'}
+                                </p>
+                                <p className="text-slate-500">
                                   {agenda?.ciudad || 'Sin ciudad'}
                                   {agenda?.region && `, ${agenda.region}`}
-                                  {agenda?.codigo_postal && ` - ${agenda.codigo_postal}`}
-                                </div>
+                                </p>
+                                {agenda?.codigo_postal && (
+                                  <p className="text-slate-400 font-mono text-xs mt-1">
+                                    {agenda.codigo_postal}
+                                  </p>
+                                )}
                               </div>
                             </div>
 
-                            {agenda?.call_id && (
-                              <div className="text-xs text-slate-500">
-                                Call ID: {agenda.call_id}
-                              </div>
-                            )}
+                            {/* Call ID / información extra */}
+                            <div className="md:border-l md:border-slate-100 md:pl-6">
+                              {agenda?.call_id && (
+                                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <p className="text-[9px] uppercase tracking-widest text-slate-400 font-bold">
+                                      Internal Call ID
+                                    </p>
+                                  </div>
+                                  <code className="font-mono text-[11px] text-slate-500 break-all leading-relaxed">
+                                    {agenda.call_id}
+                                  </code>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Barra inferior con estados Aprobada / Revisada (se mantiene estilo actual) */}
+                        <div className="bg-slate-50 border-t border-slate-100 px-6 py-3 flex flex-wrap items-center gap-3">
+                          {/* Aprobada (solo display) */}
+                          <div
+                            className={`px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 cursor-default ${
+                              agenda.aprobada === true
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                : 'bg-red-100 text-red-800 border-red-300'
+                            }`}
+                            title="Estado de aprobación"
+                          >
+                            <span
+                              className={`w-2 h-2 rounded-full ${
+                                agenda.aprobada === true ? 'bg-emerald-500' : 'bg-red-500'
+                              }`}
+                            />
+                            <span>Aprobada</span>
+                          </div>
+
+                          {/* Revisada (solo display) */}
+                          <div
+                            className={`px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 cursor-default ${
+                              agenda.revisada === true
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                : 'bg-red-100 text-red-800 border-red-300'
+                            }`}
+                            title="Estado de revisión"
+                          >
+                            <span
+                              className={`w-2 h-2 rounded-full ${
+                                agenda.revisada === true ? 'bg-emerald-500' : 'bg-red-500'
+                              }`}
+                            />
+                            <span>Revisada</span>
                           </div>
                         </div>
                       </div>

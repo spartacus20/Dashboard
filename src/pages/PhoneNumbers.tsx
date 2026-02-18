@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Phone, Copy, RefreshCw, ExternalLink, X, Send, Plus, ChevronDown, User, Trash2, AlertTriangle } from 'lucide-react';
+import { Phone, Copy, RefreshCw, ExternalLink, X, Send, Plus, ChevronDown, User, Trash2, AlertTriangle, Search } from 'lucide-react';
 import { RetellPhoneNumber, RetellAgent } from '../types';
 import { createPhoneCall, fetchAgents, importPhoneNumber, deletePhoneNumber, fetchFolders, getCallCountsByFromNumber } from '../api';
 import { useCallsContext } from '../context/CallsContext';
@@ -913,14 +913,234 @@ function DeletePhoneModal({ phoneNumber, onClose, onSuccess, apiKey }: DeletePho
   );
 }
 
+// Modal para eliminar varios números: filtros por workspace y búsqueda, selección con checkboxes, elimina uno a uno
+interface DeleteMultiplePhoneModalProps {
+  phoneNumbers: RetellPhoneNumber[];
+  availableWorkspaces: string[];
+  getWorkspaceLabel: (phone: RetellPhoneNumber) => string;
+  apiKey: string | null;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function DeleteMultiplePhoneModal({
+  phoneNumbers,
+  availableWorkspaces,
+  getWorkspaceLabel,
+  apiKey,
+  onClose,
+  onSuccess,
+}: DeleteMultiplePhoneModalProps) {
+  const [selectedSet, setSelectedSet] = useState<Set<string>>(new Set());
+  const [modalWorkspaceFilter, setModalWorkspaceFilter] = useState<string | null>(null);
+  const [modalSearchTerm, setModalSearchTerm] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const [error, setError] = useState<string | null>(null);
+
+  const normalizePhone = (s: string) => (s || '').replace(/\D/g, '');
+
+  const modalFilteredList = useMemo(() => {
+    let list = phoneNumbers;
+    if (modalWorkspaceFilter) {
+      list = list.filter((p) => getWorkspaceLabel(p) === modalWorkspaceFilter);
+    }
+    if (modalSearchTerm.trim()) {
+      const term = normalizePhone(modalSearchTerm);
+      list = list.filter((p) => normalizePhone(p.phone_number || '').includes(term));
+    }
+    return list;
+  }, [phoneNumbers, modalWorkspaceFilter, modalSearchTerm, getWorkspaceLabel]);
+
+  const toggleOne = (phoneNumber: string) => {
+    setSelectedSet((prev) => {
+      const next = new Set(prev);
+      if (next.has(phoneNumber)) next.delete(phoneNumber);
+      else next.add(phoneNumber);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selectedSet.size === modalFilteredList.length) {
+      setSelectedSet(new Set());
+    } else {
+      setSelectedSet(new Set(modalFilteredList.map((p) => p.phone_number)));
+    }
+  };
+
+  const selectedPhones = useMemo(
+    () => phoneNumbers.filter((p) => selectedSet.has(p.phone_number)),
+    [phoneNumbers, selectedSet]
+  );
+
+  const handleDeleteMultiple = async () => {
+    if (selectedPhones.length === 0) return;
+    setError(null);
+    setDeleting(true);
+    setProgress({ current: 0, total: selectedPhones.length });
+
+    try {
+      for (let i = 0; i < selectedPhones.length; i++) {
+        const phone = selectedPhones[i];
+        const effectiveApiKey = phone.workspace_api_key || apiKey;
+        if (!effectiveApiKey) {
+          setError(`Sin API key para el número ${phone.phone_number_pretty || phone.phone_number}`);
+          setDeleting(false);
+          return;
+        }
+        setProgress({ current: i + 1, total: selectedPhones.length });
+        await deletePhoneNumber(effectiveApiKey, phone.phone_number);
+      }
+
+      const notification = document.createElement('div');
+      notification.style.cssText = 'position:fixed;top:16px;right:16px;background:rgba(6,78,59,0.9);color:white;padding:8px 16px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,0.1);z-index:9999;opacity:0;transition:opacity 0.3s;';
+      notification.textContent = `${selectedPhones.length} número(s) eliminado(s) correctamente`;
+      document.body.appendChild(notification);
+      setTimeout(() => (notification.style.opacity = '1'), 10);
+      setTimeout(() => {
+        notification.style.opacity = '0';
+        setTimeout(() => notification.remove(), 300);
+      }, 3000);
+
+      onSuccess();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al eliminar uno o más números');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[90vh] flex flex-col">
+        <div className="flex justify-between items-center border-b border-slate-200 p-4 bg-gradient-to-r from-red-50 to-orange-50">
+          <div className="flex items-center">
+            <Trash2 className="w-6 h-6 text-red-600 mr-2" />
+            <h3 className="text-lg font-medium text-slate-800">Eliminar varios números</h3>
+          </div>
+          <button type="button" onClick={onClose} className="p-1 hover:bg-slate-200 rounded-full transition-colors" disabled={deleting}>
+            <X className="w-5 h-5 text-slate-500 hover:text-slate-700" />
+          </button>
+        </div>
+
+        <div className="p-4 border-b border-slate-200 flex flex-wrap gap-2 items-center">
+          <div className="relative flex items-center">
+            <Search className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              value={modalSearchTerm}
+              onChange={(e) => setModalSearchTerm(e.target.value)}
+              placeholder="Buscar por número..."
+              className="pl-9 pr-3 py-2 rounded-lg border border-slate-300 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 w-44"
+            />
+          </div>
+          {availableWorkspaces.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-slate-600">Workspace:</span>
+              <select
+                value={modalWorkspaceFilter || ''}
+                onChange={(e) => setModalWorkspaceFilter(e.target.value || null)}
+                className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Todos</option>
+                {availableWorkspaces.map((ws) => (
+                  <option key={ws} value={ws}>{ws}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+
+        <div className="p-4 overflow-y-auto flex-1 min-h-0">
+          <div className="flex items-center gap-2 mb-3">
+            <input
+              type="checkbox"
+              id="select-all-multiple"
+              checked={modalFilteredList.length > 0 && selectedSet.size === modalFilteredList.length}
+              onChange={toggleAll}
+              disabled={deleting}
+              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            />
+            <label htmlFor="select-all-multiple" className="text-sm font-medium text-slate-700 cursor-pointer">
+              Seleccionar todos ({modalFilteredList.length})
+            </label>
+          </div>
+          <ul className="space-y-2">
+            {modalFilteredList.length === 0 ? (
+              <li className="text-slate-500 text-sm py-4 text-center">No hay números que coincidan con los filtros.</li>
+            ) : (
+              modalFilteredList.map((phone) => (
+                <li key={phone.phone_number} className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-100">
+                  <input
+                    type="checkbox"
+                    checked={selectedSet.has(phone.phone_number)}
+                    onChange={() => toggleOne(phone.phone_number)}
+                    disabled={deleting}
+                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="font-mono text-sm text-slate-800">{phone.phone_number_pretty || phone.phone_number}</span>
+                  <span className="text-xs text-slate-400">{getWorkspaceLabel(phone)}</span>
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+
+        <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-between items-center">
+          {error && (
+            <div className="flex-1 mr-4 p-2 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+              {error}
+            </div>
+          )}
+          <div className="flex gap-2 ml-auto">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={deleting}
+              className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleDeleteMultiple}
+              disabled={deleting || selectedPhones.length === 0}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {deleting ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Eliminando {progress.current} de {progress.total}...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4 mr-1" />
+                  Eliminar {selectedPhones.length} seleccionado(s)
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
   const [error, setError] = useState<string | null>(null);
   const [copiedNumber, setCopiedNumber] = useState<string | null>(null);
   const [selectedPhone, setSelectedPhone] = useState<RetellPhoneNumber | null>(null);
   const [showAddPhoneModal, setShowAddPhoneModal] = useState(false);
   const [showDeletePhoneModal, setShowDeletePhoneModal] = useState(false);
+  const [showDeleteMultipleModal, setShowDeleteMultipleModal] = useState(false);
   const [phoneToDelete, setPhoneToDelete] = useState<RetellPhoneNumber | null>(null);
   const [workspaceFilter, setWorkspaceFilter] = useState<string | null>(null);
+  const [phoneSearchTerm, setPhoneSearchTerm] = useState('');
   const [workspaceFoldersByApiKey, setWorkspaceFoldersByApiKey] = useState<Record<string, string>>({});
   const [callCountsByPhone, setCallCountsByPhone] = useState<Record<string, { total: number; efectivas: number; fallidas: number }>>({});
   const [loadingCallCounts, setLoadingCallCounts] = useState(true);
@@ -1129,6 +1349,16 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
         return finalLabel === workspaceFilter;
       })
     : filteredByPhone;
+
+  // Filtrar por búsqueda de número (incluye dígitos y espacios/guiones)
+  const normalizePhone = (s: string) => (s || '').replace(/\D/g, '');
+  const displayPhoneNumbers = !phoneSearchTerm.trim()
+    ? filteredPhoneNumbers
+    : filteredPhoneNumbers.filter(phone => {
+        const normalized = normalizePhone(phone.phone_number || '');
+        const term = normalizePhone(phoneSearchTerm);
+        return normalized.includes(term);
+      });
   
   // Cargar los números al montar el componente usando la función del contexto
   useEffect(() => {
@@ -1168,6 +1398,18 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
           <h3 className="text-lg font-semibold text-slate-800">Números de Teléfono</h3>
           
           <div className="flex flex-wrap gap-2 items-center justify-end">
+            {/* Buscador por número de teléfono */}
+            <div className="relative flex items-center">
+              <Search className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                value={phoneSearchTerm}
+                onChange={(e) => setPhoneSearchTerm(e.target.value)}
+                placeholder="Buscar por número..."
+                className="pl-9 pr-3 py-2 rounded-lg border border-slate-300 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 w-48 min-w-0"
+              />
+            </div>
+
             {availableWorkspaces.length > 0 && (
               <div className="flex items-center gap-2">
                 <span className="text-sm text-slate-600">Workspace:</span>
@@ -1218,6 +1460,16 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
                 </>
               )}
             </button>
+
+            <button
+              type="button"
+              onClick={() => setShowDeleteMultipleModal(true)}
+              disabled={loadingAll}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Trash2 className="h-5 w-5 mr-1" />
+              Eliminar varios
+            </button>
           </div>
         </div>
         
@@ -1237,7 +1489,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
           )}
           
           {/* No se encontraron resultados */}
-          {!loadingAll && !error && filteredPhoneNumbers.length === 0 && (
+          {!loadingAll && !error && displayPhoneNumbers.length === 0 && (
             <div className="p-6 text-center text-slate-600">
               {phoneFilter ? (
                 <div className="space-y-4">
@@ -1259,7 +1511,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
           )}
           
           {/* Lista de números de teléfono */}
-          {!loadingAll && !error && filteredPhoneNumbers.map((phone) => (
+          {!loadingAll && !error && displayPhoneNumbers.map((phone) => (
             <div key={phone.phone_number} className="p-6 hover:bg-slate-50 transition-colors">
               <div className="flex items-start justify-between">
                 <div className="flex-grow">
@@ -1446,6 +1698,22 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
           }}
           onSuccess={() => contextLoadPhoneNumbers(true)}
           apiKey={apiKey}
+        />
+      )}
+
+      {/* Modal para eliminar varios números */}
+      {showDeleteMultipleModal && (
+        <DeleteMultiplePhoneModal
+          phoneNumbers={phoneNumbers}
+          availableWorkspaces={availableWorkspaces}
+          getWorkspaceLabel={(phone) => {
+            const fromApiKey = phone.workspace_api_key ? workspaceNameByApiKey[phone.workspace_api_key] : undefined;
+            const fromWebhook = phone.inbound_webhook_url ? getWorkspaceFromWebhook(phone.inbound_webhook_url) : null;
+            return fromApiKey || fromWebhook || 'Sin workspace';
+          }}
+          apiKey={apiKey}
+          onClose={() => setShowDeleteMultipleModal(false)}
+          onSuccess={() => contextLoadPhoneNumbers(true)}
         />
       )}
     </div>
