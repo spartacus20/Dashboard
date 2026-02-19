@@ -453,6 +453,28 @@ export function Agendas({ onNavigate }: AgendasProps) {
     )
   ).length;
 
+  // Aprobadas por tipo
+  const aprobadasPanelesCount = agendas.filter(agenda =>
+    agenda.aprobada === true && (
+      !agenda.tipo_agenda ||
+      agenda.tipo_agenda?.toLowerCase().includes('paneles solares') || 
+      agenda.tipo_agenda?.toLowerCase().includes('placas solares')
+    )
+  ).length;
+
+  const aprobadasBateriasCount = agendas.filter(agenda =>
+    agenda.aprobada === true &&
+    agenda.tipo_agenda && (
+      agenda.tipo_agenda.toLowerCase().includes('baterías') || 
+      agenda.tipo_agenda.toLowerCase().includes('baterias') ||
+      agenda.tipo_agenda.toLowerCase().includes('bateria') ||
+      agenda.tipo_agenda.toLowerCase().includes('batería')
+    )
+  ).length;
+
+  const aprobadasPanelesRatio = panelesSolaresCount ? aprobadasPanelesCount / panelesSolaresCount : 0;
+  const aprobadasBateriasRatio = bateriasCount ? aprobadasBateriasCount / bateriasCount : 0;
+
   // Obtener clases de color para la etiqueta de tipo de agenda en la lista
   const getAgendaTypeBadgeClass = (tipo?: string | null) => {
     const t = (tipo || '').toLowerCase();
@@ -578,6 +600,144 @@ export function Agendas({ onNavigate }: AgendasProps) {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Cards Aprobadas por tipo (debajo de las estadísticas generales) */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6 w-full">
+          <Card className="shadow-lg border-slate-200 flex flex-col">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 bg-violet-600/10 rounded-lg flex items-center justify-center">
+                  <CheckCircle className="w-5 h-5 text-violet-600" />
+                </div>
+                <CardTitle className="text-lg">Aprobadas Paneles Solares</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="flex-1 min-h-[100px]">
+              {loading ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-2">
+                      <div className="h-6 w-24 bg-slate-200 rounded animate-pulse" />
+                      <div className="h-4 w-20 bg-slate-100 rounded animate-pulse" />
+                    </div>
+                    <div className="space-y-2 text-right">
+                      <div className="h-8 w-16 bg-slate-200 rounded animate-pulse" />
+                      <div className="h-3 w-14 bg-slate-100 rounded animate-pulse" />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <p className="text-sm text-slate-600">Total aprobadas</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-violet-700">
+                      {aprobadasPanelesCount.toLocaleString('es-ES')}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {aprobadasPanelesCount === 1 ? 'agenda' : 'agendas'}
+                    </div>
+                    <div className="text-xs font-semibold text-violet-600 mt-1">
+                      {panelesSolaresCount ? `${Math.round(aprobadasPanelesRatio * 100)}% del total` : '0% del total'}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-lg border-slate-200 flex flex-col">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 bg-violet-600/10 rounded-lg flex items-center justify-center">
+                  <CheckCircle className="w-5 h-5 text-violet-600" />
+                </div>
+                <CardTitle className="text-lg">Aprobadas Baterías</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="flex-1 min-h-[100px]">
+              {loading ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-2">
+                      <div className="h-6 w-24 bg-slate-200 rounded animate-pulse" />
+                      <div className="h-4 w-20 bg-slate-100 rounded animate-pulse" />
+                    </div>
+                    <div className="space-y-2 text-right">
+                      <div className="h-8 w-16 bg-slate-200 rounded animate-pulse" />
+                      <div className="h-3 w-14 bg-slate-100 rounded animate-pulse" />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <p className="text-sm text-slate-600">Total aprobadas</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-violet-700">
+                      {aprobadasBateriasCount.toLocaleString('es-ES')}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {aprobadasBateriasCount === 1 ? 'agenda' : 'agendas'}
+                    </div>
+                    <div className="text-xs font-semibold text-violet-600 mt-1">
+                      {bateriasCount ? `${Math.round(aprobadasBateriasRatio * 100)}% del total` : '0% del total'}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Card Revisadas (global) */}
+          <Card className="shadow-lg border-slate-200 flex flex-col">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 bg-violet-600/10 rounded-lg flex items-center justify-center">
+                  <Eye className="w-5 h-5 text-violet-600" />
+                </div>
+                <CardTitle className="text-lg">Revisadas</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="flex-1 min-h-[100px]">
+              {loading ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-2">
+                      <div className="h-6 w-24 bg-slate-200 rounded animate-pulse" />
+                      <div className="h-4 w-20 bg-slate-100 rounded animate-pulse" />
+                    </div>
+                    <div className="space-y-2 text-right">
+                      <div className="h-8 w-16 bg-slate-200 rounded animate-pulse" />
+                      <div className="h-3 w-14 bg-slate-100 rounded animate-pulse" />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <p className="text-sm text-slate-600">Total revisadas</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-violet-700">
+                      {agendas.filter(a => a.revisada === true).length.toLocaleString('es-ES')}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {agendas.filter(a => a.revisada === true).length === 1 ? 'agenda' : 'agendas'}
+                    </div>
+                    <div className="text-xs font-semibold text-violet-600 mt-1">
+                      {agendas.length
+                        ? `${Math.round((agendas.filter(a => a.revisada === true).length / agendas.length) * 100)}% del total`
+                        : '0% del total'}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         {/* Pestañas */}
@@ -740,128 +900,6 @@ export function Agendas({ onNavigate }: AgendasProps) {
                 )}
               </CardContent>
             </Card>
-
-            {/* Cards Aprobadas y Revisadas (debajo del promedio) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6 w-full">
-              <Card className="shadow-lg border-slate-200 flex flex-col">
-                <CardHeader className="pb-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-10 h-10 bg-violet-600/10 rounded-lg flex items-center justify-center">
-                      <CheckCircle className="w-5 h-5 text-violet-600" />
-                    </div>
-                    <CardTitle className="text-lg">Aprobadas</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent className="flex-1 flex items-center justify-between gap-4 min-h-[100px]">
-                  {loading ? (
-                    <>
-                      <div className="flex-1 space-y-2">
-                        <div className="h-9 w-20 bg-slate-200 rounded animate-pulse" />
-                        <div className="h-4 w-32 bg-slate-100 rounded animate-pulse" />
-                      </div>
-                      <div className="flex items-end gap-1.5 h-14">
-                        {[6, 10, 5, 12, 8, 14].map((h, i) => (
-                          <div key={i} className="w-2.5 bg-slate-200 rounded-t-sm animate-pulse" style={{ height: `${h * 4}px` }} />
-                        ))}
-                      </div>
-                    </>
-                  ) : (
-                    <div
-                      className={`flex-1 flex items-center justify-between gap-4 w-full transition-all duration-300 ${
-                        cardsContentVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
-                      }`}
-                    >
-                      <div>
-                        <p className="text-3xl font-bold text-violet-600">
-                          {agendas.filter(a => a.aprobada === true).length.toLocaleString('es-ES')}
-                        </p>
-                        <p className="text-sm text-slate-600">en el rango seleccionado</p>
-                      </div>
-                      <div className="flex items-end gap-1.5 h-14 pt-2">
-                        <div className="w-2.5 h-6 bg-violet-600/20 rounded-t-sm" />
-                        <div className="w-2.5 h-10 bg-violet-600/20 rounded-t-sm" />
-                        <div className="w-2.5 h-5 bg-violet-600/20 rounded-t-sm" />
-                        <div className="w-2.5 h-12 bg-violet-600/20 rounded-t-sm" />
-                        <div className="w-2.5 h-8 bg-violet-600/20 rounded-t-sm" />
-                        <div className="w-2.5 h-14 bg-violet-600 rounded-t-sm" />
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-              <Card className="shadow-lg border-slate-200 flex flex-col">
-                <CardHeader className="pb-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-10 h-10 bg-violet-600/10 rounded-lg flex items-center justify-center">
-                      <Eye className="w-5 h-5 text-violet-600" />
-                    </div>
-                    <CardTitle className="text-lg">Revisadas</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent className="flex-1 flex items-center justify-between gap-4 min-h-[100px]">
-                  {loading ? (
-                    <>
-                      <div className="flex-1 space-y-2">
-                        <div className="h-9 w-20 bg-slate-200 rounded animate-pulse" />
-                        <div className="h-4 w-32 bg-slate-100 rounded animate-pulse" />
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <div className="w-16 h-16 rounded-full bg-slate-200 animate-pulse" />
-                        <div className="space-y-2">
-                          <div className="h-3 w-14 bg-slate-100 rounded animate-pulse" />
-                          <div className="h-4 w-24 bg-slate-100 rounded animate-pulse" />
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <div
-                      className={`flex-1 flex items-center justify-between gap-4 w-full transition-all duration-300 ${
-                        cardsContentVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
-                      }`}
-                    >
-                      <div>
-                        <p className="text-3xl font-bold text-violet-600">
-                          {agendas.filter(a => a.revisada === true).length.toLocaleString('es-ES')}
-                        </p>
-                        <p className="text-sm text-slate-600">en el rango seleccionado</p>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <div className="relative w-16 h-16 flex items-center justify-center flex-shrink-0">
-                          <svg className="w-full h-full transform -rotate-90" viewBox="0 0 64 64">
-                            <circle className="text-slate-100" cx="32" cy="32" fill="transparent" r="28" stroke="currentColor" strokeWidth="5" />
-                            <circle
-                              className="text-violet-600 transition-all duration-500 ease-out"
-                              cx="32"
-                              cy="32"
-                              fill="transparent"
-                              r="28"
-                              stroke="currentColor"
-                              strokeDasharray={2 * Math.PI * 28}
-                              strokeDashoffset={2 * Math.PI * 28 * (1 - (agendas.length ? agendas.filter(a => a.revisada === true).length / agendas.length : 0))}
-                              strokeLinecap="round"
-                              strokeWidth="5"
-                            />
-                          </svg>
-                          <span className="absolute text-sm font-bold text-violet-600">
-                            {agendas.length ? Math.round((agendas.filter(a => a.revisada === true).length / agendas.length) * 100) : 0}%
-                          </span>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-slate-500">Progreso</p>
-                          <p className="text-sm text-slate-600">
-                            {agendas.length && agendas.filter(a => a.revisada === true).length === agendas.length
-                              ? 'Todas revisadas'
-                              : agendas.length
-                                ? 'Cerca de la meta'
-                                : 'Sin datos'}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
 
             {/* Filtros y búsqueda (el rango de fechas se cambia en la card Promedio de llamadas por agenda) */}
             <div className="bg-white rounded-lg p-6 mb-6 shadow-lg border border-slate-200">
@@ -1123,7 +1161,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
                                 agenda.aprobada === true ? 'bg-emerald-500' : 'bg-red-500'
                               }`}
                             />
-                            <span>Aprobada</span>
+                            <span>{agenda.aprobada === true ? 'Aprobada' : 'No aprobada'}</span>
                           </div>
 
                           {/* Revisada (solo display) */}
@@ -1140,7 +1178,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
                                 agenda.revisada === true ? 'bg-emerald-500' : 'bg-red-500'
                               }`}
                             />
-                            <span>Revisada</span>
+                            <span>{agenda.revisada === true ? 'Revisada' : 'No revisada'}</span>
                           </div>
                         </div>
                       </div>

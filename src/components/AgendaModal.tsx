@@ -16,15 +16,18 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
   const [errorCalls, setErrorCalls] = useState<string | null>(null);
   const [localApproved, setLocalApproved] = useState<boolean>(false);
   const [localReviewed, setLocalReviewed] = useState<boolean>(false);
+  const [localDetails, setLocalDetails] = useState<string>('');
 
   // Sincronizar estados locales cuando cambia la agenda (null/undefined = false)
   useEffect(() => {
     if (agenda) {
       setLocalApproved(agenda.aprobada === true);
       setLocalReviewed(agenda.revisada === true);
+      setLocalDetails(agenda.detalles ?? '');
     } else {
       setLocalApproved(false);
       setLocalReviewed(false);
+      setLocalDetails('');
     }
   }, [agenda]);
 
@@ -124,8 +127,9 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
 
     const originalApproved = agenda.aprobada === true;
     const originalReviewed = agenda.revisada === true;
+    const originalDetails = agenda.detalles ?? '';
 
-    const payload: { id: string; aprobada?: boolean; revisada?: boolean } = {
+    const payload: { id: string; aprobada?: boolean; revisada?: boolean; detalles?: string } = {
       id: String(agenda.id),
     };
 
@@ -137,10 +141,15 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
       payload.revisada = localReviewed;
     }
 
+    if (localDetails !== originalDetails) {
+      payload.detalles = localDetails;
+    }
+
     // Si no hay cambios, no llamamos a la API
     if (
       typeof payload.aprobada === 'undefined' &&
-      typeof payload.revisada === 'undefined'
+      typeof payload.revisada === 'undefined' &&
+      typeof payload.detalles === 'undefined'
     ) {
       return;
     }
@@ -200,7 +209,7 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
         <div className="flex-1 overflow-y-auto px-8 py-6 space-y-8">
           {/* Info básica y estados */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 space-y-4">
+            <div className="lg:col-span-2 space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-8">
                 <div className="flex items-start gap-3">
                   <Phone className="w-4 h-4 mt-0.5 text-slate-400" />
@@ -290,6 +299,19 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
                   </div>
                 )}
               </div>
+
+              {/* Campo de detalles / comentarios */}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block px-0.5">
+                  Detalles / Comentarios
+                </label>
+                <textarea
+                  value={localDetails}
+                  onChange={(e) => setLocalDetails(e.target.value)}
+                  className="w-full min-h-[80px] max-h-40 px-3 py-2 text-sm rounded-xl border border-slate-200 bg-slate-50 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-vertical"
+                  placeholder="Añade aquí cualquier comentario relevante sobre la llamada..."
+                />
+              </div>
             </div>
 
             {/* Estados lado derecho */}
@@ -342,8 +364,8 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
                     ▼
                   </span>
                 </div>
-              </div>
             </div>
+          </div>
           </div>
 
           {/* Grabación de la llamada */}
