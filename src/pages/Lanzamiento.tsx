@@ -130,8 +130,18 @@ const COUNTRY_FLAGS: Record<string, string> = {
   no_detectado: '🌐',
 };
 
+const isApplePlatform = () => {
+  if (typeof navigator === 'undefined') return false;
+  const p = navigator.platform || '';
+  const ua = navigator.userAgent || '';
+  return /Mac|iPhone|iPad|iPod/.test(p) || /Mac OS X/.test(ua);
+};
+
 function getFlagForCountry(pais: string): string {
-  return COUNTRY_FLAGS[pais] ?? '🌐';
+  if (!isApplePlatform()) {
+    return '';
+  }
+  return COUNTRY_FLAGS[pais] ?? '';
 }
 
 const Lanzamiento: React.FC = () => {
@@ -187,6 +197,12 @@ const Lanzamiento: React.FC = () => {
 
   const mostrarTop5 = () => {
     setPaisesSeleccionados([]);
+    setDropdownPaisesOpen(false);
+  };
+
+  const seleccionarTodosPaises = () => {
+    if (!metrics?.porPais?.length) return;
+    setPaisesSeleccionados(metrics.porPais.map((p) => p.pais));
     setDropdownPaisesOpen(false);
   };
 
@@ -742,14 +758,7 @@ const Lanzamiento: React.FC = () => {
                 Métricas por País
               </h2>
               <div className="flex flex-wrap items-center gap-3">
-                <Button
-                  variant={paisesSeleccionados.length === 0 ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={mostrarTop5}
-                >
-                  Top 5 por llamadas
-                </Button>
-                <div className="relative" ref={dropdownPaisesRef}>
+                <div className="relative inline-block" ref={dropdownPaisesRef}>
                   <button
                     type="button"
                     onClick={() => setDropdownPaisesOpen((v) => !v)}
@@ -763,7 +772,7 @@ const Lanzamiento: React.FC = () => {
                     <ChevronDown className={`w-4 h-4 flex-shrink-0 transition-transform ${dropdownPaisesOpen ? 'rotate-180' : ''}`} />
                   </button>
                   {dropdownPaisesOpen && (
-                    <div className="absolute top-full left-0 mt-1 w-full min-w-[240px] max-h-[280px] overflow-y-auto border border-gray-200 rounded-md bg-white shadow-lg z-50 py-1">
+                    <div className="absolute top-full left-0 mt-1 w-full min-w-[240px] max-h-[260px] overflow-y-auto overflow-x-hidden border border-gray-200 rounded-md bg-white shadow-lg z-50 py-1">
                       {[...metrics.porPais]
                         .sort((a, b) => b.total_llamadas - a.total_llamadas)
                         .map((p) => {
@@ -787,6 +796,22 @@ const Lanzamiento: React.FC = () => {
                     </div>
                   )}
                 </div>
+                <Button
+                  variant={paisesSeleccionados.length === 0 ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={mostrarTop5}
+                >
+                  Top 5 por llamadas
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={paisesSeleccionados.length > 0 && paisesSeleccionados.length === metrics.porPais.length ? 'default' : 'outline'}
+                  onClick={seleccionarTodosPaises}
+                  disabled={!metrics.porPais.length}
+                >
+                  Todos los países
+                </Button>
                 {paisesSeleccionados.length > 0 && (
                   <span className="text-sm text-gray-500">
                     {paisesSeleccionados.length} seleccionado{paisesSeleccionados.length !== 1 ? 's' : ''}

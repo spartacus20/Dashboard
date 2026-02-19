@@ -1703,9 +1703,9 @@ export async function deleteAgenda(agendaId: number, clientId: string): Promise<
   }
 }
 
-// Actualizar estado de una agenda (aprobada / revisada)
+// Actualizar estado de una agenda (aprobada / revisada / detalles)
 export async function updateAgendaStatus(
-  params: { id: number; aprobada?: boolean; revisada?: boolean }
+  params: { id: number; aprobada?: boolean; revisada?: boolean; detalles?: string }
 ): Promise<Agenda> {
   try {
     const clientId = getClientId();
@@ -1723,6 +1723,9 @@ export async function updateAgendaStatus(
     }
     if (typeof params.revisada === 'boolean') {
       body.revisada = params.revisada;
+    }
+    if ('detalles' in params) {
+      body.detalles = params.detalles ?? '';
     }
 
     const baseAgendaUrl = GET_AGENDAS_WEBHOOK_URL.replace('/get-agenda', '');

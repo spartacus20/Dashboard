@@ -282,6 +282,7 @@ export interface Agenda {
   agent_id?: string;
   aprobada?: boolean | null;
   revisada?: boolean | null;
+  detalles?: string | null;
 }
 
 export interface Callback {

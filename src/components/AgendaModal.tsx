@@ -14,17 +14,20 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
   const [callsData, setCallsData] = useState<CallsByPhoneResponse | null>(null);
   const [loadingCalls, setLoadingCalls] = useState(false);
   const [errorCalls, setErrorCalls] = useState<string | null>(null);
-  const [localApproved, setLocalApproved] = useState<boolean | null>(null);
-  const [localReviewed, setLocalReviewed] = useState<boolean | null>(null);
+  const [localApproved, setLocalApproved] = useState<boolean>(false);
+  const [localReviewed, setLocalReviewed] = useState<boolean>(false);
+  const [localDetails, setLocalDetails] = useState<string>('');
 
-  // Sincronizar estados locales cuando cambia la agenda
+  // Sincronizar estados locales cuando cambia la agenda (null/undefined = false)
   useEffect(() => {
     if (agenda) {
-      setLocalApproved(typeof agenda.aprobada === 'boolean' ? agenda.aprobada : null);
-      setLocalReviewed(typeof agenda.revisada === 'boolean' ? agenda.revisada : null);
+      setLocalApproved(agenda.aprobada === true);
+      setLocalReviewed(agenda.revisada === true);
+      setLocalDetails(agenda.detalles ?? '');
     } else {
-      setLocalApproved(null);
-      setLocalReviewed(null);
+      setLocalApproved(false);
+      setLocalReviewed(false);
+      setLocalDetails('');
     }
   }, [agenda]);
 
@@ -100,21 +103,17 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
     }
   };
 
-  // Clase de color para texto según estado (verde, rojo o neutro)
-  const getStatusTextClass = (value: boolean | null) => {
-    if (value === true) return 'text-emerald-700';
-    if (value === false) return 'text-red-700';
-    return 'text-slate-800';
+  // Clase de color para texto según estado (verde o rojo)
+  const getStatusTextClass = (value: boolean) => {
+    return value ? 'text-emerald-700' : 'text-red-700';
   };
 
   // Solo actualiza el estado local; la API se llama al cerrar el modal
   const handleChangeStatus = (
     field: 'aprobada' | 'revisada',
-    value: 'true' | 'false' | 'null'
+    value: 'true' | 'false'
   ) => {
-    const newValue =
-      value === 'true' ? true : value === 'false' ? false : null;
-
+    const newValue = value === 'true';
     if (field === 'aprobada') {
       setLocalApproved(newValue);
     } else {
@@ -122,17 +121,16 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
     }
   };
 
-  // Persiste cambios de estados al backend cuando se cierra el modal
+  // Persiste cambios de estados al backend cuando se cierra el modal (null/undefined = false)
   const persistStatusChanges = async () => {
     if (!agenda) return;
 
-    const originalApproved =
-      typeof agenda.aprobada === 'boolean' ? agenda.aprobada : null;
-    const originalReviewed =
-      typeof agenda.revisada === 'boolean' ? agenda.revisada : null;
+    const originalApproved = agenda.aprobada === true;
+    const originalReviewed = agenda.revisada === true;
+    const originalDetails = agenda.detalles ?? '';
 
-    const payload: { id: string; aprobada?: boolean | null; revisada?: boolean | null } = {
-      id: agenda.id,
+    const payload: { id: string; aprobada?: boolean; revisada?: boolean; detalles?: string } = {
+      id: String(agenda.id),
     };
 
     if (localApproved !== originalApproved) {
@@ -143,10 +141,15 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
       payload.revisada = localReviewed;
     }
 
+    if (localDetails !== originalDetails) {
+      payload.detalles = localDetails;
+    }
+
     // Si no hay cambios, no llamamos a la API
     if (
       typeof payload.aprobada === 'undefined' &&
-      typeof payload.revisada === 'undefined'
+      typeof payload.revisada === 'undefined' &&
+      typeof payload.detalles === 'undefined'
     ) {
       return;
     }
@@ -206,7 +209,7 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
         <div className="flex-1 overflow-y-auto px-8 py-6 space-y-8">
           {/* Info básica y estados */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 space-y-4">
+            <div className="lg:col-span-2 space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-8">
                 <div className="flex items-start gap-3">
                   <Phone className="w-4 h-4 mt-0.5 text-slate-400" />
@@ -296,6 +299,19 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
                   </div>
                 )}
               </div>
+
+              {/* Campo de detalles / comentarios */}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block px-0.5">
+                  Detalles / Comentarios
+                </label>
+                <textarea
+                  value={localDetails}
+                  onChange={(e) => setLocalDetails(e.target.value)}
+                  className="w-full min-h-[80px] max-h-40 px-3 py-2 text-sm rounded-xl border border-slate-200 bg-slate-50 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-vertical"
+                  placeholder="Añade aquí cualquier comentario relevante sobre la llamada..."
+                />
+              </div>
             </div>
 
             {/* Estados lado derecho */}
@@ -306,24 +322,17 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
                 </label>
                 <div className="relative">
                   <select
-                    value={
-                      localApproved === true
-                        ? 'true'
-                        : localApproved === false
-                        ? 'false'
-                        : 'null'
-                    }
+                    value={localApproved ? 'true' : 'false'}
                     onChange={(e) =>
                       handleChangeStatus(
                         'aprobada',
-                        e.target.value as 'true' | 'false' | 'null'
+                        e.target.value as 'true' | 'false'
                       )
                     }
                     className={`w-full appearance-none px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 pr-9 ${getStatusTextClass(
                       localApproved
                     )}`}
                   >
-                    <option value="null">Sin estado</option>
                     <option value="true">Aprobada</option>
                     <option value="false">No aprobada</option>
                   </select>
@@ -337,24 +346,17 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
                 </label>
                 <div className="relative">
                   <select
-                    value={
-                      localReviewed === true
-                        ? 'true'
-                        : localReviewed === false
-                        ? 'false'
-                        : 'null'
-                    }
+                    value={localReviewed ? 'true' : 'false'}
                     onChange={(e) =>
                       handleChangeStatus(
                         'revisada',
-                        e.target.value as 'true' | 'false' | 'null'
+                        e.target.value as 'true' | 'false'
                       )
                     }
                     className={`w-full appearance-none px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pr-9 ${getStatusTextClass(
                       localReviewed
                     )}`}
                   >
-                    <option value="null">Sin estado</option>
                     <option value="true">Revisada</option>
                     <option value="false">No revisada</option>
                   </select>
@@ -362,8 +364,8 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
                     ▼
                   </span>
                 </div>
-              </div>
             </div>
+          </div>
           </div>
 
           {/* Grabación de la llamada */}
