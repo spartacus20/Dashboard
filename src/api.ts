@@ -263,8 +263,8 @@ export function calculateStats(calls: RetellCall[]): CallStats {
   };
 }
 
-// Función auxiliar para obtener nombre de workspace a partir de la URL del webhook
-function getWorkspaceNameFromWebhook(webhookUrl?: string): string | null {
+// Función auxiliar para obtener nombre de workspace a partir de la URL del webhook (exportada para páginas como Campaña y PhoneNumbers)
+export function getWorkspaceNameFromWebhook(webhookUrl?: string): string | null {
   if (!webhookUrl) return null;
 
   try {
@@ -698,6 +698,7 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
           callbacks: clientData.metadata?.callbacks,
           launch: clientData.metadata?.launch,
           dont_call: clientData.metadata?.dont_call,
+          campaign: clientData.metadata?.campaign,
         }
       });
       
@@ -721,6 +722,7 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
           callbacks: clientData.metadata?.callbacks,
           launch: clientData.metadata?.launch,
           dont_call: clientData.metadata?.dont_call,
+          campaign: clientData.metadata?.campaign,
         }
       };
     }
@@ -838,6 +840,7 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
           callbacks: data.metadata?.callbacks,
           launch: data.metadata?.launch,
           dont_call: data.metadata?.dont_call,
+          campaign: data.metadata?.campaign,
         }
       };
     }

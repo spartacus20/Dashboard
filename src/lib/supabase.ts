@@ -301,7 +301,7 @@ export const hasPermissionsDefined = (): boolean => {
 
 // Función para verificar si el usuario tiene acceso a una funcionalidad específica
 // Si tiene permissions definidos, usa permissions. Si no, permite todo (sin limitaciones)
-export const canAccess = (feature: 'agenda' | 'records' | 'num_tel' | 'callbacks' | 'sales' | 'launch' | 'dont_call'): boolean => {
+export const canAccess = (feature: 'agenda' | 'records' | 'num_tel' | 'callbacks' | 'sales' | 'launch' | 'dont_call' | 'campaign'): boolean => {
   const permissions = getPermissions()
   
   // Si no hay permissions definidos (o está vacío), permitir acceso (sin limitaciones)

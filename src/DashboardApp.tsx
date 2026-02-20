@@ -10,6 +10,7 @@ import { Callbacks } from './pages/Callbacks';
 import { Ventas } from './pages/Ventas';
 import Lanzamiento from './pages/Lanzamiento';
 import NoLlamar from './pages/NoLlamar';
+import { Campaign } from './pages/Campaign';
 import { useCallsContext } from './context/CallsContext';
 import { X, Upload, Phone, Info, Check, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 
@@ -48,7 +49,8 @@ function DashboardApp() {
     loadDashboardData,
     agendaEnabled,
     launchEnabled,
-    dontCallEnabled
+    dontCallEnabled,
+    campaignEnabled
   } = useCallsContext();
   
   // Cargar números de teléfono y batch calls una sola vez al iniciar la aplicación
@@ -86,6 +88,14 @@ function DashboardApp() {
       setCurrentPage('dashboard');
     }
   }, [currentPage, dontCallEnabled]);
+
+  // Redirigir si se intenta acceder a campaña sin permisos
+  React.useEffect(() => {
+    if (currentPage === 'campaign' && !campaignEnabled) {
+      console.log('Sin permisos de campaña, redirigiendo al dashboard');
+      setCurrentPage('dashboard');
+    }
+  }, [currentPage, campaignEnabled]);
   
   // Calculamos si la caché está activa
   const cacheStatus = lastUpdated 
@@ -1299,6 +1309,9 @@ function DashboardApp() {
         )}
         {currentPage === 'no-llamar' && (
           <NoLlamar />
+        )}
+        {currentPage === 'campaign' && campaignEnabled && (
+          <Campaign onNavigate={setCurrentPage as (page: string) => void} />
         )}
       </div>
     </div>

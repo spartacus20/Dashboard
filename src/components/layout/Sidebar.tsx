@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BarChart3, Mic, Menu, X, Key, Phone, PhoneOutgoing, Calendar, PhoneCall, LogOut, TrendingUp, Rocket, PhoneOff } from 'lucide-react';
+import { BarChart3, Mic, Menu, X, Key, Phone, PhoneOutgoing, Calendar, PhoneCall, LogOut, TrendingUp, Rocket, PhoneOff, Megaphone } from 'lucide-react';
 import { useCallsContext } from '../../context/CallsContext';
 import { useAuth } from '../../context/AuthContext';
 import { hasLaunchPermissions, canAccess, hasPermissionsDefined, getClientTest, getClientIdFromSession } from '../../lib/supabase';
@@ -13,7 +13,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: SidebarProps) {
-  const { loadingProgress, totalCalls, loadingAllCalls, apiKey, apiKeyTest, agendaEnabled, salesEnabled, numTelEnabled, recordsEnabled, callbacksEnabled, launchEnabled, dontCallEnabled, loadAllCalls, loadDashboardData, loadPhoneNumbers, loadBatchCalls } = useCallsContext();
+  const { loadingProgress, totalCalls, loadingAllCalls, apiKey, apiKeyTest, agendaEnabled, salesEnabled, numTelEnabled, recordsEnabled, callbacksEnabled, launchEnabled, dontCallEnabled, campaignEnabled, loadAllCalls, loadDashboardData, loadPhoneNumbers, loadBatchCalls } = useCallsContext();
   const { user, signOut, changeClientId } = useAuth();
   const progressPercentage = totalCalls > 0 ? Math.min(100, Math.round((loadingProgress / totalCalls) * 100)) : 0;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
@@ -33,6 +33,7 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
   const canAccessSales = hasPermissions ? canAccess('sales') : salesEnabled;
   const canAccessLaunch = hasPermissions ? canAccess('launch') : launchEnabled;
   const canAccessDontCall = hasPermissions ? canAccess('dont_call') : dontCallEnabled;
+  const canAccessCampaign = hasPermissions ? canAccess('campaign') : campaignEnabled;
   
   // Debug: Log para verificar el estado
   console.log('🔧 Sidebar - Estado de permisos:', {
@@ -432,6 +433,21 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
             >
               <PhoneOutgoing className="w-5 h-5" />
               Llamadas en Lote
+            </button>
+          )}
+          {canAccessCampaign && (
+            <button
+              onClick={() => {
+                navigateWithParams('campaign');
+              }}
+              className={`flex w-full items-center gap-2 px-4 py-2 ${
+                currentPage === 'campaign'
+                  ? 'text-white bg-[#0a2a5a] border border-[#1e4a8a]'
+                  : 'text-gray-300 hover:bg-[#0a2a5a]'
+              } rounded-lg`}
+            >
+              <Megaphone className="w-5 h-5" />
+              Campaña
             </button>
           )}
           {canAccessSales && (

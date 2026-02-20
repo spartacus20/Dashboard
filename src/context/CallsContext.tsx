@@ -48,6 +48,7 @@ interface CallsContextType {
   callbacksEnabled: boolean;
   launchEnabled: boolean;
   dontCallEnabled: boolean;
+  campaignEnabled: boolean;
   phoneFilter: string | null;
 }
 
@@ -110,6 +111,7 @@ export function CallsProvider({ children }: CallsProviderProps) {
   const [callbacksEnabled, setCallbacksEnabled] = useState(false);
   const [launchEnabled, setLaunchEnabled] = useState(false);
   const [dontCallEnabled, setDontCallEnabled] = useState(false);
+  const [campaignEnabled, setCampaignEnabled] = useState(false);
   
   // Estado para filtrar por número de teléfono específico
   const [phoneFilter, setPhoneFilter] = useState<string | null>(null);
@@ -181,6 +183,7 @@ export function CallsProvider({ children }: CallsProviderProps) {
               setCallbacksEnabled(result.config.callbacks ?? false);
               setLaunchEnabled(result.config.launch ?? false);
               setDontCallEnabled(result.config.dont_call ?? false);
+              setCampaignEnabled(result.config.campaign ?? false);
             }
           } else {
             console.error('No se pudo obtener la API key para el client_id:', storedClientId);
@@ -231,6 +234,7 @@ export function CallsProvider({ children }: CallsProviderProps) {
                     setCallbacksEnabled(result.config.callbacks ?? false);
                     setLaunchEnabled(result.config.launch ?? false);
                     setDontCallEnabled(result.config.dont_call ?? false);
+                    setCampaignEnabled(result.config.campaign ?? false);
                   }
                 } else {
                   console.error('No se pudo obtener la API key para el client_id:', newClientId);
@@ -304,6 +308,7 @@ export function CallsProvider({ children }: CallsProviderProps) {
                   setCallbacksEnabled(result.config.callbacks ?? false);
                   setLaunchEnabled(result.config.launch ?? false);
                   setDontCallEnabled(result.config.dont_call ?? false);
+                  setCampaignEnabled(result.config.campaign ?? false);
                 }
               } else {
                 console.error('No se pudo obtener API key tras inicio de sesión');
@@ -365,6 +370,7 @@ export function CallsProvider({ children }: CallsProviderProps) {
         setCallbacksEnabled(config.callbacks ?? false);
         setLaunchEnabled(config.launch ?? false);
         setDontCallEnabled(config.dont_call ?? false);
+        setCampaignEnabled(config.campaign ?? false);
       }
       
       // Limpiar datos anteriores
@@ -876,6 +882,7 @@ export function CallsProvider({ children }: CallsProviderProps) {
     callbacksEnabled,
     launchEnabled,
     dontCallEnabled,
+    campaignEnabled,
     phoneFilter
   };
 
