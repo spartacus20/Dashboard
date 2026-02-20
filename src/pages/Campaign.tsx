@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Megaphone, RefreshCw, AlertCircle, Search, BarChart3 } from 'lucide-react';
 import { RetellBatchCall, RetellPhoneNumber } from '../types';
-import { fetchBatchCalls, getWorkspaceNameFromWebhook } from '../api';
+import { fetchBatchCalls, fetchFolders, getWorkspaceNameFromWebhook } from '../api';
 import { useCallsContext } from '../context/CallsContext';
 
 interface BatchCallWithWorkspace extends RetellBatchCall {
@@ -14,14 +14,62 @@ interface CampaignProps {
 }
 
 export function Campaign({ onNavigate }: CampaignProps) {
-  const { apiKey, apiKeyTest, phoneNumbers, loadPhoneNumbers } = useCallsContext();
+  const { apiKey, apiKeyTest, phoneNumbers, loadPhoneNumbers, clientId } = useCallsContext();
   const [batchCallsByWorkspace, setBatchCallsByWorkspace] = useState<BatchCallWithWorkspace[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [workspaceFilter, setWorkspaceFilter] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [workspaceFoldersByApiKey, setWorkspaceFoldersByApiKey] = useState<Record<string, string>>({});
 
-  // Mapear cada API key a un nombre de workspace (igual que en PhoneNumbers)
+  // Cargar nombres de workspace desde Retell (folders), igual que en PhoneNumbers
+  useEffect(() => {
+    const loadFoldersForWorkspaces = async () => {
+      const apiKeysToUse =
+        apiKeyTest && apiKeyTest.length > 0 ? apiKeyTest : apiKey ? [apiKey] : [];
+      if (apiKeysToUse.length === 0) return;
+
+      const newMapping: Record<string, string> = {};
+      for (const key of apiKeysToUse) {
+        try {
+          const folders = await fetchFolders(key);
+          if (!folders || folders.length === 0) continue;
+          if (folders.length === 1) {
+            newMapping[key] = folders[0].folderName;
+            continue;
+          }
+          const baseClientId = (clientId || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+          let bestFolder = folders[0];
+          let bestScore = -1;
+          for (const folder of folders) {
+            const normalizedName = folder.folderName.toLowerCase().replace(/[^a-z0-9]+/g, '');
+            let score = 0;
+            if (baseClientId && normalizedName.includes(baseClientId)) {
+              score = baseClientId.length;
+            } else if (baseClientId) {
+              const maxLen = Math.min(baseClientId.length, normalizedName.length);
+              while (score < maxLen && baseClientId[score] === normalizedName[score]) {
+                score++;
+              }
+            }
+            if (score > bestScore) {
+              bestScore = score;
+              bestFolder = folder;
+            }
+          }
+          newMapping[key] = bestFolder.folderName;
+        } catch (e) {
+          console.error('Error al cargar folders para workspace (Campaign):', key, e);
+        }
+      }
+      if (Object.keys(newMapping).length > 0) {
+        setWorkspaceFoldersByApiKey(newMapping);
+      }
+    };
+    loadFoldersForWorkspaces();
+  }, [apiKey, apiKeyTest, clientId]);
+
+  // Mapear cada API key a un nombre de workspace (misma prioridad que PhoneNumbers: folders → metadata → webhook → fallback)
   const workspaceNameByApiKey = useMemo(() => {
     const mapping: Record<string, string> = {};
     const keys = Array.from(
@@ -32,14 +80,15 @@ export function Campaign({ onNavigate }: CampaignProps) {
 
     keys.forEach((key, index) => {
       const phoneForKey = phoneNumbers.find((p: RetellPhoneNumber) => p.workspace_api_key === key);
+      const fromFolders = workspaceFoldersByApiKey[key];
       const fromMetadata = phoneForKey?.workspace_name;
       const fromWebhook = phoneForKey?.inbound_webhook_url
         ? getWorkspaceNameFromWebhook(phoneForKey.inbound_webhook_url)
         : null;
-      mapping[key] = fromMetadata || fromWebhook || `Workspace ${index + 1}`;
+      mapping[key] = fromFolders || fromMetadata || fromWebhook || `Workspace ${index + 1}`;
     });
     return mapping;
-  }, [apiKey, apiKeyTest, phoneNumbers]);
+  }, [apiKey, apiKeyTest, phoneNumbers, workspaceFoldersByApiKey]);
 
   const availableWorkspaces = useMemo(
     () => Array.from(new Set(Object.values(workspaceNameByApiKey).filter(Boolean))),
