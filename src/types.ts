@@ -285,6 +285,16 @@ export interface Agenda {
   detalles?: string | null;
 }
 
+export interface AgendaSlot {
+  id: string;
+  fecha: string;
+  hora: string;
+  provincia: string;
+  max_citas: number;
+  ocupadas: number;
+  created_at: string;
+}
+
 export interface Callback {
   id: number;
   created_at: string;
