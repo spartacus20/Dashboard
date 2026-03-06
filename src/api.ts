@@ -1,4 +1,4 @@
-import { RetellCall, FilterCriteria, CallStats, RetellPhoneNumber, RetellAgent, RetellBatchCall, ClientData, Agenda, AgendaSlot, Callback, CallbackResponse, CallsByPhoneResponse, RetellFolder } from './types';
+import { RetellCall, FilterCriteria, CallStats, RetellPhoneNumber, RetellAgent, RetellBatchCall, ClientData, Agenda, AgendaSlot, Callback, CallbackResponse, CallsByPhoneResponse, RetellFolder, BlockedNumber } from './types';
 import { get_client_id } from './lib/supabase';
 import { supabase } from './lib/supabase';
 
@@ -3390,6 +3390,108 @@ export async function updateDontCallRecord(
     return data;
   } catch (error) {
     console.error('Error al actualizar registro de No Llamar:', error);
+    throw error;
+  }
+}
+
+// ====== NÚMEROS BLOQUEADOS (numeros_block) ======
+
+export async function listBlockedNumbers(): Promise<BlockedNumber[]> {
+  try {
+    const url = `${BASE_URL}/api/blocked-numbers/list`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error al obtener números bloqueados: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    return data.numeros || [];
+  } catch (error) {
+    console.error('Error en listBlockedNumbers:', error);
+    throw error;
+  }
+}
+
+export async function createBlockedNumber(params: {
+  number: string;
+  name?: string;
+}): Promise<BlockedNumber> {
+  try {
+    const url = `${BASE_URL}/api/blocked-numbers/create`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error al crear número bloqueado: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    return data.data as BlockedNumber;
+  } catch (error) {
+    console.error('Error en createBlockedNumber:', error);
+    throw error;
+  }
+}
+
+export async function updateBlockedNumber(
+  originalNumber: string,
+  params: {
+    number?: string;
+    name?: string;
+  }
+): Promise<BlockedNumber> {
+  try {
+    const url = `${BASE_URL}/api/blocked-numbers/${encodeURIComponent(originalNumber)}`;
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error al actualizar número bloqueado: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    return data.data as BlockedNumber;
+  } catch (error) {
+    console.error('Error en updateBlockedNumber:', error);
+    throw error;
+  }
+}
+
+export async function deleteBlockedNumber(number: string): Promise<void> {
+  try {
+    const url = `${BASE_URL}/api/blocked-numbers/${encodeURIComponent(number)}`;
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error al eliminar número bloqueado: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+  } catch (error) {
+    console.error('Error en deleteBlockedNumber:', error);
     throw error;
   }
 }

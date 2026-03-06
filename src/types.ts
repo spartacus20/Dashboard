@@ -263,6 +263,12 @@ export interface ClientData {
   client_test?: string | string[] | Record<string, string>;
 }
 
+export interface BlockedNumber {
+  number: string;
+  name: string | null;
+  pais: string;
+}
+
 export interface Agenda {
   id: number;
   created_at: string;
