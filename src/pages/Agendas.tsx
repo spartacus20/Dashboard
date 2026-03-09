@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Chart } from '../components/ui/chart';
 import { AgendaModal } from '../components/AgendaModal';
 import { AgendaCalendar } from '../components/AgendaCalendar';
+import { AgendaLimitsManager } from '../components/AgendaLimitsManager';
 import { exportAgendasToCSV, generateCSVFilename } from '../lib/csvExport';
 
 interface AgendasProps {
@@ -30,7 +31,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
   const [datePreset, setDatePreset] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('today');
   const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
   const [currentPage, setCurrentPage] = useState(1);
-  const [activeTab, setActiveTab] = useState<'list' | 'calendar' | 'calendarScheduled'>('list');
+  const [activeTab, setActiveTab] = useState<'list' | 'calendar' | 'calendarScheduled' | 'limits'>('list');
   const [selectedAgenda, setSelectedAgenda] = useState<Agenda | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -133,6 +134,13 @@ export function Agendas({ onNavigate }: AgendasProps) {
       window.removeEventListener('metadataUpdated', handleMetadataUpdate);
     };
   }, []);
+
+  // Si se pierde el permiso de cliente solar, salir de la pestaña de límites
+  useEffect(() => {
+    if (!hasFiltroSolar && activeTab === 'limits') {
+      setActiveTab('list');
+    }
+  }, [hasFiltroSolar, activeTab]);
 
   // Cargar agendas al montar el componente o cuando cambien los filtros de fecha, tipo, ordenamiento o agente
   useEffect(() => {
@@ -602,143 +610,145 @@ export function Agendas({ onNavigate }: AgendasProps) {
           </div>
         </div>
 
-        {/* Cards Aprobadas por tipo (debajo de las estadísticas generales) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6 w-full">
-          <Card className="shadow-lg border-slate-200 flex flex-col">
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-2">
-                <div className="w-10 h-10 bg-violet-600/10 rounded-lg flex items-center justify-center">
-                  <CheckCircle className="w-5 h-5 text-violet-600" />
+        {/* Cards Aprobadas/Revisadas solo para clientes solares */}
+        {hasFiltroSolar && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6 w-full">
+            <Card className="shadow-lg border-slate-200 flex flex-col">
+              <CardHeader className="pb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-10 bg-violet-600/10 rounded-lg flex items-center justify-center">
+                    <CheckCircle className="w-5 h-5 text-violet-600" />
+                  </div>
+                  <CardTitle className="text-lg">Aprobadas Paneles Solares</CardTitle>
                 </div>
-                <CardTitle className="text-lg">Aprobadas Paneles Solares</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent className="flex-1 min-h-[100px]">
-              {loading ? (
-                <>
+              </CardHeader>
+              <CardContent className="flex-1 min-h-[100px]">
+                {loading ? (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-2">
+                        <div className="h-6 w-24 bg-slate-200 rounded animate-pulse" />
+                        <div className="h-4 w-20 bg-slate-100 rounded animate-pulse" />
+                      </div>
+                      <div className="space-y-2 text-right">
+                        <div className="h-8 w-16 bg-slate-200 rounded animate-pulse" />
+                        <div className="h-3 w-14 bg-slate-100 rounded animate-pulse" />
+                      </div>
+                    </div>
+                  </>
+                ) : (
                   <div className="flex items-center justify-between">
-                    <div className="space-y-2">
-                      <div className="h-6 w-24 bg-slate-200 rounded animate-pulse" />
-                      <div className="h-4 w-20 bg-slate-100 rounded animate-pulse" />
+                    <div className="space-y-1">
+                      <p className="text-sm text-slate-600">Total aprobadas</p>
                     </div>
-                    <div className="space-y-2 text-right">
-                      <div className="h-8 w-16 bg-slate-200 rounded animate-pulse" />
-                      <div className="h-3 w-14 bg-slate-100 rounded animate-pulse" />
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <p className="text-sm text-slate-600">Total aprobadas</p>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-violet-700">
-                      {aprobadasPanelesCount.toLocaleString('es-ES')}
-                    </div>
-                    <div className="text-xs text-slate-500">
-                      {aprobadasPanelesCount === 1 ? 'agenda' : 'agendas'}
-                    </div>
-                    <div className="text-xs font-semibold text-violet-600 mt-1">
-                      {panelesSolaresCount ? `${Math.round(aprobadasPanelesRatio * 100)}% del total` : '0% del total'}
+                    <div className="text-right">
+                      <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-violet-700">
+                        {aprobadasPanelesCount.toLocaleString('es-ES')}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {aprobadasPanelesCount === 1 ? 'agenda' : 'agendas'}
+                      </div>
+                      <div className="text-xs font-semibold text-violet-600 mt-1">
+                        {panelesSolaresCount ? `${Math.round(aprobadasPanelesRatio * 100)}% del total` : '0% del total'}
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                )}
+              </CardContent>
+            </Card>
 
-          <Card className="shadow-lg border-slate-200 flex flex-col">
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-2">
-                <div className="w-10 h-10 bg-violet-600/10 rounded-lg flex items-center justify-center">
-                  <CheckCircle className="w-5 h-5 text-violet-600" />
+            <Card className="shadow-lg border-slate-200 flex flex-col">
+              <CardHeader className="pb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-10 bg-violet-600/10 rounded-lg flex items-center justify-center">
+                    <CheckCircle className="w-5 h-5 text-violet-600" />
+                  </div>
+                  <CardTitle className="text-lg">Aprobadas Baterías</CardTitle>
                 </div>
-                <CardTitle className="text-lg">Aprobadas Baterías</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent className="flex-1 min-h-[100px]">
-              {loading ? (
-                <>
+              </CardHeader>
+              <CardContent className="flex-1 min-h-[100px]">
+                {loading ? (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-2">
+                        <div className="h-6 w-24 bg-slate-200 rounded animate-pulse" />
+                        <div className="h-4 w-20 bg-slate-100 rounded animate-pulse" />
+                      </div>
+                      <div className="space-y-2 text-right">
+                        <div className="h-8 w-16 bg-slate-200 rounded animate-pulse" />
+                        <div className="h-3 w-14 bg-slate-100 rounded animate-pulse" />
+                      </div>
+                    </div>
+                  </>
+                ) : (
                   <div className="flex items-center justify-between">
-                    <div className="space-y-2">
-                      <div className="h-6 w-24 bg-slate-200 rounded animate-pulse" />
-                      <div className="h-4 w-20 bg-slate-100 rounded animate-pulse" />
+                    <div className="space-y-1">
+                      <p className="text-sm text-slate-600">Total aprobadas</p>
                     </div>
-                    <div className="space-y-2 text-right">
-                      <div className="h-8 w-16 bg-slate-200 rounded animate-pulse" />
-                      <div className="h-3 w-14 bg-slate-100 rounded animate-pulse" />
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <p className="text-sm text-slate-600">Total aprobadas</p>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-violet-700">
-                      {aprobadasBateriasCount.toLocaleString('es-ES')}
-                    </div>
-                    <div className="text-xs text-slate-500">
-                      {aprobadasBateriasCount === 1 ? 'agenda' : 'agendas'}
-                    </div>
-                    <div className="text-xs font-semibold text-violet-600 mt-1">
-                      {bateriasCount ? `${Math.round(aprobadasBateriasRatio * 100)}% del total` : '0% del total'}
+                    <div className="text-right">
+                      <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-violet-700">
+                        {aprobadasBateriasCount.toLocaleString('es-ES')}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {aprobadasBateriasCount === 1 ? 'agenda' : 'agendas'}
+                      </div>
+                      <div className="text-xs font-semibold text-violet-600 mt-1">
+                        {bateriasCount ? `${Math.round(aprobadasBateriasRatio * 100)}% del total` : '0% del total'}
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                )}
+              </CardContent>
+            </Card>
 
-          {/* Card Revisadas (global) */}
-          <Card className="shadow-lg border-slate-200 flex flex-col">
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-2">
-                <div className="w-10 h-10 bg-violet-600/10 rounded-lg flex items-center justify-center">
-                  <Eye className="w-5 h-5 text-violet-600" />
+            {/* Card Revisadas (global) */}
+            <Card className="shadow-lg border-slate-200 flex flex-col">
+              <CardHeader className="pb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-10 bg-violet-600/10 rounded-lg flex items-center justify-center">
+                    <Eye className="w-5 h-5 text-violet-600" />
+                  </div>
+                  <CardTitle className="text-lg">Revisadas</CardTitle>
                 </div>
-                <CardTitle className="text-lg">Revisadas</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent className="flex-1 min-h-[100px]">
-              {loading ? (
-                <>
+              </CardHeader>
+              <CardContent className="flex-1 min-h-[100px]">
+                {loading ? (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-2">
+                        <div className="h-6 w-24 bg-slate-200 rounded animate-pulse" />
+                        <div className="h-4 w-20 bg-slate-100 rounded animate-pulse" />
+                      </div>
+                      <div className="space-y-2 text-right">
+                        <div className="h-8 w-16 bg-slate-200 rounded animate-pulse" />
+                        <div className="h-3 w-14 bg-slate-100 rounded animate-pulse" />
+                      </div>
+                    </div>
+                  </>
+                ) : (
                   <div className="flex items-center justify-between">
-                    <div className="space-y-2">
-                      <div className="h-6 w-24 bg-slate-200 rounded animate-pulse" />
-                      <div className="h-4 w-20 bg-slate-100 rounded animate-pulse" />
+                    <div className="space-y-1">
+                      <p className="text-sm text-slate-600">Total revisadas</p>
                     </div>
-                    <div className="space-y-2 text-right">
-                      <div className="h-8 w-16 bg-slate-200 rounded animate-pulse" />
-                      <div className="h-3 w-14 bg-slate-100 rounded animate-pulse" />
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <p className="text-sm text-slate-600">Total revisadas</p>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-violet-700">
-                      {agendas.filter(a => a.revisada === true).length.toLocaleString('es-ES')}
-                    </div>
-                    <div className="text-xs text-slate-500">
-                      {agendas.filter(a => a.revisada === true).length === 1 ? 'agenda' : 'agendas'}
-                    </div>
-                    <div className="text-xs font-semibold text-violet-600 mt-1">
-                      {agendas.length
-                        ? `${Math.round((agendas.filter(a => a.revisada === true).length / agendas.length) * 100)}% del total`
-                        : '0% del total'}
+                    <div className="text-right">
+                      <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-violet-700">
+                        {agendas.filter(a => a.revisada === true).length.toLocaleString('es-ES')}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {agendas.filter(a => a.revisada === true).length === 1 ? 'agenda' : 'agendas'}
+                      </div>
+                      <div className="text-xs font-semibold text-violet-600 mt-1">
+                        {agendas.length
+                          ? `${Math.round((agendas.filter(a => a.revisada === true).length / agendas.length) * 100)}% del total`
+                          : '0% del total'}
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Pestañas */}
         <div className="flex border-b border-slate-200 mb-6">
@@ -775,6 +785,19 @@ export function Agendas({ onNavigate }: AgendasProps) {
             <CalendarDays className="w-5 h-5" />
             Calendario de Agendas
           </button>
+          {hasFiltroSolar && (
+            <button
+              onClick={() => setActiveTab('limits')}
+              className={`flex items-center gap-2 px-6 py-3 font-medium transition-colors ${
+                activeTab === 'limits'
+                  ? 'text-purple-700 border-b-2 border-purple-700'
+                  : 'text-slate-600 hover:text-slate-800'
+              }`}
+            >
+              <Filter className="w-5 h-5" />
+              Limitar Agendas
+            </button>
+          )}
         </div>
 
         {/* Contenido de las pestañas */}
@@ -1309,6 +1332,8 @@ export function Agendas({ onNavigate }: AgendasProps) {
             )}
           </div>
         )}
+
+        {hasFiltroSolar && activeTab === 'limits' && <AgendaLimitsManager />}
 
         {/* Modal de agenda */}
         <AgendaModal

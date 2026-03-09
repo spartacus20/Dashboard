@@ -1,5 +1,6 @@
-import { RetellCall, FilterCriteria, CallStats, RetellPhoneNumber, RetellAgent, RetellBatchCall, ClientData, Agenda, Callback, CallbackResponse, CallsByPhoneResponse, RetellFolder } from './types';
+import { RetellCall, FilterCriteria, CallStats, RetellPhoneNumber, RetellAgent, RetellBatchCall, ClientData, Agenda, AgendaSlot, Callback, CallbackResponse, CallsByPhoneResponse, RetellFolder, BlockedNumber } from './types';
 import { get_client_id } from './lib/supabase';
+import { supabase } from './lib/supabase';
 
 // Obtener la URL base según el entorno
 const IS_PRODUCTION = import.meta.env.VITE_PRODUCTION_API === 'true';
@@ -263,8 +264,8 @@ export function calculateStats(calls: RetellCall[]): CallStats {
   };
 }
 
-// Función auxiliar para obtener nombre de workspace a partir de la URL del webhook
-function getWorkspaceNameFromWebhook(webhookUrl?: string): string | null {
+// Función auxiliar para obtener nombre de workspace a partir de la URL del webhook (exportada para páginas como Campaña y PhoneNumbers)
+export function getWorkspaceNameFromWebhook(webhookUrl?: string): string | null {
   if (!webhookUrl) return null;
 
   try {
@@ -698,6 +699,7 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
           callbacks: clientData.metadata?.callbacks,
           launch: clientData.metadata?.launch,
           dont_call: clientData.metadata?.dont_call,
+          campaign: clientData.metadata?.campaign,
         }
       });
       
@@ -721,6 +723,7 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
           callbacks: clientData.metadata?.callbacks,
           launch: clientData.metadata?.launch,
           dont_call: clientData.metadata?.dont_call,
+          campaign: clientData.metadata?.campaign,
         }
       };
     }
@@ -838,6 +841,7 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
           callbacks: data.metadata?.callbacks,
           launch: data.metadata?.launch,
           dont_call: data.metadata?.dont_call,
+          campaign: data.metadata?.campaign,
         }
       };
     }
@@ -1747,6 +1751,145 @@ export async function updateAgendaStatus(
     return data.agenda as Agenda;
   } catch (error) {
     console.error('Error al actualizar estado de agenda:', error);
+    throw error;
+  }
+}
+
+// Obtener slots con filtros opcionales (se aplican directamente en la base de datos)
+export async function fetchAgendaSlots(filters?: {
+  provincia?: string;
+  fecha?: string;
+}): Promise<AgendaSlot[]> {
+  try {
+    let query = supabase
+      .from('slots')
+      .select('*')
+      .order('fecha', { ascending: true })
+      .order('hora', { ascending: true });
+
+    if (filters?.provincia) {
+      query = query.eq('provincia', filters.provincia);
+    }
+
+    if (filters?.fecha) {
+      query = query.eq('fecha', filters.fecha);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return (data ?? []) as AgendaSlot[];
+  } catch (error) {
+    console.error('Error al obtener slots:', error);
+    throw error;
+  }
+}
+
+// Obtener provincias disponibles desde la base de datos
+export async function fetchSlotProvinces(): Promise<string[]> {
+  try {
+    const { data, error } = await supabase
+      .from('slots')
+      .select('provincia')
+      .not('provincia', 'is', null);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const unique = Array.from(
+      new Set(
+        (data ?? [])
+          .map((item) => item.provincia)
+          .filter((provincia): provincia is string => typeof provincia === 'string' && provincia.trim().length > 0)
+      )
+    );
+
+    return unique.sort((a, b) => a.localeCompare(b, 'es'));
+  } catch (error) {
+    console.error('Error al obtener provincias de slots:', error);
+    throw error;
+  }
+}
+
+export async function createAgendaSlot(payload: {
+  fecha: string;
+  hora: string;
+  provincia: string;
+  max_citas: number;
+  ocupadas?: number;
+}): Promise<AgendaSlot> {
+  try {
+    const { data, error } = await supabase
+      .from('slots')
+      .insert({
+        fecha: payload.fecha,
+        hora: payload.hora,
+        provincia: payload.provincia,
+        max_citas: payload.max_citas,
+        ocupadas: payload.ocupadas ?? 0,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return data as AgendaSlot;
+  } catch (error) {
+    console.error('Error al crear slot:', error);
+    throw error;
+  }
+}
+
+export async function updateAgendaSlot(
+  id: string,
+  payload: {
+    fecha: string;
+    hora: string;
+    provincia: string;
+    max_citas: number;
+    ocupadas: number;
+  }
+): Promise<AgendaSlot> {
+  try {
+    const { data, error } = await supabase
+      .from('slots')
+      .update({
+        fecha: payload.fecha,
+        hora: payload.hora,
+        provincia: payload.provincia,
+        max_citas: payload.max_citas,
+        ocupadas: payload.ocupadas,
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return data as AgendaSlot;
+  } catch (error) {
+    console.error('Error al actualizar slot:', error);
+    throw error;
+  }
+}
+
+export async function deleteAgendaSlot(id: string): Promise<void> {
+  try {
+    const { error } = await supabase.from('slots').delete().eq('id', id);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+  } catch (error) {
+    console.error('Error al eliminar slot:', error);
     throw error;
   }
 }
@@ -3247,6 +3390,108 @@ export async function updateDontCallRecord(
     return data;
   } catch (error) {
     console.error('Error al actualizar registro de No Llamar:', error);
+    throw error;
+  }
+}
+
+// ====== NÚMEROS BLOQUEADOS (numeros_block) ======
+
+export async function listBlockedNumbers(): Promise<BlockedNumber[]> {
+  try {
+    const url = `${BASE_URL}/api/blocked-numbers/list`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error al obtener números bloqueados: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    return data.numeros || [];
+  } catch (error) {
+    console.error('Error en listBlockedNumbers:', error);
+    throw error;
+  }
+}
+
+export async function createBlockedNumber(params: {
+  number: string;
+  name?: string;
+}): Promise<BlockedNumber> {
+  try {
+    const url = `${BASE_URL}/api/blocked-numbers/create`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error al crear número bloqueado: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    return data.data as BlockedNumber;
+  } catch (error) {
+    console.error('Error en createBlockedNumber:', error);
+    throw error;
+  }
+}
+
+export async function updateBlockedNumber(
+  originalNumber: string,
+  params: {
+    number?: string;
+    name?: string;
+  }
+): Promise<BlockedNumber> {
+  try {
+    const url = `${BASE_URL}/api/blocked-numbers/${encodeURIComponent(originalNumber)}`;
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error al actualizar número bloqueado: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    return data.data as BlockedNumber;
+  } catch (error) {
+    console.error('Error en updateBlockedNumber:', error);
+    throw error;
+  }
+}
+
+export async function deleteBlockedNumber(number: string): Promise<void> {
+  try {
+    const url = `${BASE_URL}/api/blocked-numbers/${encodeURIComponent(number)}`;
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error al eliminar número bloqueado: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+  } catch (error) {
+    console.error('Error en deleteBlockedNumber:', error);
     throw error;
   }
 }

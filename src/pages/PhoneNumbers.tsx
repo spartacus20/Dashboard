@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Phone, Copy, RefreshCw, ExternalLink, X, Send, Plus, ChevronDown, User, Trash2, AlertTriangle, Search, BarChart3 } from 'lucide-react';
-import { RetellPhoneNumber, RetellAgent } from '../types';
-import { createPhoneCall, fetchAgents, importPhoneNumber, deletePhoneNumber, fetchFolders, getCallCountsByFromNumber } from '../api';
+import { RetellPhoneNumber, RetellAgent, BlockedNumber } from '../types';
+import { createPhoneCall, fetchAgents, importPhoneNumber, deletePhoneNumber, fetchFolders, getCallCountsByFromNumber, listBlockedNumbers, createBlockedNumber, updateBlockedNumber, deleteBlockedNumber } from '../api';
 import { useCallsContext } from '../context/CallsContext';
 import { getUserData } from '../lib/supabase';
 
@@ -1144,6 +1144,17 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
   const [workspaceFoldersByApiKey, setWorkspaceFoldersByApiKey] = useState<Record<string, string>>({});
   const [callCountsByPhone, setCallCountsByPhone] = useState<Record<string, { total: number; efectivas: number; fallidas: number }>>({});
   const [loadingCallCounts, setLoadingCallCounts] = useState(true);
+  const [phoneNumbersTab, setPhoneNumbersTab] = useState<'phones' | 'blocked'>('phones');
+  const [blockedNumbers, setBlockedNumbers] = useState<BlockedNumber[]>([]);
+  const [loadingBlocked, setLoadingBlocked] = useState(false);
+  const [errorBlocked, setErrorBlocked] = useState<string | null>(null);
+  const [blockedForm, setBlockedForm] = useState<{ number: string; name: string }>({ number: '', name: '' });
+  const [blockedToEdit, setBlockedToEdit] = useState<BlockedNumber | null>(null);
+  const [blockedToDelete, setBlockedToDelete] = useState<BlockedNumber | null>(null);
+  const [deletingBlocked, setDeletingBlocked] = useState(false);
+  const [editBlockedForm, setEditBlockedForm] = useState<{ number: string; name: string }>({ number: '', name: '' });
+  const [editBlockedSaving, setEditBlockedSaving] = useState(false);
+  const [editBlockedError, setEditBlockedError] = useState<string | null>(null);
 
   // Usar el contexto para obtener la API key, números de teléfono y el estado de llamadas
   const { 
@@ -1224,6 +1235,31 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
 
     loadFoldersForWorkspaces();
   }, [apiKey, apiKeyTest, clientId]);
+
+  // Cargar números bloqueados
+  useEffect(() => {
+    const loadBlocked = async () => {
+      setLoadingBlocked(true);
+      setErrorBlocked(null);
+      try {
+        const rows = await listBlockedNumbers();
+        setBlockedNumbers(rows);
+      } catch (e: any) {
+        console.error('Error al cargar números bloqueados:', e);
+        setErrorBlocked(e?.message || 'Error al cargar números bloqueados');
+      } finally {
+        setLoadingBlocked(false);
+      }
+    };
+    loadBlocked();
+  }, []);
+
+  useEffect(() => {
+    if (blockedToEdit) {
+      setEditBlockedForm({ number: blockedToEdit.number, name: blockedToEdit.name || '' });
+      setEditBlockedError(null);
+    }
+  }, [blockedToEdit]);
 
   // Cargar conteos de llamadas por número desde call_logs (por from_number)
   useEffect(() => {
@@ -1379,14 +1415,114 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
   const getAgentUrl = (agentId: string) => {
     return `https://retellai.com/dashboard/agents/${agentId}`;
   };
+
+  const handleBlockedSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!blockedForm.number.trim()) {
+      setErrorBlocked('El número es obligatorio');
+      return;
+    }
+    setLoadingBlocked(true);
+    setErrorBlocked(null);
+    try {
+      await createBlockedNumber({
+        number: blockedForm.number.trim(),
+        name: blockedForm.name.trim() || undefined,
+      });
+      const rows = await listBlockedNumbers();
+      setBlockedNumbers(rows);
+      setBlockedForm({ number: '', name: '' });
+    } catch (e: any) {
+      console.error('Error al guardar número bloqueado:', e);
+      setErrorBlocked(e?.message || 'Error al guardar número bloqueado');
+    } finally {
+      setLoadingBlocked(false);
+    }
+  };
+
+  const handleEditBlocked = (item: BlockedNumber) => {
+    setBlockedToEdit(item);
+  };
+
+  const handleDeleteBlocked = (item: BlockedNumber) => {
+    setBlockedToDelete(item);
+  };
+
+  const confirmDeleteBlocked = async () => {
+    if (!blockedToDelete) return;
+    setDeletingBlocked(true);
+    setErrorBlocked(null);
+    try {
+      await deleteBlockedNumber(blockedToDelete.number);
+      const rows = await listBlockedNumbers();
+      setBlockedNumbers(rows);
+      setBlockedToDelete(null);
+      if (blockedToEdit?.number === blockedToDelete.number) {
+        setBlockedToEdit(null);
+      }
+    } catch (e: any) {
+      console.error('Error al eliminar número bloqueado:', e);
+      setErrorBlocked(e?.message || 'Error al eliminar número bloqueado');
+    } finally {
+      setDeletingBlocked(false);
+    }
+  };
+
+  const handleEditBlockedSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!blockedToEdit || !editBlockedForm.number.trim()) return;
+    setEditBlockedSaving(true);
+    setEditBlockedError(null);
+    try {
+      await updateBlockedNumber(blockedToEdit.number, {
+        number: editBlockedForm.number.trim(),
+        name: editBlockedForm.name.trim() || undefined,
+      });
+      const rows = await listBlockedNumbers();
+      setBlockedNumbers(rows);
+      setBlockedToEdit(null);
+    } catch (e: any) {
+      console.error('Error al actualizar número bloqueado:', e);
+      setEditBlockedError(e?.message || 'Error al actualizar número bloqueado');
+    } finally {
+      setEditBlockedSaving(false);
+    }
+  };
   
   return (
     <div className="p-8 bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
-      <div className="mb-8">
+      <div className="mb-6">
         <h2 className="text-2xl font-bold text-slate-800 mb-2">Números de Teléfono</h2>
         <p className="text-slate-600">Gestiona los números de teléfono asociados a tus agentes de IA</p>
       </div>
-      
+
+      {/* Pestañas */}
+      <div className="flex border-b border-slate-200 mb-6">
+        <button
+          onClick={() => setPhoneNumbersTab('phones')}
+          className={`flex items-center gap-2 px-6 py-3 font-medium transition-colors ${
+            phoneNumbersTab === 'phones'
+              ? 'text-blue-600 border-b-2 border-blue-600'
+              : 'text-slate-600 hover:text-slate-800'
+          }`}
+        >
+          <Phone className="w-5 h-5" />
+          Números de Teléfono
+        </button>
+        <button
+          onClick={() => setPhoneNumbersTab('blocked')}
+          className={`flex items-center gap-2 px-6 py-3 font-medium transition-colors ${
+            phoneNumbersTab === 'blocked'
+              ? 'text-rose-600 border-b-2 border-rose-600'
+              : 'text-slate-600 hover:text-slate-800'
+          }`}
+        >
+          <AlertTriangle className="w-5 h-5" />
+          Números Bloqueados
+        </button>
+      </div>
+
+      {phoneNumbersTab === 'phones' && (
       <div className="bg-white rounded-xl shadow-lg border border-slate-200">
         <div className="p-6 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4 bg-gradient-to-r from-slate-50 to-blue-50">
           <h3 className="text-lg font-semibold text-slate-800">Números de Teléfono</h3>
@@ -1462,7 +1598,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
               className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Trash2 className="h-5 w-5 mr-1" />
-              Eliminar varios
+              Eliminar
             </button>
           </div>
         </div>
@@ -1673,7 +1809,217 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
           })}
         </div>
       </div>
-      
+      )}
+
+      {phoneNumbersTab === 'blocked' && (
+      <div className="bg-white rounded-xl shadow-lg border border-slate-200">
+        <div className="p-6 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4 bg-gradient-to-r from-rose-50 to-orange-50">
+          <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-rose-600" />
+            Números Bloqueados
+          </h3>
+        </div>
+        <div className="p-6 space-y-6">
+          <form onSubmit={handleBlockedSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+            <div className="md:col-span-2">
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">
+                Número (incluye prefijo país)
+              </label>
+              <input
+                type="text"
+                value={blockedForm.number}
+                onChange={(e) => setBlockedForm((prev) => ({ ...prev, number: e.target.value }))}
+                placeholder="+34123456789"
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
+              />
+            </div>
+            <div className="md:col-span-1">
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">
+                Nombre (opcional)
+              </label>
+              <input
+                type="text"
+                value={blockedForm.name}
+                onChange={(e) => setBlockedForm((prev) => ({ ...prev, name: e.target.value }))}
+                placeholder="Cliente conflictivo"
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
+              />
+            </div>
+            <div className="flex gap-2 md:justify-end">
+              <button
+                type="submit"
+                disabled={loadingBlocked || !blockedForm.number.trim()}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-gradient-to-r from-rose-600 to-orange-600 hover:from-rose-700 hover:to-orange-700 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {loadingBlocked ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Guardando...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-4 h-4" />
+                    Añadir bloqueado
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+
+          {errorBlocked && (
+            <div className="p-3 rounded-lg border border-rose-200 bg-rose-50 text-sm text-rose-700">
+              {errorBlocked}
+            </div>
+          )}
+
+          <div className="border-t border-slate-100 pt-4">
+            {loadingBlocked && blockedNumbers.length === 0 ? (
+              <p className="text-slate-600 text-sm">Cargando números bloqueados...</p>
+            ) : blockedNumbers.length === 0 ? (
+              <p className="text-slate-500 text-sm">
+                No hay números bloqueados todavía. Añade un número para bloquearlo.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-slate-500 border-b border-slate-100">
+                      <th className="py-2 pr-4">Número</th>
+                      <th className="py-2 pr-4">Nombre</th>
+                      <th className="py-2 pr-4">País</th>
+                      <th className="py-2 pr-4 text-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {blockedNumbers.map((item) => (
+                      <tr key={item.number} className="border-b border-slate-50 hover:bg-slate-50/80">
+                        <td className="py-2 pr-4 font-mono text-slate-800">{item.number}</td>
+                        <td className="py-2 pr-4 text-slate-700">{item.name || '—'}</td>
+                        <td className="py-2 pr-4 text-slate-700">{item.pais || 'no_detectado'}</td>
+                        <td className="py-2 pr-0 text-right">
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleEditBlocked(item)}
+                              className="px-3 py-1 rounded-lg border border-slate-300 text-xs text-slate-700 hover:bg-slate-100"
+                            >
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteBlocked(item)}
+                              className="px-3 py-1 rounded-lg border border-rose-300 text-xs text-rose-700 hover:bg-rose-50"
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      )}
+
+      {/* Modal Editar número bloqueado */}
+      {blockedToEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setBlockedToEdit(null)}>
+          <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-slate-800">Editar número bloqueado</h3>
+              <button type="button" onClick={() => setBlockedToEdit(null)} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors">
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <form onSubmit={handleEditBlockedSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Número (incluye prefijo país)</label>
+                <input
+                  type="text"
+                  value={editBlockedForm.number}
+                  onChange={(e) => setEditBlockedForm(prev => ({ ...prev, number: e.target.value }))}
+                  placeholder="+34123456789"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Nombre (opcional)</label>
+                <input
+                  type="text"
+                  value={editBlockedForm.name}
+                  onChange={(e) => setEditBlockedForm(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="Cliente conflictivo"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                />
+              </div>
+              {editBlockedError && (
+                <div className="p-3 rounded-lg border border-rose-200 bg-rose-50 text-sm text-rose-700">{editBlockedError}</div>
+              )}
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setBlockedToEdit(null)}
+                  className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm hover:bg-slate-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={editBlockedSaving || !editBlockedForm.number.trim()}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-gradient-to-r from-rose-600 to-orange-600 hover:from-rose-700 hover:to-orange-700 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {editBlockedSaving ? <><RefreshCw className="w-4 h-4 animate-spin" /> Guardando...</> : 'Guardar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Eliminar número bloqueado */}
+      {blockedToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => !deletingBlocked && setBlockedToDelete(null)}>
+          <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2.5 rounded-full bg-rose-100">
+                <AlertTriangle className="w-6 h-6 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-slate-800">Eliminar número bloqueado</h3>
+                <p className="text-sm text-slate-600 mt-0.5">
+                  ¿Eliminar <span className="font-mono font-medium text-slate-800">{blockedToDelete.number}</span>?
+                </p>
+              </div>
+            </div>
+            {errorBlocked && (
+              <div className="mb-4 p-3 rounded-lg border border-rose-200 bg-rose-50 text-sm text-rose-700">{errorBlocked}</div>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setBlockedToDelete(null)}
+                disabled={deletingBlocked}
+                className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteBlocked}
+                disabled={deletingBlocked}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {deletingBlocked ? <><RefreshCw className="w-4 h-4 animate-spin" /> Eliminando...</> : <><Trash2 className="w-4 h-4" /> Eliminar</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal para iniciar llamada */}
       {selectedPhone && (
         <CallModal 

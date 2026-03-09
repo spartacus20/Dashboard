@@ -263,6 +263,12 @@ export interface ClientData {
   client_test?: string | string[] | Record<string, string>;
 }
 
+export interface BlockedNumber {
+  number: string;
+  name: string | null;
+  pais: string;
+}
+
 export interface Agenda {
   id: number;
   created_at: string;
@@ -283,6 +289,16 @@ export interface Agenda {
   aprobada?: boolean | null;
   revisada?: boolean | null;
   detalles?: string | null;
+}
+
+export interface AgendaSlot {
+  id: string;
+  fecha: string;
+  hora: string;
+  provincia: string;
+  max_citas: number;
+  ocupadas: number;
+  created_at: string;
 }
 
 export interface Callback {
