@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Agenda, CallsByPhoneResponse } from '../types';
 import { X, Play, Volume2, Calendar, Phone, MapPin, User, Clock, RefreshCw, AlertCircle } from 'lucide-react';
 import { getCallsByPhone, updateAgendaStatus } from '../api';
@@ -156,6 +156,7 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
 
     try {
       await updateAgendaStatus(payload as any);
+
       if (onStatusChange) {
         onStatusChange();
       }
