@@ -3,6 +3,7 @@ import { Megaphone, RefreshCw, AlertCircle, Search, BarChart3 } from 'lucide-rea
 import { RetellBatchCall, RetellPhoneNumber } from '../types';
 import { fetchBatchCalls, fetchFolders, getWorkspaceNameFromWebhook } from '../api';
 import { useCallsContext } from '../context/CallsContext';
+import { BatchCallingTab } from './campaign/BatchCallingTab';
 
 interface BatchCallWithWorkspace extends RetellBatchCall {
   workspace_api_key: string;
@@ -15,6 +16,7 @@ interface CampaignProps {
 
 export function Campaign({ onNavigate }: CampaignProps) {
   const { apiKey, apiKeyTest, phoneNumbers, loadPhoneNumbers, clientId } = useCallsContext();
+  const [campaignTab, setCampaignTab] = useState<'campaigns' | 'batch-calling'>('campaigns');
   const [batchCallsByWorkspace, setBatchCallsByWorkspace] = useState<BatchCallWithWorkspace[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -188,28 +190,39 @@ export function Campaign({ onNavigate }: CampaignProps) {
     return 'bg-slate-100 text-slate-700';
   };
 
-  if (apiKeysToFetch.length === 0) {
-    return (
-      <div className="p-8 bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">Campaña</h2>
-          <p className="text-slate-600">Lista de batch calls por workspace</p>
-        </div>
-        <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-8 text-center text-slate-600">
-          <Megaphone className="w-12 h-12 mx-auto mb-3 text-slate-400" />
-          <p>No hay API keys configuradas para este cliente. Configura al menos una API key para ver las campañas.</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="p-8 bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
-      <div className="mb-8">
+      <div className="mb-6">
         <h2 className="text-2xl font-bold text-slate-800 mb-2">Campaña</h2>
-        <p className="text-slate-600">Lista de batch calls de todas las API keys (workspaces) cargadas para este cliente</p>
+        <p className="text-slate-600">Gestiona campañas y ejecuta llamadas manuales por lotes</p>
       </div>
 
+      <div className="flex border-b border-slate-200 mb-6">
+        <button
+          onClick={() => setCampaignTab('campaigns')}
+          className={`flex items-center gap-2 px-6 py-3 font-medium transition-colors ${
+            campaignTab === 'campaigns'
+              ? 'text-blue-600 border-b-2 border-blue-600'
+              : 'text-slate-600 hover:text-slate-800'
+          }`}
+        >
+          <BarChart3 className="w-5 h-5" />
+          Campañas
+        </button>
+        <button
+          onClick={() => setCampaignTab('batch-calling')}
+          className={`flex items-center gap-2 px-6 py-3 font-medium transition-colors ${
+            campaignTab === 'batch-calling'
+              ? 'text-indigo-600 border-b-2 border-indigo-600'
+              : 'text-slate-600 hover:text-slate-800'
+          }`}
+        >
+          <Megaphone className="w-5 h-5" />
+          Batch Calling
+        </button>
+      </div>
+
+      {campaignTab === 'campaigns' && (
       <div className="bg-white rounded-xl shadow-lg border border-slate-200">
         <div className="p-6 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4 bg-gradient-to-r from-slate-50 to-blue-50">
           <h3 className="text-lg font-semibold text-slate-800">Campañas</h3>
@@ -389,6 +402,11 @@ export function Campaign({ onNavigate }: CampaignProps) {
           })}
         </div>
       </div>
+      )}
+
+      {campaignTab === 'batch-calling' && (
+        <BatchCallingTab apiKeys={apiKeysToFetch} workspaceNameByApiKey={workspaceNameByApiKey} />
+      )}
     </div>
   );
 }
