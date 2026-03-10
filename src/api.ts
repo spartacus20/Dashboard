@@ -1755,6 +1755,94 @@ export async function updateAgendaStatus(
   }
 }
 
+function normalizeSlotText(value?: string | null): string {
+  return (value ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
+function extractAgendaDateAndTime(fechaAgendamiento?: string | null): { fecha: string; hora: string } | null {
+  if (!fechaAgendamiento) return null;
+
+  // Preferimos extraer directo del string para evitar desplazamientos por timezone.
+  const match = fechaAgendamiento.match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})(?::(\d{2}))?/);
+  if (match) {
+    const fecha = match[1];
+    const hora = `${match[2]}:${match[3] ?? '00'}`;
+    return { fecha, hora };
+  }
+
+  // Fallback por si el formato viene distinto.
+  const date = new Date(fechaAgendamiento);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  return {
+    fecha: `${year}-${month}-${day}`,
+    hora: `${hours}:${minutes}:${seconds}`,
+  };
+}
+
+// Si una agenda queda revisada y no aprobada, libera 1 cupo del slot correspondiente.
+export async function releaseAgendaSlotOccupancy(agenda: Agenda): Promise<boolean> {
+  const dateTime = extractAgendaDateAndTime(agenda.fecha_agendamiento);
+  if (!dateTime) {
+    return false;
+  }
+
+  const provinceCandidates = [agenda.ciudad, agenda.region]
+    .map((value) => normalizeSlotText(value))
+    .filter((value, index, arr) => value.length > 0 && arr.indexOf(value) === index);
+
+  try {
+    const { data, error } = await supabase
+      .from('slots')
+      .select('*')
+      .eq('fecha', dateTime.fecha)
+      .eq('hora', dateTime.hora);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const slots = (data ?? []) as AgendaSlot[];
+    if (slots.length === 0) {
+      return false;
+    }
+
+    const matchedSlot = slots.find((slot) => {
+      if (provinceCandidates.length === 0) return true;
+      const normalizedProvince = normalizeSlotText(slot.provincia);
+      return provinceCandidates.includes(normalizedProvince);
+    });
+
+    if (!matchedSlot || matchedSlot.ocupadas <= 0) {
+      return false;
+    }
+
+    const { error: updateError } = await supabase
+      .from('slots')
+      .update({ ocupadas: matchedSlot.ocupadas - 1 })
+      .eq('id', matchedSlot.id);
+
+    if (updateError) {
+      throw new Error(updateError.message);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error al liberar cupo de slot para agenda revisada/no aprobada:', error);
+    return false;
+  }
+}
+
 // Obtener slots con filtros opcionales (se aplican directamente en la base de datos)
 export async function fetchAgendaSlots(filters?: {
   provincia?: string;
