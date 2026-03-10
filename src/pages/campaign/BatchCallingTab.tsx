@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { BASE_URL } from '../../lib/supabase';
@@ -19,6 +19,7 @@ interface BatchConfig {
   agentId: string;
   batchName: string;
   startTime: string;
+  timezone: string;
   reservedConcurrency: string;
 }
 
@@ -192,6 +193,26 @@ function formatScheduledDate(value: unknown, timezone?: string): string | null {
   });
 }
 
+const COMMON_TIMEZONES = [
+  'Europe/Madrid',
+  'Europe/London',
+  'Europe/Paris',
+  'America/Mexico_City',
+  'America/Bogota',
+  'America/Lima',
+  'America/Santiago',
+  'America/Argentina/Buenos_Aires',
+  'America/Montevideo',
+  'America/Sao_Paulo',
+  'America/Los_Angeles',
+  'America/New_York',
+  'America/Chicago',
+  'America/Phoenix',
+  'UTC',
+];
+
+const DEFAULT_TIMEZONE = 'Europe/Madrid';
+
 export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCallingTabProps) {
   const [fileName, setFileName] = useState('');
   const [headers, setHeaders] = useState<string[]>([]);
@@ -292,6 +313,7 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
             agentId: '',
             batchName: `Batch ${partNumber}`,
             startTime: '',
+            timezone: DEFAULT_TIMEZONE,
             reservedConcurrency: '',
           },
         };
@@ -303,7 +325,16 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
     if (availableApiKeys.length === 0) return;
     setBatches((prev) =>
       prev.map((batch) =>
-        batch.config.apiKey.trim() ? batch : { ...batch, config: { ...batch.config, apiKey: availableApiKeys[0] } },
+        batch.config.apiKey.trim() && batch.config.timezone.trim()
+          ? batch
+          : {
+              ...batch,
+              config: {
+                ...batch.config,
+                apiKey: batch.config.apiKey.trim() ? batch.config.apiKey : availableApiKeys[0],
+                timezone: batch.config.timezone.trim() || DEFAULT_TIMEZONE,
+              },
+            },
       ),
     );
   }, [availableApiKeys]);
@@ -410,7 +441,11 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
       };
       if (target.config.agentId.trim()) body.agent_id = target.config.agentId.trim();
       if (target.config.batchName.trim()) body.batch_name = target.config.batchName.trim();
-      if (target.config.startTime.trim()) body.start_time = target.config.startTime.trim();
+      if (target.config.startTime.trim()) {
+        const parsed = new Date(target.config.startTime);
+        body.start_time = Number.isNaN(parsed.getTime()) ? target.config.startTime.trim() : parsed.toISOString();
+      }
+      if (target.config.timezone.trim()) body.timezone = target.config.timezone.trim();
       if (target.config.reservedConcurrency.trim()) body.reserved_concurrency = target.config.reservedConcurrency.trim();
 
       const response = await fetch(`${BASE_URL}/api/microtools/retell/create-batch-call`, {
@@ -586,6 +621,20 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
                     </div>
                     <div className="space-y-1.5"><label className="block text-sm font-medium text-gray-700">Nombre del batch (opcional)</label><input type="text" value={batch.config.batchName} onChange={(e) => updateBatchConfig(batch.id, 'batchName', e.target.value)} className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900" /></div>
                     <div className="space-y-1.5"><label className="block text-sm font-medium text-gray-700">Start time (opcional)</label><input type="datetime-local" value={batch.config.startTime} onChange={(e) => updateBatchConfig(batch.id, 'startTime', e.target.value)} className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900" /></div>
+                    <div className="space-y-1.5">
+                      <label className="block text-sm font-medium text-gray-700">Zona horaria</label>
+                      <select
+                        value={batch.config.timezone}
+                        onChange={(e) => updateBatchConfig(batch.id, 'timezone', e.target.value)}
+                        className="w-full appearance-none rounded-md border border-gray-300 bg-white bg-[linear-gradient(45deg,transparent_50%,#64748b_50%),linear-gradient(135deg,#64748b_50%,transparent_50%)] bg-[position:calc(100%-18px)_calc(1em+1px),calc(100%-13px)_calc(1em+1px)] bg-[size:5px_5px,5px_5px] bg-no-repeat px-3 py-2 pr-8 text-sm text-gray-900 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-[#05163b]/30 focus:border-[#05163b]"
+                      >
+                        {COMMON_TIMEZONES.map((tz) => (
+                          <option key={tz} value={tz}>
+                            {tz}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                     <div className="space-y-1.5"><label className="block text-sm font-medium text-gray-700">Reserved concurrency (opcional)</label><input type="number" min={0} value={batch.config.reservedConcurrency} onChange={(e) => updateBatchConfig(batch.id, 'reservedConcurrency', e.target.value)} className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900" /></div>
                   </div>
 
