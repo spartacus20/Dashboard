@@ -1,4 +1,4 @@
-import { RetellCall, FilterCriteria, CallStats, RetellPhoneNumber, RetellAgent, RetellBatchCall, ClientData, Agenda, AgendaSlot, Callback, CallbackResponse, CallsByPhoneResponse, RetellFolder, BlockedNumber } from './types';
+import { RetellCall, FilterCriteria, CallStats, RetellPhoneNumber, RetellAgent, RetellBatchCall, ClientData, Agenda, AgendaSlot, Callback, CallbackResponse, CallsByPhoneResponse, RetellFolder, BlockedNumber, Ticket } from './types';
 import { get_client_id } from './lib/supabase';
 import { supabase } from './lib/supabase';
 
@@ -3666,6 +3666,89 @@ export async function getDontCallStats(
     return data;
   } catch (error) {
     console.error('Error al obtener estadísticas de No Llamar:', error);
+    throw error;
+  }
+}
+
+// ====== TICKETS ======
+export async function fetchTickets(clientId: string): Promise<Ticket[]> {
+  try {
+    if (!clientId) throw new Error('client_id es requerido');
+    const response = await fetch(`${BASE_URL}/api/tickets/list?client_id=${encodeURIComponent(clientId)}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error al obtener tickets: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+    const data = await response.json();
+    return data.tickets || [];
+  } catch (error) {
+    console.error('Error en fetchTickets:', error);
+    throw error;
+  }
+}
+
+export async function createTicket(payload: {
+  client_id: string;
+  title: string;
+  description: string;
+  responsible: string;
+}): Promise<Ticket> {
+  try {
+    const response = await fetch(`${BASE_URL}/api/tickets/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error al crear ticket: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+    const data = await response.json();
+    return data.ticket as Ticket;
+  } catch (error) {
+    console.error('Error en createTicket:', error);
+    throw error;
+  }
+}
+
+export async function updateTicket(payload: {
+  id: number;
+  client_id: string;
+  title: string;
+  description: string;
+  responsible: string;
+  state?: string;
+}): Promise<Ticket> {
+  try {
+    const response = await fetch(`${BASE_URL}/api/tickets/update`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error al actualizar ticket: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+    const data = await response.json();
+    return data.ticket as Ticket;
+  } catch (error) {
+    console.error('Error en updateTicket:', error);
+    throw error;
+  }
+}
+
+export async function deleteTicket(ticketId: number, clientId: string): Promise<void> {
+  try {
+    const response = await fetch(
+      `${BASE_URL}/api/tickets/delete?id=${encodeURIComponent(ticketId)}&client_id=${encodeURIComponent(clientId)}`,
+      { method: 'DELETE' }
+    );
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error al eliminar ticket: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+  } catch (error) {
+    console.error('Error en deleteTicket:', error);
     throw error;
   }
 }

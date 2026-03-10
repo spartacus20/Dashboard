@@ -327,6 +327,17 @@ export interface CallbackResponse {
   callbacks: Callback[];
 }
 
+export interface Ticket {
+  id: number;
+  created_at: string;
+  client_id: string;
+  title: string;
+  description: string;
+  comment?: string | null;
+  responsible: string;
+  state: string;
+}
+
 // Respuesta del endpoint get-calls-by-phone
 export interface CallsByPhoneSummary {
   total_llamadas: number;

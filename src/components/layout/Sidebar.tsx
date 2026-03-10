@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BarChart3, Mic, Menu, X, Key, Phone, PhoneOutgoing, Calendar, PhoneCall, LogOut, TrendingUp, Rocket, PhoneOff, Megaphone } from 'lucide-react';
+import { BarChart3, Mic, Menu, X, Key, Phone, PhoneOutgoing, Calendar, PhoneCall, LogOut, TrendingUp, Rocket, PhoneOff, Megaphone, ClipboardList } from 'lucide-react';
 import { useCallsContext } from '../../context/CallsContext';
 import { useAuth } from '../../context/AuthContext';
 import { hasLaunchPermissions, canAccess, hasPermissionsDefined, getClientTest, getClientIdFromSession } from '../../lib/supabase';
@@ -264,7 +264,7 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
         ></div>
       )}
       
-      <div className={`fixed top-0 left-0 h-full w-64 bg-[#05163b] border-r border-[#0a2a5a] p-4 z-40 transition-transform duration-300 ease-in-out transform ${
+      <div className={`fixed top-0 left-0 h-full w-64 bg-[#05163b] border-r border-[#0a2a5a] p-4 z-40 transition-transform duration-300 ease-in-out transform flex flex-col ${
         isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
       }`}>
         <div className="flex items-center justify-between mb-8">
@@ -450,6 +450,19 @@ export function Sidebar({ currentPage, onPageChange, cacheStatus, isLoading }: S
               Campaña
             </button>
           )}
+          <button
+            onClick={() => {
+              navigateWithParams('tickets');
+            }}
+            className={`flex w-full items-center gap-2 px-4 py-2 ${
+              currentPage === 'tickets'
+                ? 'text-white bg-[#0a2a5a] border border-[#1e4a8a]'
+                : 'text-gray-300 hover:bg-[#0a2a5a]'
+            } rounded-lg`}
+          >
+            <ClipboardList className="w-5 h-5" />
+            Tickets
+          </button>
           {canAccessSales && (
             <button
               onClick={() => {
