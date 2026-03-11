@@ -569,7 +569,9 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
             <div className="text-sm text-gray-700">
               {batches.length} batch(es) generados · OK: {successCount} · Error: {errorCount} · Enviados: {sentContacts}/{sourceRows.length}
             </div>
-            <Button type="button" onClick={handleSendAllSequential} disabled={sendingAll}>{sendingAll ? 'Enviando uno por uno…' : 'Enviar todos (uno por uno)'}</Button>
+            <Button type="button" onClick={handleSendAllSequential} disabled={sendingAll}>
+              {sendingAll ? 'Enviando…' : 'Enviar todos'}
+            </Button>
           </div>
           <div className="space-y-4">
             {batches.map((batch) => (
@@ -619,8 +621,29 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
                         <input type="text" value={batch.config.agentId} onChange={(e) => updateBatchConfig(batch.id, 'agentId', e.target.value)} className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900" placeholder="agent_..." />
                       )}
                     </div>
-                    <div className="space-y-1.5"><label className="block text-sm font-medium text-gray-700">Nombre del batch (opcional)</label><input type="text" value={batch.config.batchName} onChange={(e) => updateBatchConfig(batch.id, 'batchName', e.target.value)} className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900" /></div>
-                    <div className="space-y-1.5"><label className="block text-sm font-medium text-gray-700">Start time (opcional)</label><input type="datetime-local" value={batch.config.startTime} onChange={(e) => updateBatchConfig(batch.id, 'startTime', e.target.value)} className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900" /></div>
+                    <div className="space-y-1.5">
+                      <label className="block text-sm font-medium text-gray-700">Nombre del batch (opcional)</label>
+                      <input
+                        type="text"
+                        value={batch.config.batchName}
+                        onChange={(e) => updateBatchConfig(batch.id, 'batchName', e.target.value)}
+                        className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Programar envío (opcional)
+                      </label>
+                      <input
+                        type="datetime-local"
+                        value={batch.config.startTime}
+                        onChange={(e) => updateBatchConfig(batch.id, 'startTime', e.target.value)}
+                        className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
+                      />
+                      <p className="text-xs text-gray-500">
+                        Si lo dejas vacío, el batch se enviará inmediatamente al pulsar <span className="font-semibold">Enviar</span>.
+                      </p>
+                    </div>
                     <div className="space-y-1.5">
                       <label className="block text-sm font-medium text-gray-700">Zona horaria</label>
                       <select

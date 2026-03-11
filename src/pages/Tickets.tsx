@@ -21,10 +21,11 @@ export function Tickets({ onNavigate: _onNavigate }: TicketsProps) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [form, setForm] = useState({ title: '', description: '', responsible: '' });
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   const canSubmit = useMemo(
-    () => form.title.trim() && form.description.trim() && form.responsible.trim() && clientId,
-    [form, clientId],
+    () => form.title.trim() && form.description.trim() && clientId,
+    [form.title, form.description, clientId],
   );
 
   const loadTickets = async () => {
@@ -57,15 +58,17 @@ export function Tickets({ onNavigate: _onNavigate }: TicketsProps) {
     setError(null);
     setSuccess(null);
     try {
+      const responsibleToSend = form.responsible.trim() || 'Sin asignar';
       await createTicket({
         client_id: clientId,
         title: form.title.trim(),
         description: form.description.trim(),
-        responsible: form.responsible.trim(),
+        responsible: responsibleToSend,
       });
       setForm({ title: '', description: '', responsible: '' });
       setSuccess('Ticket creado correctamente con estado Pendiente.');
       await loadTickets();
+      setShowCreateModal(false);
     } catch (e: any) {
       setError(e?.message || 'Error al crear ticket');
     } finally {
@@ -118,7 +121,7 @@ export function Tickets({ onNavigate: _onNavigate }: TicketsProps) {
     e.preventDefault();
     const ticket = editingTicket;
     if (!ticket || !clientId) return;
-    if (!editForm.title.trim() || !editForm.description.trim() || !editForm.responsible.trim()) return;
+    if (!editForm.title.trim() || !editForm.description.trim()) return;
 
     setSavingId(ticket.id);
     setError(null);
@@ -164,79 +167,49 @@ export function Tickets({ onNavigate: _onNavigate }: TicketsProps) {
                 <h1 className="text-2xl font-bold text-slate-800">Tickets</h1>
                 <p className="text-slate-500 text-base">Crea tareas de mejora para tu dashboard</p>
               </div>
-              <button
-                onClick={loadTickets}
-                disabled={loading}
-                className="flex min-w-[100px] items-center justify-center rounded-lg h-10 px-5 bg-blue-600 text-white text-sm font-bold transition-all hover:bg-blue-500 disabled:opacity-60 shrink-0"
-              >
-                <span className="truncate inline-flex items-center gap-2">
-                  <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                  Actualizar
-                </span>
-              </button>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={loadTickets}
+                  disabled={loading}
+                  className="flex min-w-[100px] items-center justify-center rounded-lg h-10 px-5 bg-blue-600 text-white text-sm font-bold transition-all hover:bg-blue-500 disabled:opacity-60 shrink-0"
+                >
+                  <span className="truncate inline-flex items-center gap-2">
+                    <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                    Actualizar
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError(null);
+                    setSuccess(null);
+                    setShowCreateModal(true);
+                  }}
+                  className="flex min-w-[140px] items-center justify-center rounded-lg h-10 px-5 bg-teal-500 text-white text-sm font-bold transition-all hover:bg-teal-600 shrink-0 shadow-md shadow-teal-500/20"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <Send className="w-4 h-4" />
+                    Crear ticket
+                  </span>
+                </button>
+              </div>
             </div>
 
-            <section className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-              <h2 className="text-lg font-semibold text-slate-800 mb-6 flex items-center gap-2">
-                <span className="text-[#7f19e6]">+</span>
-                Crear nuevo ticket
-              </h2>
-              <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-slate-700">Título *</label>
-                  <input
-                    value={form.title}
-                    onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-[#7f19e6] focus:border-[#7f19e6] p-3"
-                    placeholder="Ej: Error en página Calendario"
-                  />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-slate-700">Responsable *</label>
-                  <select
-                    value={form.responsible}
-                    onChange={(e) => setForm((prev) => ({ ...prev, responsible: e.target.value }))}
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-[#7f19e6] focus:border-[#7f19e6] p-3"
-                  >
-                    <option value="">Seleccionar responsable</option>
-                    <option value="Jorge">Jorge</option>
-                    <option value="Fran">Fran</option>
-                  </select>
-                </div>
-                <div className="flex flex-col gap-2 md:col-span-2">
-                  <label className="text-sm font-semibold text-slate-700">Descripción *</label>
-                  <textarea
-                    value={form.description}
-                    onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-                    rows={4}
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-[#7f19e6] focus:border-[#7f19e6] p-3 min-h-[120px] resize-none"
-                    placeholder="Describe el problema o mejora..."
-                  />
-                </div>
-                <div className="md:col-span-2 mt-2 flex justify-end">
-                  <button
-                    type="submit"
-                    disabled={!canSubmit || creating}
-                    className="flex items-center gap-2 bg-teal-500 text-white px-6 py-3 rounded-lg font-bold transition-all hover:bg-teal-600 shadow-md shadow-teal-500/20 disabled:opacity-60"
-                  >
-                    <Send className="w-4 h-4" />
-                    {creating ? 'Creando ticket...' : 'Crear ticket'}
-                  </button>
-                </div>
-              </form>
-
-              {error && (
-                <div className="mt-4 p-3 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4" />
-                  {error}
-                </div>
-              )}
-              {success && (
-                <div className="mt-4 p-3 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 text-sm">
-                  {success}
-                </div>
-              )}
-            </section>
+            {(error || success) && (
+              <div className="space-y-2">
+                {error && (
+                  <div className="mt-2 p-3 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4" />
+                    {error}
+                  </div>
+                )}
+                {success && (
+                  <div className="mt-2 p-3 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 text-sm">
+                    {success}
+                  </div>
+                )}
+              </div>
+            )}
 
             <section className="flex flex-col gap-4">
               <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2 px-1">
@@ -268,7 +241,6 @@ export function Tickets({ onNavigate: _onNavigate }: TicketsProps) {
                         </div>
                         <p className="text-slate-600 text-sm">{ticket.description}</p>
                         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-2 text-xs font-medium text-slate-500">
-                          <div>Responsable: <span className="text-slate-700">{ticket.responsible}</span></div>
                           <div>Creado: <span className="text-slate-700">{formatDate(ticket.created_at)}</span></div>
                           {ticket.comment ? <div>Comentario: <span className="text-slate-700">{ticket.comment}</span></div> : null}
                         </div>
@@ -302,6 +274,73 @@ export function Tickets({ onNavigate: _onNavigate }: TicketsProps) {
           </div>
         </main>
       </div>
+
+      {/* Modal crear ticket */}
+      {showCreateModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => setShowCreateModal(false)}
+        >
+          <div
+            className="w-full max-w-xl rounded-xl bg-white shadow-xl border border-slate-200 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                <span className="text-[#7f19e6]">+</span>
+                Crear nuevo ticket
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(false)}
+                className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                <span className="sr-only">Cerrar</span>
+                <span className="text-slate-500 text-xl leading-none">&times;</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleCreate} className="grid grid-cols-1 gap-6">
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-semibold text-slate-700">Título *</label>
+                <input
+                  value={form.title}
+                  onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-[#7f19e6] focus:border-[#7f19e6] p-3"
+                  placeholder="Ej: Error en página Calendario"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-semibold text-slate-700">Descripción *</label>
+                <textarea
+                  value={form.description}
+                  onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+                  rows={4}
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-[#7f19e6] focus:border-[#7f19e6] p-3 min-h-[120px] resize-none"
+                  placeholder="Describe el problema o mejora..."
+                />
+              </div>
+              <div className="mt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm hover:bg-slate-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={!canSubmit || creating}
+                  className="flex items-center gap-2 bg-teal-500 text-white px-6 py-3 rounded-lg font-bold transition-all hover:bg-teal-600 shadow-md shadow-teal-500/20 disabled:opacity-60"
+                >
+                  <Send className="w-4 h-4" />
+                  {creating ? 'Creando ticket...' : 'Crear ticket'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {deleteConfirmTicket && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={handleDeleteCancel}>
@@ -340,33 +379,26 @@ export function Tickets({ onNavigate: _onNavigate }: TicketsProps) {
             className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-bold text-slate-800 mb-4">Editar ticket</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-slate-800">Editar ticket</h3>
+              <button
+                type="button"
+                onClick={handleEditClose}
+                className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                <span className="sr-only">Cerrar</span>
+                <span className="text-slate-500 text-xl leading-none">&times;</span>
+              </button>
+            </div>
             <form onSubmit={handleEditSave} className="flex flex-col gap-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Título *</label>
-                  <input
-                    value={editForm.title}
-                    onChange={(e) => setEditForm((prev) => ({ ...prev, title: e.target.value }))}
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-[#7f19e6] focus:border-[#7f19e6] p-3"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Estado</label>
-                  <select
-                    value={editForm.state}
-                    onChange={(e) => setEditForm((prev) => ({ ...prev, state: e.target.value }))}
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-[#7f19e6] focus:border-[#7f19e6] p-3"
-                  >
-                    <option value="Pendiente">Pendiente</option>
-                    <option value="En progreso">En progreso</option>
-                    <option value="Completado">Completado</option>
-                    {editForm.state && !['Pendiente', 'En progreso', 'Completado'].includes(editForm.state) && (
-                      <option value={editForm.state}>{editForm.state}</option>
-                    )}
-                  </select>
-                </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Título *</label>
+                <input
+                  value={editForm.title}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, title: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-[#7f19e6] focus:border-[#7f19e6] p-3"
+                  required
+                />
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1">Descripción *</label>
@@ -378,18 +410,7 @@ export function Tickets({ onNavigate: _onNavigate }: TicketsProps) {
                   required
                 />
               </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Responsable *</label>
-                <select
-                  value={editForm.responsible}
-                  onChange={(e) => setEditForm((prev) => ({ ...prev, responsible: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 text-slate-900 focus:ring-[#7f19e6] focus:border-[#7f19e6] p-3"
-                  required
-                >
-                  <option value="Jorge">Jorge</option>
-                  <option value="Fran">Fran</option>
-                </select>
-              </div>
+              {/* Responsable se gestiona internamente, no editable por el cliente */}
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={handleEditClose} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50">
                   Cancelar
