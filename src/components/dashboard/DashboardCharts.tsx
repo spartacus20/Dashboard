@@ -14,6 +14,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
+import { FacturacionChart } from "./FacturacionChart";
+import { ROIChart } from "./ROIChart";
 import {
   ResponsiveContainer as RechartsResponsiveContainer,
   ComposedChart as RechartsComposedChart,
@@ -68,12 +70,19 @@ interface DashboardChartsProps {
     type: "start" | "end",
     val: string,
   ) => void;
+
+  // Ventas Trend Data
+  salesMetrics?: any;
+  facturacionData?: any[];
+  roiData?: any[];
+  salesEnabled?: boolean;
 }
 
 export function DashboardCharts(props: DashboardChartsProps) {
   const {
     agendaEnabled,
     launchEnabled,
+    timePeriod,
     isLongRange,
     hourlyAgendasData,
     housingTypeData,
@@ -96,6 +105,10 @@ export function DashboardCharts(props: DashboardChartsProps) {
     effectiveCallsHourStart,
     effectiveCallsHourEnd,
     handleEffectiveCallsHourRangeChange,
+    salesMetrics,
+    facturacionData,
+    roiData,
+    salesEnabled,
   } = props;
 
   return (
@@ -585,6 +598,18 @@ export function DashboardCharts(props: DashboardChartsProps) {
                 </CardContent>
               </Card>
             )}
+        </div>
+      )}
+
+      {/* Gráficos de Ventas (Facturación y ROI) */}
+      {salesEnabled && (
+        <div className="space-y-6 mt-8">
+          {facturacionData && facturacionData.length > 0 && (
+            <FacturacionChart data={facturacionData} timePeriod={timePeriod} />
+          )}
+          {roiData && roiData.length > 0 && (
+            <ROIChart data={roiData} totalROI={salesMetrics?.roi} timePeriod={timePeriod} />
+          )}
         </div>
       )}
     </>

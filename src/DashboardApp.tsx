@@ -48,6 +48,7 @@ function DashboardApp() {
     loadingDashboardData,
     loadDashboardData,
     agendaEnabled,
+    salesEnabled,
     launchEnabled,
     dontCallEnabled,
     campaignEnabled
@@ -1263,19 +1264,13 @@ function DashboardApp() {
       <div className="md:ml-64 p-4 md:p-8 transition-all">
         {currentPage === 'dashboard' && stats && (
           <Dashboard
-            stats={stats}
             loading={loading || loadingAllCalls || loadingDashboardData}
             error={error}
-            onReload={loadCalls}
-            filterCriteria={filterCriteria}
-            onFilterChange={handleFilterChangeForDashboard}
-            disconnectionReasons={disconnectionReasons}
-            totalCalls={calls.length}
-            filteredCallsCount={filteredCalls.length}
             dashboardData={dashboardData}
             loadDashboardData={loadDashboardData}
             agendaEnabled={agendaEnabled}
             launchEnabled={launchEnabled}
+            salesEnabled={salesEnabled}
           />
         )}
         {currentPage === 'recordings' && (

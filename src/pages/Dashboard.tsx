@@ -4,6 +4,18 @@ import { DashboardHeader } from "../components/dashboard/DashboardHeader";
 import { DashboardMetricsCard } from "../components/dashboard/DashboardMetricsCard";
 import { DashboardCharts } from "../components/dashboard/DashboardCharts";
 import { Button } from "../components/ui/button";
+import { 
+  fetchSalesMetrics, 
+  fetchSalesMetricsToday, 
+  fetchSalesMetricsWeek, 
+  fetchSalesMetricsMonth,
+  fetchAsistenciaFunnelMetrics,
+  fetchFacturacionByDay,
+  fetchROIByDay 
+} from "../api";
+import { useCallsContext } from "../context/CallsContext";
+import { Activity, TrendingUp, ShoppingCart, BarChart3, Clock, Phone, RefreshCw } from "lucide-react";
+import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/card";
 
 import {
   generateDisconnectionData,
@@ -40,15 +52,8 @@ const DashboardSkeleton = () => {
 };
 
 interface DashboardProps {
-  stats: CallStats;
   loading: boolean;
   error: string | null;
-  onReload: () => void;
-  filterCriteria: FilterCriteria;
-  onFilterChange: (key: keyof FilterCriteria, value: any) => void;
-  disconnectionReasons: string[];
-  totalCalls: number;
-  filteredCallsCount: number;
   dashboardData?: any;
   loadDashboardData?: (
     fechaInicio?: string,
@@ -58,23 +63,19 @@ interface DashboardProps {
   ) => void;
   agendaEnabled?: boolean;
   launchEnabled?: boolean;
+  salesEnabled?: boolean;
 }
 
 export function Dashboard({
-  stats,
   loading,
   error,
-  onReload,
-  filterCriteria,
-  onFilterChange,
-  disconnectionReasons,
-  totalCalls,
-  filteredCallsCount,
   dashboardData,
   loadDashboardData,
   agendaEnabled = true,
   launchEnabled = false,
+  salesEnabled = false,
 }: DashboardProps) {
+  const { allCalls } = useCallsContext();
   // --- Error Boundary Básico ---
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>("");
@@ -124,16 +125,23 @@ export function Dashboard({
   const [hasFiltroSolar, setHasFiltroSolar] = useState(false);
 
   // --- Estados de Launch ---
-  const [launchRegionMetrics, setLaunchRegionMetrics] = useState<any>(null);
-  const [launchRegionLoading, setLaunchRegionLoading] =
-    useState<boolean>(false);
-  const [launchRegionError, setLaunchRegionError] = useState<string | null>(
-    null,
-  );
+  const [launchRegionMetrics] = useState<any>(null);
+  const [launchRegionLoading] = useState<boolean>(false);
+  const [launchRegionError] = useState<string | null>(null);
 
-  const [asistenciaByHour, setAsistenciaByHour] = useState<any[]>([]);
-  const [asistenciaLoading, setAsistenciaLoading] = useState<boolean>(false);
-  const [asistenciaError, setAsistenciaError] = useState<string | null>(null);
+  const [asistenciaByHour] = useState<any[]>([]);
+  const [asistenciaLoading] = useState<boolean>(false);
+  const [asistenciaError] = useState<string | null>(null);
+
+  // --- Estados de Ventas ---
+  const [salesMetrics, setSalesMetrics] = useState<any>(null);
+  const [salesLoading, setSalesLoading] = useState<boolean>(false);
+  const [facturacionData, setFacturacionData] = useState<any[]>([]);
+  const [roiData, setROIData] = useState<any[]>([]);
+
+  // --- Estados de Funnel ---
+  const [funnelData, setFunnelData] = useState<any>(null);
+  const [funnelLoading, setFunnelLoading] = useState<boolean>(false);
 
   // --- Helpers de Metadata ---
   const checkMetadata = useCallback(() => {
@@ -257,6 +265,56 @@ export function Dashboard({
     loadDashboardData,
   ]);
 
+  // --- Cargar Métricas de Ventas y Funnel ---
+  const loadExtraMetrics = useCallback(async () => {
+    const dates = calculateDatesForPeriod(timePeriod, customStartDate, customEndDate);
+    const start = dates?.fechaInicio?.split('T')[0];
+    const end = dates?.fechaFin?.split('T')[0];
+
+    if (salesEnabled) {
+      setSalesLoading(true);
+      try {
+        let metrics;
+        if (timePeriod === "today") metrics = await fetchSalesMetricsToday();
+        else if (timePeriod === "week") metrics = await fetchSalesMetricsWeek();
+        else if (timePeriod === "month") metrics = await fetchSalesMetricsMonth();
+        else metrics = await fetchSalesMetrics(start, end);
+        setSalesMetrics(metrics);
+
+        // Cargar datos de tendencia
+        const [fData, rData] = await Promise.all([
+          fetchFacturacionByDay(start, end),
+          fetchROIByDay(start, end)
+        ]);
+        setFacturacionData(fData);
+        setROIData(rData);
+      } catch (err) {
+        // console.error("Error loading sales metrics:", err);
+      } finally {
+        setSalesLoading(false);
+      }
+    }
+
+    if (launchEnabled) {
+      setFunnelLoading(true);
+      try {
+        const funnel = await fetchAsistenciaFunnelMetrics({
+          fecha_inicio: start,
+          fecha_fin: end
+        });
+        setFunnelData(funnel);
+      } catch (err) {
+        // console.error("Error loading funnel metrics:", err);
+      } finally {
+        setFunnelLoading(false);
+      }
+    }
+  }, [salesEnabled, launchEnabled, timePeriod, customStartDate, customEndDate]);
+
+  useEffect(() => {
+    loadExtraMetrics();
+  }, [loadExtraMetrics]);
+
   // --- Helpers Chart Data ---
   // Usa exactamente los mismos useMemo que tenías (hourlyAgendasData, housingTypeData, etc...)
   const hourlyAgendasData = useMemo(
@@ -292,8 +350,43 @@ export function Dashboard({
 
   // (Mismo bloque de logic que tenías para combinedCallsAgendasData)
   const combinedCallsAgendasData = useMemo(() => {
-    return []; // Reemplaza esto con tu UseMemo gigantesco original
-  }, [timePeriod, effectiveCallsData, hourlyAgendasData, dashboardData]);
+    if (!effectiveCallsData || effectiveCallsData.length === 0) {
+      if (!hourlyAgendasData || hourlyAgendasData.length === 0) {
+        return [];
+      }
+    }
+
+    const map = new Map<string, { label: string; llamadas: number; agendas: number }>();
+
+    if (effectiveCallsData && effectiveCallsData.length > 0) {
+      effectiveCallsData.forEach((item: any) => {
+        const label = item.label ?? "";
+        const llamadas = typeof item.llamadas === "number" ? item.llamadas : 0;
+        if (!label) return;
+        map.set(label, { label, llamadas, agendas: 0 });
+      });
+    }
+
+    if (hourlyAgendasData && hourlyAgendasData.length > 0) {
+      hourlyAgendasData.forEach((item: any) => {
+        const label = item.label ?? "";
+        const agendas = typeof item.agendas === "number" ? item.agendas : 0;
+        if (!label) return;
+        const existing = map.get(label);
+        if (existing) {
+          existing.agendas = agendas;
+        } else {
+          map.set(label, { label, llamadas: 0, agendas });
+        }
+      });
+    }
+
+    return Array.from(map.values()).sort((a, b) => {
+      const hA = parseInt(a.label.split(":")[0]);
+      const hB = parseInt(b.label.split(":")[0]);
+      return hA - hB;
+    });
+  }, [effectiveCallsData, hourlyAgendasData]);
 
   const agendaHousingTypeData = useMemo(
     () => generateAgendaHousingTypeData(dashboardData),
@@ -458,6 +551,8 @@ export function Dashboard({
             </div>
           )}
 
+
+
           <DashboardCharts
             dashboardData={dashboardData}
             agendaEnabled={agendaEnabled}
@@ -488,7 +583,258 @@ export function Dashboard({
             handleEffectiveCallsHourRangeChange={
               handleEffectiveCallsHourRangeChange
             }
+            salesMetrics={salesMetrics}
+            facturacionData={facturacionData}
+            roiData={roiData}
+            salesEnabled={salesEnabled}
           />
+
+          {/* Tablas detalladas originales */}
+          <div className="space-y-8 mt-8">
+            {interestData && interestData.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Análisis de Interés</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-slate-200">
+                          <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Interés</th>
+                          <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">Cantidad</th>
+                          <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">Porcentaje</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {interestData.map((item: any, idx: number) => (
+                          <tr key={idx} className="border-b border-slate-200 hover:bg-slate-50">
+                            <td className="py-3 px-4 text-sm text-slate-700">{item.label}</td>
+                            <td className="py-3 px-4 text-sm text-slate-600 text-right">{item.cantidad}</td>
+                            <td className="py-3 px-4 text-sm text-slate-600 text-right">{item.porcentaje}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {agendaEnabled && dashboardData?.dashboard_data?.tipos_vivienda && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Análisis Detallado de Tipos de Vivienda</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-slate-200">
+                          <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Tipo de Vivienda</th>
+                          <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">Cantidad</th>
+                          <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">Porcentaje</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {housingTypeData.map((item: any, idx: number) => (
+                          <tr key={idx} className="border-b border-slate-200 hover:bg-slate-50">
+                            <td className="py-3 px-4 text-sm text-slate-700">{item.label}</td>
+                            <td className="py-3 px-4 text-sm text-slate-600 text-right">{item.cantidad}</td>
+                            <td className="py-3 px-4 text-sm text-slate-600 text-right">{item.porcentaje}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {disconnectionData && disconnectionData.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Análisis Detallado de Desconexiones</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-slate-200">
+                          <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Razón</th>
+                          <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">Total</th>
+                          <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">Porcentaje</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {disconnectionData.map((item: any, idx: number) => (
+                          <tr key={idx} className="border-b border-slate-200 hover:bg-slate-50">
+                            <td className="py-3 px-4 text-sm text-slate-700">{item.reason}</td>
+                            <td className="py-3 px-4 text-sm text-slate-600 text-right">{item.count}</td>
+                            <td className="py-3 px-4 text-sm text-slate-600 text-right">{item.percentage}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          <hr className="my-8 border-gray-200" />
+
+          {/* Actividad Reciente - Módulo Nuevo al final */}
+          <Card className="bg-gray-900 border-gray-800 shadow-xl mb-8 overflow-hidden">
+            <CardHeader className="border-b border-gray-800 flex flex-row items-center justify-between py-4">
+              <CardTitle className="flex items-center gap-2 text-white text-lg">
+                <Clock className="w-5 h-5 text-purple-400" />
+                Actividad Reciente
+              </CardTitle>
+              <div className="text-xs text-gray-500 bg-gray-800 px-3 py-1 rounded-full border border-gray-700">
+                Últimas {allCalls.slice(0, 10).length} llamadas
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="text-left bg-gray-850">
+                      <th className="px-6 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">Número</th>
+                      <th className="px-6 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">Duración</th>
+                      <th className="px-6 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">Estado</th>
+                      <th className="px-6 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">Fecha/Hora</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {allCalls.slice(0, 10).map((call: any) => (
+                      <tr key={call.call_id} className="hover:bg-gray-800/40 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            <div className="p-1.5 bg-gray-800 rounded-lg"><Phone className="w-3 h-3 text-gray-400" /></div>
+                            <span className="text-sm font-medium text-gray-200">{call.to_number}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                          {Math.floor(call.duration_ms / 1000)}s
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
+                            call.call_status === 'completed' ? 'bg-emerald-900/40 text-emerald-400 border border-emerald-800/50' :
+                            call.call_status === 'failed' ? 'bg-rose-900/40 text-rose-400 border border-rose-800/50' : 
+                            'bg-blue-900/40 text-blue-400 border border-blue-800/50'
+                          }`}>
+                            {call.call_status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {new Date(call.start_time).toLocaleString('es-ES', { 
+                            day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' 
+                          })}
+                        </td>
+                      </tr>
+                    ))}
+                    {allCalls.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="px-6 py-10 text-center text-gray-500 italic">No hay actividad reciente para mostrar</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+
+
+          {/* Secciones de Ventas y Lanzamiento - MOVIDAS AL FINAL */}
+          {(salesEnabled || launchEnabled) && (
+            <div className="grid gap-6 mt-8 mb-8 lg:grid-cols-2">
+              {salesEnabled && (
+                <Card className="bg-gradient-to-br from-gray-900 to-gray-800 border-gray-700 shadow-xl overflow-hidden">
+                  <CardHeader className="border-b border-gray-800 pb-3">
+                    <CardTitle className="flex items-center gap-2 text-white text-lg">
+                      <ShoppingCart className="w-5 h-5 text-emerald-400" />
+                      Resumen de Ventas
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-6">
+                    {salesLoading ? (
+                      <div className="flex justify-center py-6"><RefreshCw className="animate-spin text-gray-500" /></div>
+                    ) : salesMetrics ? (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="p-4 bg-gray-800/50 rounded-lg border border-gray-700">
+                          <p className="text-xs text-gray-400 uppercase font-bold mb-1">ROI</p>
+                          <p className="text-2xl font-bold text-emerald-400">x{salesMetrics.roi?.toFixed(2) || '0.00'}</p>
+                        </div>
+                        <div className="p-4 bg-gray-800/50 rounded-lg border border-gray-700">
+                          <p className="text-xs text-gray-400 uppercase font-bold mb-1">Conversión</p>
+                          <p className="text-2xl font-bold text-blue-400">{salesMetrics.tasaConversion?.toFixed(2) || '0.00'}%</p>
+                        </div>
+                        <div className="p-4 bg-gray-800/50 rounded-lg border border-gray-700">
+                          <p className="text-xs text-gray-400 uppercase font-bold mb-1">Facturación</p>
+                          <p className="text-2xl font-bold text-white">${salesMetrics.totalFacturacion?.toLocaleString() || '0'}</p>
+                        </div>
+                        <div className="p-4 bg-gray-800/50 rounded-lg border border-gray-700">
+                          <p className="text-xs text-gray-400 uppercase font-bold mb-1">Costo/Venta</p>
+                          <p className="text-2xl font-bold text-rose-400">${salesMetrics.costePorVenta?.toFixed(2) || '0'}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-center text-gray-500 py-6">No hay datos de ventas disponibles</p>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {launchEnabled && (
+                <Card className="bg-gradient-to-br from-gray-900 to-gray-800 border-gray-700 shadow-xl overflow-hidden">
+                  <CardHeader className="border-b border-gray-800 pb-3">
+                    <CardTitle className="flex items-center gap-2 text-white text-lg">
+                      <TrendingUp className="w-5 h-5 text-blue-400" />
+                      Funnel de Lanzamiento
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-6">
+                    {funnelLoading ? (
+                      <div className="flex justify-center py-6"><RefreshCw className="animate-spin text-gray-500" /></div>
+                    ) : funnelData ? (
+                      <div className="space-y-4">
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-xs text-gray-400 font-bold uppercase">
+                            <span>Interés (Llamadas)</span>
+                            <span>{funnelData.totals?.total_links || 0}</span>
+                          </div>
+                          <div className="w-full bg-gray-700 rounded-full h-3">
+                            <div className="bg-blue-500 h-3 rounded-full" style={{ width: '100%' }}></div>
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-xs text-gray-400 font-bold uppercase">
+                            <span>Engagement (Clicks)</span>
+                            <span>{funnelData.totals?.total_clicks || 0} ({funnelData.totals?.pct_clicks_over_links?.toFixed(1) || 0}%)</span>
+                          </div>
+                          <div className="w-full bg-gray-700 rounded-full h-3">
+                            <div className="bg-indigo-500 h-3 rounded-full" style={{ width: `${funnelData.totals?.pct_clicks_over_links || 0}%` }}></div>
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-xs text-gray-400 font-bold uppercase">
+                            <span>Asistencia (Citas)</span>
+                            <span>{funnelData.totals?.total_attendance || 0} ({funnelData.totals?.pct_attendance_over_links?.toFixed(1) || 0}%)</span>
+                          </div>
+                          <div className="w-full bg-gray-700 rounded-full h-3">
+                            <div className="bg-emerald-500 h-3 rounded-full" style={{ width: `${funnelData.totals?.pct_attendance_over_links || 0}%` }}></div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-center text-gray-500 py-6">No hay datos de funnel disponibles</p>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>
