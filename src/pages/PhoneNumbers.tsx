@@ -56,7 +56,7 @@ function CallModal({ phoneNumber, onClose, apiKey }: CallModalProps) {
           }
         }
       } catch (err) {
-        console.error('Error cargando agentes:', err);
+        // console.error('Error cargando agentes:', err);
         setAgentsError(err instanceof Error ? err.message : 'Error al cargar los agentes');
       } finally {
         setLoadingAgents(false);
@@ -140,7 +140,7 @@ function CallModal({ phoneNumber, onClose, apiKey }: CallModalProps) {
       const result = await createPhoneCall(apiKey, params);
       setSuccess(`Llamada iniciada con éxito. ID: ${result.call_id || 'N/A'}`);
     } catch (err) {
-      console.error('Error al crear la llamada:', err);
+      // console.error('Error al crear la llamada:', err);
       setError(err instanceof Error ? err.message : 'Error al iniciar la llamada');
     } finally {
       setLoading(false);
@@ -378,7 +378,7 @@ function AddPhoneModal({ onClose, onSuccess, workspaceNameByApiKey }: AddPhoneMo
           options = parsed.filter((v): v is string => typeof v === 'string' && v.trim().length > 0);
         }
       } catch (e) {
-        console.error('Error parseando uri_retell desde sessionStorage:', e);
+        // console.error('Error parseando uri_retell desde sessionStorage:', e);
       }
     }
 
@@ -398,7 +398,7 @@ function AddPhoneModal({ onClose, onSuccess, workspaceNameByApiKey }: AddPhoneMo
             }
           }
         } catch (e) {
-          console.error('Error parseando uri_retell desde userData:', e);
+          // console.error('Error parseando uri_retell desde userData:', e);
         }
       }
     }
@@ -453,7 +453,7 @@ function AddPhoneModal({ onClose, onSuccess, workspaceNameByApiKey }: AddPhoneMo
         setAgents(agentsData);
         setSelectedAgent(null);
       } catch (err) {
-        console.error('Error cargando agentes para workspace:', err);
+        // console.error('Error cargando agentes para workspace:', err);
         setAgentsError(err instanceof Error ? err.message : 'Error al cargar los agentes');
       } finally {
         setLoadingAgents(false);
@@ -535,7 +535,7 @@ function AddPhoneModal({ onClose, onSuccess, workspaceNameByApiKey }: AddPhoneMo
         onClose();
       }, 2000);
     } catch (err) {
-      console.error('Error al añadir número de teléfono:', err);
+      // console.error('Error al añadir número de teléfono:', err);
       setError(err instanceof Error ? err.message : 'Error al añadir el número de teléfono');
     } finally {
       setLoading(false);
@@ -833,7 +833,7 @@ function DeletePhoneModal({ phoneNumber, onClose, onSuccess, apiKey }: DeletePho
       onSuccess();
       onClose();
     } catch (err) {
-      console.error('Error al eliminar número de teléfono:', err);
+      // console.error('Error al eliminar número de teléfono:', err);
       setError(err instanceof Error ? err.message : 'Error al eliminar el número de teléfono');
     } finally {
       setLoading(false);
@@ -1224,7 +1224,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
 
           newMapping[key] = bestFolder.folderName;
         } catch (e) {
-          console.error('Error al cargar folders para workspace:', key, e);
+          // console.error('Error al cargar folders para workspace:', key, e);
         }
       }
 
@@ -1245,7 +1245,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
         const rows = await listBlockedNumbers();
         setBlockedNumbers(rows);
       } catch (e: any) {
-        console.error('Error al cargar números bloqueados:', e);
+        // console.error('Error al cargar números bloqueados:', e);
         setErrorBlocked(e?.message || 'Error al cargar números bloqueados');
       } finally {
         setLoadingBlocked(false);
@@ -1281,7 +1281,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
         });
         setCallCountsByPhone(map);
       } catch (e) {
-        console.error('Error al cargar conteos de llamadas por número:', e);
+        // console.error('Error al cargar conteos de llamadas por número:', e);
       } finally {
         setLoadingCallCounts(false);
       }
@@ -1403,7 +1403,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
         setTimeout(() => setCopiedNumber(null), 2000);
       })
       .catch(err => {
-        console.error('Error al copiar:', err);
+        // console.error('Error al copiar:', err);
       });
   };
   
@@ -1433,7 +1433,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
       setBlockedNumbers(rows);
       setBlockedForm({ number: '', name: '' });
     } catch (e: any) {
-      console.error('Error al guardar número bloqueado:', e);
+      // console.error('Error al guardar número bloqueado:', e);
       setErrorBlocked(e?.message || 'Error al guardar número bloqueado');
     } finally {
       setLoadingBlocked(false);
@@ -1461,7 +1461,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
         setBlockedToEdit(null);
       }
     } catch (e: any) {
-      console.error('Error al eliminar número bloqueado:', e);
+      // console.error('Error al eliminar número bloqueado:', e);
       setErrorBlocked(e?.message || 'Error al eliminar número bloqueado');
     } finally {
       setDeletingBlocked(false);
@@ -1482,7 +1482,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
       setBlockedNumbers(rows);
       setBlockedToEdit(null);
     } catch (e: any) {
-      console.error('Error al actualizar número bloqueado:', e);
+      // console.error('Error al actualizar número bloqueado:', e);
       setEditBlockedError(e?.message || 'Error al actualizar número bloqueado');
     } finally {
       setEditBlockedSaving(false);

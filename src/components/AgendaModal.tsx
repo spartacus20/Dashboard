@@ -40,7 +40,7 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
       setErrorCalls(null);
       try {
         const currentPhone = agenda.phone_number;
-        let cancelled = false;
+        const cancelled = false;
 
         const promise = getCallsByPhone({
           phone_number: agenda.phone_number,
@@ -161,10 +161,10 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
         onStatusChange();
       }
     } catch (error) {
-      console.error(
-        'Error al actualizar estado de agenda desde el modal:',
-        error
-      );
+      // console.error(
+        // 'Error al actualizar estado de agenda desde el modal:',
+        // error
+      // );
     }
   };
 

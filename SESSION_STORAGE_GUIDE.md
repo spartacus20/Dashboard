@@ -30,6 +30,7 @@ Se modificó el sistema de autenticación para que **automáticamente** guarde t
 ## 📋 **Datos Guardados en SessionStorage**
 
 ### **Claves del SessionStorage:**
+
 - `userData` - Objeto completo con todos los datos
 - `apiKey` - Clave API del cliente
 - `clientId` - ID único del cliente
@@ -39,6 +40,7 @@ Se modificó el sistema de autenticación para que **automáticamente** guarde t
 - `metadata_llamadas` - Metadatos de llamadas (JSON)
 
 ### **Estructura de metadata_llamadas:**
+
 ```json
 {
   "total_llamadas": 150,
@@ -58,38 +60,38 @@ Se modificó el sistema de autenticación para que **automáticamente** guarde t
 
 ```typescript
 // Obtener datos individuales
-getUserData()                    // Objeto completo
-getApiKey()                      // string | null
-getClientIdFromSession()         // string | null
-getEmail()                       // string | null
-getFullName()                    // string | null
-getMetadata()                    // object | null
-getMetadataLlamadas()            // object | null
+getUserData(); // Objeto completo
+getApiKey(); // string | null
+getClientIdFromSession(); // string | null
+getEmail(); // string | null
+getFullName(); // string | null
+getMetadata(); // object | null
+getMetadataLlamadas(); // object | null
 
 // Limpiar datos
-clearSessionData()               // void
+clearSessionData(); // void
 ```
 
 ### **Hook personalizado `useUserData`:**
 
 ```typescript
-import { useUserData } from '../hooks/useUserData'
+import { useUserData } from "../hooks/useUserData";
 
 const MyComponent = () => {
-  const { 
-    userData,           // Objeto completo
-    loading,            // boolean
-    refreshUserData,    // función para refrescar
-    apiKey,             // string | null
-    clientId,           // string | null
-    email,              // string | null
-    fullName,           // string | null
-    metadata,           // object | null
-    metadata_llamadas   // object | null
-  } = useUserData()
+  const {
+    userData, // Objeto completo
+    loading, // boolean
+    refreshUserData, // función para refrescar
+    apiKey, // string | null
+    clientId, // string | null
+    email, // string | null
+    fullName, // string | null
+    metadata, // object | null
+    metadata_llamadas, // object | null
+  } = useUserData();
 
   // Usar los datos...
-}
+};
 ```
 
 ## 💡 **Ejemplos de Uso**
@@ -97,15 +99,15 @@ const MyComponent = () => {
 ### **1. Acceso directo a funciones:**
 
 ```typescript
-import { getApiKey, getMetadataLlamadas } from '../lib/supabase'
+import { getApiKey, getMetadataLlamadas } from "../lib/supabase";
 
 const MyComponent = () => {
-  const apiKey = getApiKey()
-  const metadataLlamadas = getMetadataLlamadas()
-  
-  console.log('API Key:', apiKey)
-  console.log('Total llamadas:', metadataLlamadas?.total_llamadas)
-}
+  const apiKey = getApiKey();
+  const metadataLlamadas = getMetadataLlamadas();
+
+  // console.log('API Key:', apiKey)
+  // console.log('Total llamadas:', metadataLlamadas?.total_llamadas)
+};
 ```
 
 ### **2. Usando el hook:**
@@ -115,9 +117,9 @@ import { useUserData } from '../hooks/useUserData'
 
 const Dashboard = () => {
   const { apiKey, metadata_llamadas, loading } = useUserData()
-  
+
   if (loading) return <div>Cargando...</div>
-  
+
   return (
     <div>
       <h1>Dashboard</h1>
@@ -146,24 +148,28 @@ const SettingsPage = () => {
 ## 🔧 **Configuración**
 
 ### **URL del Backend:**
+
 El sistema ahora usa el endpoint local:
+
 ```typescript
 // En lib/supabase.ts
-const response = await fetch('http://localhost:3000/get-client', {
-  method: 'POST',
+const response = await fetch("http://localhost:3000/get-client", {
+  method: "POST",
   headers: {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   },
-  body: JSON.stringify({ email })
-})
+  body: JSON.stringify({ email }),
+});
 ```
 
 ### **Variables de Entorno:**
+
 Asegúrate de que tu backend esté corriendo en `http://localhost:3000`
 
 ## 🧹 **Limpieza Automática**
 
 Los datos se limpian automáticamente cuando:
+
 - El usuario cierra sesión (`signOut()`)
 - Se cierra la pestaña del navegador (sessionStorage se limpia automáticamente)
 
@@ -185,49 +191,55 @@ Los datos se limpian automáticamente cuando:
 ## 🐛 **Debugging**
 
 ### **Ver datos en consola:**
+
 ```javascript
 // En la consola del navegador
-console.log('UserData:', JSON.parse(sessionStorage.getItem('userData')))
-console.log('Metadata Llamadas:', JSON.parse(sessionStorage.getItem('metadata_llamadas')))
+// console.log("UserData:", JSON.parse(sessionStorage.getItem("userData")));
+// console.log(
+//   "Metadata Llamadas:",
+//   JSON.parse(sessionStorage.getItem("metadata_llamadas")),
+// );
 ```
 
 ### **Verificar que se guardaron:**
+
 ```javascript
 // En la consola del navegador
-Object.keys(sessionStorage).forEach(key => {
-  console.log(key, sessionStorage.getItem(key))
-})
+// Object.keys(sessionStorage).forEach((key) => {
+//   console.log(key, sessionStorage.getItem(key));
+// });
 ```
 
 ## 📱 **Uso en Componentes**
 
 ### **Dashboard con estadísticas:**
+
 ```typescript
 const Dashboard = () => {
   const { metadata_llamadas } = useUserData()
-  
+
   const stats = metadata_llamadas || {}
-  
+
   return (
     <div className="grid grid-cols-4 gap-4">
-      <StatCard 
-        title="Total Llamadas" 
-        value={stats.total_llamadas || 0} 
+      <StatCard
+        title="Total Llamadas"
+        value={stats.total_llamadas || 0}
       />
-      <StatCard 
-        title="Llamadas Exitosas" 
-        value={stats.llamadas_exitosas || 0} 
+      <StatCard
+        title="Llamadas Exitosas"
+        value={stats.llamadas_exitosas || 0}
       />
-      <StatCard 
-        title="Duración Promedio" 
-        value={`${stats.duracion_promedio || 0}s`} 
+      <StatCard
+        title="Duración Promedio"
+        value={`${stats.duracion_promedio || 0}s`}
       />
-      <StatCard 
-        title="Última Llamada" 
-        value={stats.ultima_llamada ? 
-          new Date(stats.ultima_llamada).toLocaleDateString() : 
+      <StatCard
+        title="Última Llamada"
+        value={stats.ultima_llamada ?
+          new Date(stats.ultima_llamada).toLocaleDateString() :
           'N/A'
-        } 
+        }
       />
     </div>
   )

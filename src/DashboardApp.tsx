@@ -57,7 +57,7 @@ function DashboardApp() {
   React.useEffect(() => {
     // Solo cargamos si tenemos la API key
     if (apiKey) {
-      console.log('API key disponible, cargando números de teléfono y batch calls');
+      // console.log('API key disponible, cargando números de teléfono y batch calls');
       loadPhoneNumbers();
       loadBatchCalls();
       // Cargar datos de hoy por defecto para una carga más rápida
@@ -68,7 +68,7 @@ function DashboardApp() {
   // Redirigir si se intenta acceder a agendas cuando está deshabilitada
   React.useEffect(() => {
     if (currentPage === 'agendas' && !agendaEnabled) {
-      console.log('Agenda deshabilitada, redirigiendo al dashboard');
+      // console.log('Agenda deshabilitada, redirigiendo al dashboard');
       setCurrentPage('dashboard');
     }
   }, [currentPage, agendaEnabled]);
@@ -76,7 +76,7 @@ function DashboardApp() {
   // Redirigir si se intenta acceder a lanzamiento sin permisos
   React.useEffect(() => {
     if (currentPage === 'lanzamiento' && !launchEnabled) {
-      console.log('Sin permisos de lanzamiento, redirigiendo al dashboard');
+      // console.log('Sin permisos de lanzamiento, redirigiendo al dashboard');
       setCurrentPage('dashboard');
     }
   }, [currentPage, launchEnabled]);
@@ -84,7 +84,7 @@ function DashboardApp() {
   // Redirigir si se intenta acceder a no-llamar sin permisos
   React.useEffect(() => {
     if (currentPage === 'no-llamar' && !dontCallEnabled) {
-      console.log('Sin permisos de no-llamar, redirigiendo al dashboard');
+      // console.log('Sin permisos de no-llamar, redirigiendo al dashboard');
       setCurrentPage('dashboard');
     }
   }, [currentPage, dontCallEnabled]);
@@ -92,7 +92,7 @@ function DashboardApp() {
   // Redirigir si se intenta acceder a campaña sin permisos
   React.useEffect(() => {
     if (currentPage === 'campaign' && !campaignEnabled) {
-      console.log('Sin permisos de campaña, redirigiendo al dashboard');
+      // console.log('Sin permisos de campaña, redirigiendo al dashboard');
       setCurrentPage('dashboard');
     }
   }, [currentPage, campaignEnabled]);
@@ -105,7 +105,7 @@ function DashboardApp() {
   const loadCalls = React.useCallback(async () => {
     // Preferimos usar los datos de contexto en lugar de hacer nuevas peticiones
     if (allCalls.length > 0) {
-      console.log('Usando datos del contexto compartido');
+      // console.log('Usando datos del contexto compartido');
       setCalls(allCalls);
       setFilteredCalls(allCalls);
       setStats(calculateStats(allCalls));
@@ -115,7 +115,7 @@ function DashboardApp() {
     
     // Si no hay datos en el contexto, cargamos datos a través del contexto
     if (!loadingAllCalls) {
-      console.log('Iniciando carga de datos desde el contexto');
+      // console.log('Iniciando carga de datos desde el contexto');
       loadAllCalls();
     }
     
@@ -145,7 +145,7 @@ function DashboardApp() {
       setDisconnectionReasons(allReasons);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
-      console.error('Error loading calls:', err);
+      // console.error('Error loading calls:', err);
     } finally {
       setLoading(false);
     }
@@ -261,7 +261,7 @@ function DashboardApp() {
     // Si no hay números disponibles, activar modo manual directamente
     React.useEffect(() => {
       if ((noPhoneNumbersAvailable || (phoneNumbersLoaded && phoneNumbers.length === 0)) && !useManualNumber) {
-        console.log('No hay números de teléfono disponibles, activando modo manual');
+        // console.log('No hay números de teléfono disponibles, activando modo manual');
         setUseManualNumber(true);
       }
     }, [phoneNumbers, phoneNumbersLoaded, noPhoneNumbersAvailable, useManualNumber]);
@@ -338,7 +338,7 @@ function DashboardApp() {
             setColumnMappings(initialMappings);
           }
         } catch (err) {
-          console.error('Error al procesar el CSV:', err);
+          // console.error('Error al procesar el CSV:', err);
           setError('Error al procesar el archivo CSV');
         }
       };
@@ -447,7 +447,7 @@ function DashboardApp() {
           onSuccess();
         }
       } catch (err) {
-        console.error('Error al crear la campaña:', err);
+        // console.error('Error al crear la campaña:', err);
         setError(err instanceof Error ? err.message : 'Error al crear la campaña');
       } finally {
         setLoading(false);
@@ -768,7 +768,7 @@ function DashboardApp() {
           setTaskKeys([]);
         }
       } catch (err) {
-        console.error('Error al cargar tareas:', err);
+        // console.error('Error al cargar tareas:', err);
         setTasksError(err instanceof Error ? err.message : 'Error al cargar las tareas');
       } finally {
         setLoadingTasks(false);
@@ -792,7 +792,7 @@ function DashboardApp() {
       
       try {
         const response = await deleteBatchCall(apiKey, batchToDelete.batch_call_id);
-        console.log('Respuesta de eliminación:', response);
+        // console.log('Respuesta de eliminación:', response);
         
         // Si llegamos aquí, la eliminación fue exitosa (incluso con 204)
         
@@ -834,7 +834,7 @@ function DashboardApp() {
         setDeleteConfirmModalOpen(false);
         setBatchToDelete(null);
       } catch (err) {
-        console.error('Error al eliminar batch call:', err);
+        // console.error('Error al eliminar batch call:', err);
         setDeleteError(err instanceof Error ? err.message : 'Error al eliminar la campaña');
       } finally {
         setDeletingBatch(false);

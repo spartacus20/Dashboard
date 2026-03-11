@@ -59,7 +59,7 @@ export function Campaign({ onNavigate }: CampaignProps) {
           }
           newMapping[key] = bestFolder.folderName;
         } catch (e) {
-          console.error('Error al cargar folders para workspace (Campaign):', key, e);
+          // console.error('Error al cargar folders para workspace (Campaign):', key, e);
         }
       }
       if (Object.keys(newMapping).length > 0) {
@@ -143,7 +143,7 @@ export function Campaign({ onNavigate }: CampaignProps) {
               workspace_name: workspaceName,
             }));
           } catch (err) {
-            console.error(`Error obteniendo batch calls para API key ${key.substring(0, 10)}...:`, err);
+            // console.error(`Error obteniendo batch calls para API key ${key.substring(0, 10)}...:`, err);
             return [] as BatchCallWithWorkspace[];
           }
         })
@@ -152,7 +152,7 @@ export function Campaign({ onNavigate }: CampaignProps) {
       const combined = results.flat();
       setBatchCallsByWorkspace(combined);
     } catch (err) {
-      console.error('Error cargando campañas:', err);
+      // console.error('Error cargando campañas:', err);
       setError(err instanceof Error ? err.message : 'Error al cargar las campañas');
       setBatchCallsByWorkspace([]);
     } finally {
@@ -179,7 +179,7 @@ export function Campaign({ onNavigate }: CampaignProps) {
         }))
       );
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [workspaceNameByApiKey, loading, batchCallsByWorkspace.length]);
 
   const getStatusBadgeClass = (status: string) => {
