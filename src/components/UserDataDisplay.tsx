@@ -1,5 +1,5 @@
 import React from 'react'
-import { useUserData } from '../hooks/useUserData'
+import { useUserData } from '../hooks/useDashboardData'
 
 const UserDataDisplay: React.FC = () => {
   const { 

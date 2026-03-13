@@ -17,12 +17,12 @@ import {
 import { DontCall } from '../types';
 import { useCallsContext } from '../context/CallsContext';
 import { listDontCallRecords, getClientApiKey } from '../api';
-import { useUserData } from '../hooks/useUserData';
+import { useDashboardData } from "../hooks/useDashboardData";;
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 
 const NoLlamar: React.FC = () => {
   const { dontCallEnabled } = useCallsContext();
-  const { apiKey: userApiKey, clientId } = useUserData();
+  const { apiKey: userApiKey, clientId } = useDashboardData();
   const [dontCallRecords, setDontCallRecords] = useState<DontCall[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

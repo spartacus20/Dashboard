@@ -1,24 +1,56 @@
-import React, { useMemo, useState, useEffect, useCallback } from "react";
+import React, { useMemo, useState } from "react";
 import type { CallStats, FilterCriteria } from "../types";
-import { DashboardHeader } from "../components/dashboard/DashboardHeader";
-import { DashboardMetricsCard } from "../components/dashboard/DashboardMetricsCard";
-import { DashboardCharts } from "../components/dashboard/DashboardCharts";
 import { Button } from "../components/ui/button";
-import { 
-  fetchSalesMetrics, 
-  fetchSalesMetricsToday, 
-  fetchSalesMetricsWeek, 
-  fetchSalesMetricsMonth,
-  fetchAsistenciaFunnelMetrics,
-  fetchFacturacionByDay,
-  fetchROIByDay 
-} from "../api";
-import { useCallsContext } from "../context/CallsContext";
-import { Activity, TrendingUp, ShoppingCart, BarChart3, Clock, Phone, RefreshCw } from "lucide-react";
-import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/card";
-
 import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/card";
+import { Chart } from "../components/ui/chart";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
+import {
+  ResponsiveContainer as RechartsResponsiveContainer,
+  ComposedChart as RechartsComposedChart,
+  BarChart as RechartsBarChart,
+  Bar as RechartsBar,
+  Line as RechartsLine,
+  PieChart as RechartsPieChart,
+  Pie as RechartsPie,
+  Cell as RechartsCell,
+  XAxis as RechartsXAxis,
+  YAxis as RechartsYAxis,
+  Tooltip as RechartsTooltip,
+  Legend as RechartsLegend,
+  CartesianGrid as RechartsCartesianGrid,
+} from "recharts";
+import {
+  fetchLanzamientoMetrics,
+  fetchLanzamientoMetricsToday,
+  fetchLanzamientoMetricsCustom,
+  fetchAsistenciaClicksByHour,
+} from "../api";
+import {
+  translateDisconnectionReason,
+  translateHousingType,
+  translateInterest,
   generateDisconnectionData,
+  generateDailyCallsData,
   generateEffectiveCallsData,
   generateHousingTypeData,
   generateAgendaHousingTypeData,
@@ -32,28 +64,72 @@ import {
   addDaysUTC,
   formatMadridDateYYYYMMDD,
 } from "../lib/dateUtils";
+import { DisconnectionReasonsChart } from "../components/dashboard/charts/DisconnectionReasonsChart";
+import { EffectiveCallsHourlyChart } from "../components/dashboard/charts/EffectiveCallsHourlyChart";
+import { DailyCallsTrendChart } from "../components/dashboard/charts/DailyCallsTrendChart";
+import { SimplePieChart } from "../components/dashboard/charts/SimplePieChart";
+import { TimePeriodSelector } from "../components/dashboard/TimePeriodSelector";
 
-// --- Skeleton Component ---
+// Helpers de zona horaria (Europa/Madrid)
+// Componente para mostrar esqueletos de carga
 const DashboardSkeleton = () => {
   return (
-    <div className="space-y-8 animate-pulse">
+    <div className="space-y-8">
+      {/* Skeleton para las tarjetas de estadísticas */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="h-24 bg-gray-800 rounded-lg"></div>
+        {[...Array(4)].map((_, index) => (
+          <Card key={index} className="animate-pulse">
+            <CardHeader className="pb-2">
+              <div className="h-4 bg-gray-800 rounded w-1/2 mb-2"></div>
+            </CardHeader>
+            <CardContent>
+              <div className="h-6 bg-gray-800 rounded w-1/3 mb-2"></div>
+              <div className="h-4 bg-gray-800 rounded w-1/4"></div>
+            </CardContent>
+          </Card>
         ))}
       </div>
+
+      {/* Skeleton para los gráficos */}
       <div className="grid gap-4 md:grid-cols-2">
-        {[...Array(2)].map((_, i) => (
-          <div key={i} className="h-[350px] bg-gray-800 rounded-lg"></div>
+        {[...Array(2)].map((_, index) => (
+          <Card key={index} className="animate-pulse">
+            <CardHeader>
+              <div className="h-5 bg-gray-800 rounded w-1/3 mb-2"></div>
+              <div className="h-4 bg-gray-800 rounded w-1/2"></div>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[300px] bg-gray-800 rounded"></div>
+            </CardContent>
+          </Card>
         ))}
       </div>
     </div>
   );
 };
 
+// Función para traducir razones de desconexión
+// Función para traducir tipos de vivienda
+// Función para traducir interés
+// Función para generar datos del gráfico de desconexión
+// Función para generar datos del gráfico de llamadas por día
+// Función para generar datos del gráfico de llamadas efectivas por hora
+// Función para generar datos del gráfico de tipos de vivienda (por llamadas)
+// Función para generar datos del gráfico de agendas por tipo de vivienda (por agendas)
+// Función para generar datos del gráfico de interés
+// Función para generar datos del gráfico de agentes por agendas
+// Función para generar datos del gráfico de agendamientos por hora
+
 interface DashboardProps {
+  stats: CallStats;
   loading: boolean;
   error: string | null;
+  onReload: () => void;
+  filterCriteria: FilterCriteria;
+  onFilterChange: (key: keyof FilterCriteria, value: any) => void;
+  disconnectionReasons: string[];
+  totalCalls: number;
+  filteredCallsCount: number;
   dashboardData?: any;
   loadDashboardData?: (
     fechaInicio?: string,
@@ -63,34 +139,62 @@ interface DashboardProps {
   ) => void;
   agendaEnabled?: boolean;
   launchEnabled?: boolean;
-  salesEnabled?: boolean;
 }
 
 export function Dashboard({
+  stats,
   loading,
   error,
+  onReload,
+  filterCriteria,
+  onFilterChange,
+  disconnectionReasons,
+  totalCalls,
+  filteredCallsCount,
   dashboardData,
   loadDashboardData,
   agendaEnabled = true,
   launchEnabled = false,
-  salesEnabled = false,
 }: DashboardProps) {
-  const { allCalls } = useCallsContext();
-  // --- Error Boundary Básico ---
-  const [hasError, setHasError] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string>("");
+  // Error boundary simple
+  const [hasError, setHasError] = React.useState(false);
+  const [errorMessage, setErrorMessage] = React.useState<string>("");
 
-  useEffect(() => {
+  React.useEffect(() => {
     const handleError = (error: ErrorEvent) => {
       // console.error("Error capturado en Dashboard:", error);
       setHasError(true);
       setErrorMessage(error.message || "Error desconocido");
     };
+
     window.addEventListener("error", handleError);
     return () => window.removeEventListener("error", handleError);
   }, []);
 
-  // --- Estados de Filtros y Fechas ---
+  if (hasError) {
+    return (
+      <div className="p-8">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+          <h2 className="text-lg font-semibold text-red-800 mb-2">
+            Error en el Dashboard
+          </h2>
+          <p className="text-red-700 mb-4">{errorMessage}</p>
+          <button
+            onClick={() => {
+              setHasError(false);
+              setErrorMessage("");
+              window.location.reload();
+            }}
+            className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+          >
+            Recargar página
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Estados para filtros de período (persistir para evitar "rebote" tras remount)
   const [timePeriod, setTimePeriod] = useState<string>(() => {
     try {
       return localStorage.getItem("dashboard_time_period") || "today";
@@ -98,12 +202,17 @@ export function Dashboard({
       return "today";
     }
   });
-  const [selectValue, setSelectValue] = useState<string>(timePeriod);
+  const [selectValue, setSelectValue] = useState<string>(() => {
+    try {
+      return localStorage.getItem("dashboard_time_period") || "today";
+    } catch {
+      return "today";
+    }
+  });
   const [customStartDate, setCustomStartDate] = useState<string>("");
   const [customEndDate, setCustomEndDate] = useState<string>("");
   const [customStartTime, setCustomStartTime] = useState<string>("00:00");
   const [customEndTime, setCustomEndTime] = useState<string>("23:59");
-
   const [isCustomDateDialogOpen, setIsCustomDateDialogOpen] =
     useState<boolean>(false);
   const [tempStartDate, setTempStartDate] = useState<string>("");
@@ -111,212 +220,990 @@ export function Dashboard({
   const [tempStartTime, setTempStartTime] = useState<string>("00:00");
   const [tempEndTime, setTempEndTime] = useState<string>("23:59");
 
+  // Estados para filtro de rango de horas (agendamientos)
   const [hourRangeStart, setHourRangeStart] = useState<string>("8");
   const [hourRangeEnd, setHourRangeEnd] = useState<string>("23");
 
+  // Estados para filtro de rango de horas (llamadas efectivas)
   const [effectiveCallsHourStart, setEffectiveCallsHourStart] =
     useState<string>("0");
   const [effectiveCallsHourEnd, setEffectiveCallsHourEnd] =
     useState<string>("23");
 
+  // Estado para filtro de base de datos
   const [databaseFilter, setDatabaseFilter] = useState<string>("");
   const [appliedDatabaseFilter, setAppliedDatabaseFilter] =
     useState<string>("");
-  const [hasFiltroSolar, setHasFiltroSolar] = useState(false);
 
-  // --- Estados de Launch ---
-  const [launchRegionMetrics] = useState<any>(null);
-  const [launchRegionLoading] = useState<boolean>(false);
-  const [launchRegionError] = useState<string | null>(null);
+  // Estado para métricas de lanzamiento por región
+  const [launchRegionMetrics, setLaunchRegionMetrics] = useState<{
+    europa: {
+      total_llamadas: number;
+      llamadas_contestadas: number;
+      llamadas_fallidas: number;
+    };
+    latam: {
+      total_llamadas: number;
+      llamadas_contestadas: number;
+      llamadas_fallidas: number;
+    };
+    espana: {
+      total_llamadas: number;
+      llamadas_contestadas: number;
+      llamadas_fallidas: number;
+    };
+  } | null>(null);
+  const [launchRegionLoading, setLaunchRegionLoading] =
+    useState<boolean>(false);
+  const [launchRegionError, setLaunchRegionError] = useState<string | null>(
+    null,
+  );
 
-  const [asistenciaByHour] = useState<any[]>([]);
-  const [asistenciaLoading] = useState<boolean>(false);
-  const [asistenciaError] = useState<string | null>(null);
+  // Verificar si el usuario tiene permiso para ver filtro de base de datos
+  const [hasFiltroSolar, setHasFiltroSolar] = React.useState(false);
 
-  // --- Estados de Ventas ---
-  const [salesMetrics, setSalesMetrics] = useState<any>(null);
-  const [salesLoading, setSalesLoading] = useState<boolean>(false);
-  const [facturacionData, setFacturacionData] = useState<any[]>([]);
-  const [roiData, setROIData] = useState<any[]>([]);
+  // Helpers para métricas de lanzamiento por región
+  const normalizeLaunchRegionFromMetrics = React.useCallback((metrics: any) => {
+    const porRegion = metrics?.porRegion || {};
+    const getRegion = (key: "europa" | "latam" | "espana") => {
+      const r = porRegion[key] || {};
+      return {
+        total_llamadas: r.total_llamadas ?? r.totalLlamadas ?? 0,
+        llamadas_contestadas:
+          r.llamadas_contestadas ?? r.llamadasContestadas ?? 0,
+        llamadas_fallidas: r.llamadas_fallidas ?? r.llamadasFallidas ?? 0,
+      };
+    };
+    return {
+      europa: getRegion("europa"),
+      latam: getRegion("latam"),
+      espana: getRegion("espana"),
+    };
+  }, []);
 
-  // --- Estados de Funnel ---
-  const [funnelData, setFunnelData] = useState<any>(null);
-  const [funnelLoading, setFunnelLoading] = useState<boolean>(false);
+  const normalizeLaunchRegionFromMetricsByRegion = React.useCallback(
+    (apiData: any) => {
+      const regionMap = new Map<string, any>();
+      (apiData?.metrics_by_region || []).forEach((region: any) => {
+        if (region?.region) {
+          regionMap.set(String(region.region).toLowerCase(), region);
+        }
+      });
+      const getRegion = (name: string) => {
+        const r = regionMap.get(name.toLowerCase()) || {};
+        return {
+          total_llamadas: r.total_llamadas ?? r.totalLlamadas ?? 0,
+          llamadas_contestadas:
+            r.llamadas_contestadas ?? r.llamadasContestadas ?? 0,
+          llamadas_fallidas: r.llamadas_fallidas ?? r.llamadasFallidas ?? 0,
+        };
+      };
+      return {
+        europa: getRegion("europa"),
+        latam: getRegion("latam"),
+        espana: getRegion("españa"),
+      };
+    },
+    [],
+  );
 
-  // --- Helpers de Metadata ---
-  const checkMetadata = useCallback(() => {
+  const calculateLaunchPercentage = (value: number, total: number) => {
+    if (!total || total <= 0) return 0;
+    return Math.round((value / total) * 100);
+  };
+
+  // Estado para métricas de asistencia por hora (clicks)
+  const [asistenciaByHour, setAsistenciaByHour] = useState<
+    { label: string; clicks: number; hour: number }[]
+  >([]);
+  const [asistenciaLoading, setAsistenciaLoading] = useState<boolean>(false);
+  const [asistenciaError, setAsistenciaError] = useState<string | null>(null);
+
+  // Función para verificar el metadata
+  const checkMetadata = React.useCallback(() => {
     try {
       const metadataStr = sessionStorage.getItem("metadata");
       if (metadataStr) {
         const metadata = JSON.parse(metadataStr);
-        setHasFiltroSolar(metadata?.filtro_solar === true);
-        return metadata?.filtro_solar === true;
+        const hasFiltro = metadata?.filtro_solar === true;
+        setHasFiltroSolar(hasFiltro);
+        // console.log("✅ Metadata verificado, filtro_solar:", hasFiltro);
+        return hasFiltro;
       }
       return false;
-    } catch {
+    } catch (error) {
+      // console.error("Error al leer metadata del sessionStorage:", error);
+      setHasFiltroSolar(false);
       return false;
     }
   }, []);
 
-  useEffect(() => {
+  // Verificar metadata inmediatamente y escuchar eventos de actualización
+  React.useEffect(() => {
+    // Verificar inmediatamente
     checkMetadata();
+
+    // Escuchar evento personalizado cuando se actualiza el metadata
+    const handleMetadataUpdate = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      if (customEvent.detail?.metadata) {
+        const hasFiltro = customEvent.detail.metadata.filtro_solar === true;
+        setHasFiltroSolar(hasFiltro);
+        // console.log(
+        //   "✅ Metadata actualizado desde evento, filtro_solar:",
+        //   hasFiltro,
+        // );
+      } else {
+        // Si no viene el metadata en el evento, verificar desde sessionStorage
+        checkMetadata();
+      }
+    };
+
+    // Verificar periódicamente durante los primeros 5 segundos (cada 500ms)
+    // Esto asegura que si el metadata se guarda después del montaje, se detecte
+    const intervalId = setInterval(() => {
+      const found = checkMetadata();
+      // Si encontramos el metadata, detener el intervalo
+      if (found) {
+        clearInterval(intervalId);
+      }
+    }, 500);
+
+    // Limpiar el intervalo después de 5 segundos
+    const timeoutId = setTimeout(() => {
+      clearInterval(intervalId);
+    }, 5000);
+
+    // Escuchar el evento personalizado de actualización de metadata
+    window.addEventListener("metadataUpdated", handleMetadataUpdate);
+
+    return () => {
+      clearInterval(intervalId);
+      clearTimeout(timeoutId);
+      window.removeEventListener("metadataUpdated", handleMetadataUpdate);
+    };
   }, [checkMetadata]);
 
-  // --- Helpers y Handlers ---
+  // Función para validar y actualizar el rango de horas (agendamientos)
   const handleHourRangeChange = (type: "start" | "end", value: string) => {
+    const startHour = parseInt(type === "start" ? value : hourRangeStart);
+    const endHour = parseInt(type === "end" ? value : hourRangeEnd);
+
     if (type === "start") {
       setHourRangeStart(value);
-      if (parseInt(value) > parseInt(hourRangeEnd)) setHourRangeEnd(value);
+      // Si la hora de inicio es mayor que la de fin, ajustar la de fin
+      if (startHour > endHour) {
+        setHourRangeEnd(value);
+      }
     } else {
       setHourRangeEnd(value);
-      if (parseInt(value) < parseInt(hourRangeStart)) setHourRangeStart(value);
+      // Si la hora de fin es menor que la de inicio, ajustar la de inicio
+      if (endHour < startHour) {
+        setHourRangeStart(value);
+      }
     }
   };
 
+  // Función para validar y actualizar el rango de horas (llamadas efectivas)
   const handleEffectiveCallsHourRangeChange = (
     type: "start" | "end",
     value: string,
   ) => {
+    const startHour = parseInt(
+      type === "start" ? value : effectiveCallsHourStart,
+    );
+    const endHour = parseInt(type === "end" ? value : effectiveCallsHourEnd);
+
     if (type === "start") {
       setEffectiveCallsHourStart(value);
-      if (parseInt(value) > parseInt(effectiveCallsHourEnd))
+      // Si la hora de inicio es mayor que la de fin, ajustar la de fin
+      if (startHour > endHour) {
         setEffectiveCallsHourEnd(value);
+      }
     } else {
       setEffectiveCallsHourEnd(value);
-      if (parseInt(value) < parseInt(effectiveCallsHourStart))
+      // Si la hora de fin es menor que la de inicio, ajustar la de inicio
+      if (endHour < startHour) {
         setEffectiveCallsHourStart(value);
+      }
     }
   };
 
+  // Log para depurar
+  React.useEffect(() => {
+    // console.log("Dashboard - dashboardData:", dashboardData);
+    if (dashboardData) {
+      // console.log("Dashboard - estadisticas:", dashboardData.estadisticas);
+      // console.log(
+      //   "Dashboard - razones_desconexion:",
+      //   dashboardData.razones_desconexion,
+      // );
+      // console.log(
+      //   "Dashboard - tipos_vivienda:",
+      //   dashboardData.dashboard_data?.tipos_vivienda,
+      // );
+      // console.log("Dashboard - timePeriod:", timePeriod);
+    }
+  }, [dashboardData, timePeriod]);
+
+  // Persistir selección de período para evitar que vuelva al anterior por remounts
+  React.useEffect(() => {
+    try {
+      localStorage.setItem("dashboard_time_period", timePeriod);
+      // Sincronizar selectValue con timePeriod cuando no es 'custom' o cuando se confirma
+      if (timePeriod !== "custom" || (customStartDate && customEndDate)) {
+        setSelectValue(timePeriod);
+      }
+    } catch {}
+  }, [timePeriod, customStartDate, customEndDate]);
+
+  // Efecto para cargar datos la primera vez con el período seleccionado
+  React.useEffect(() => {
+    if (!loadDashboardData) return;
+    // Solo cargar en el primer render
+    if (timePeriod === "today") {
+      // Para 'today', usar el endpoint específico sin fechas
+      const bddFilter = appliedDatabaseFilter || undefined;
+      loadDashboardData(undefined, undefined, "today", bddFilter);
+    }
+  }, [loadDashboardData]);
+
+  // Función para calcular las fechas según el período seleccionado (zona horaria Madrid)
   const calculateDatesForPeriod = (
     period: string,
     customStart?: string,
     customEnd?: string,
-    customStTime?: string,
-    customEnTime?: string,
+    customStartTime?: string,
+    customEndTime?: string,
   ) => {
-    // (Toda tu lógica original de cálculo de fechas va aquí, la omito por brevedad pero mantén la que tienes)
     const todayMadrid = getMadridMidnight();
+
     switch (period) {
       case "today":
-        return {
-          fechaInicio: formatMadridDateYYYYMMDD(todayMadrid),
-          fechaFin: formatMadridDateYYYYMMDD(addDaysUTC(todayMadrid, 1)),
-        };
+        const todayStr = formatMadridDateYYYYMMDD(todayMadrid);
+        const tomorrow = addDaysUTC(todayMadrid, 1);
+        const tomorrowStr = formatMadridDateYYYYMMDD(tomorrow);
+        return { fechaInicio: todayStr, fechaFin: tomorrowStr };
+
       case "week":
+        // Últimos 7 días (incluyendo hoy): hoy - 6 hasta hoy (inclusive), fin = hoy + 1 (exclusivo)
+        const startOfWeek = addDaysUTC(todayMadrid, -6);
+        const endOfWeek = addDaysUTC(todayMadrid, 1);
         return {
-          fechaInicio: addDaysUTC(todayMadrid, -6).toISOString(),
-          fechaFin: addDaysUTC(todayMadrid, 1).toISOString(),
+          fechaInicio: startOfWeek.toISOString(),
+          fechaFin: endOfWeek.toISOString(),
         };
+
       case "month":
-        const { year, month } = getMadridYmdParts();
+        // Calcular igual que el backend: desde el día 1 del mes actual hasta el día 1 del mes siguiente
+        const { year: yearMonth, month: monthMonth } = getMadridYmdParts();
+        const startOfMonth = new Date(
+          Date.UTC(yearMonth, monthMonth - 1, 1, 0, 0, 0, 0),
+        );
+        const endOfMonth = new Date(
+          Date.UTC(yearMonth, monthMonth, 1, 0, 0, 0, 0),
+        );
+
         return {
-          fechaInicio: new Date(Date.UTC(year, month - 1, 1)).toISOString(),
-          fechaFin: new Date(Date.UTC(year, month, 1)).toISOString(),
+          fechaInicio: startOfMonth.toISOString(),
+          fechaFin: endOfMonth.toISOString(),
         };
+
       case "custom":
-        // Lógica custom igual a la original
         if (customStart && customEnd) {
+          // Interpretar fechas YYYY-MM-DD en zona Madrid y convertir a rango con horas y minutos
           const [yS, mS, dS] = customStart.split("-").map(Number);
           const [yE, mE, dE] = customEnd.split("-").map(Number);
+
+          // Parsear tiempo (HH:MM)
+          const startTimeParts = (customStartTime || "00:00").split(":");
+          const endTimeParts = (customEndTime || "23:59").split(":");
+          const startHour = parseInt(startTimeParts[0] || "0", 10);
+          const startMinute = parseInt(startTimeParts[1] || "0", 10);
+          const endHour = parseInt(endTimeParts[0] || "23", 10);
+          const endMinute = parseInt(endTimeParts[1] || "59", 10);
+
+          // Crear fecha de inicio con hora y minuto específicos
+          const startMadrid = new Date(
+            Date.UTC(yS, (mS || 1) - 1, dS || 1, startHour, startMinute, 0, 0),
+          );
+
+          // Crear fecha de fin con hora y minuto específicos
+          // El backend usa rango semiabierto [inicio, fin), así que necesitamos el momento justo después del final
+          let endMadrid = new Date(
+            Date.UTC(yE, (mE || 1) - 1, dE || 1, endHour, endMinute, 59, 999),
+          );
+
+          // Si es el mismo día y la hora/minuto de fin es menor o igual que la de inicio, sumar un día
+          if (customStart === customEnd) {
+            const startTimeMinutes = startHour * 60 + startMinute;
+            const endTimeMinutes = endHour * 60 + endMinute;
+            if (endTimeMinutes <= startTimeMinutes) {
+              endMadrid = addDaysUTC(endMadrid, 1);
+            }
+          }
+
+          // Agregar 1 milisegundo para que el rango semiabierto [inicio, fin) incluya hasta el último milisegundo
+          // Esto asegura que created_at < fechaFin incluya todos los registros hasta endHour:endMinute:59.999
+          endMadrid = new Date(endMadrid.getTime() + 1);
+
+          // Convertir a formato ISO para enviar al backend
           return {
-            fechaInicio: new Date(Date.UTC(yS, mS - 1, dS)).toISOString(),
-            fechaFin: new Date(Date.UTC(yE, mE - 1, dE)).toISOString(),
+            fechaInicio: startMadrid.toISOString(),
+            fechaFin: endMadrid.toISOString(),
           };
         }
         return null;
-      default:
+
+      default: // 'all'
         return null;
     }
   };
 
-  useEffect(() => {
+  // Función para manejar el cambio de período
+  const handleTimePeriodChange = (newPeriod: string) => {
+    if (newPeriod === "custom") {
+      // Si se selecciona personalizado, abrir el dialog
+      setTempStartDate(customStartDate);
+      setTempEndDate(customEndDate);
+      setTempStartTime(customStartTime);
+      setTempEndTime(customEndTime);
+      setIsCustomDateDialogOpen(true);
+      // Actualizar selectValue para que el Select muestre "custom" visualmente
+      // pero no cambiar timePeriod hasta confirmar las fechas
+      setSelectValue("custom");
+    } else {
+      // Para otros períodos, cambiar directamente
+      setTimePeriod(newPeriod);
+      setSelectValue(newPeriod);
+    }
+  };
+
+  // Función para confirmar las fechas personalizadas
+  const handleConfirmCustomDates = () => {
+    if (tempStartDate && tempEndDate && tempStartDate <= tempEndDate) {
+      setCustomStartDate(tempStartDate);
+      setCustomEndDate(tempEndDate);
+      setCustomStartTime(tempStartTime);
+      setCustomEndTime(tempEndTime);
+      setTimePeriod("custom");
+      setSelectValue("custom");
+      setIsCustomDateDialogOpen(false);
+      // Resetear las fechas temporales
+      setTempStartDate("");
+      setTempEndDate("");
+      setTempStartTime("00:00");
+      setTempEndTime("23:59");
+    }
+  };
+
+  // Función para cancelar el dialog
+  const handleCancelCustomDates = () => {
+    setIsCustomDateDialogOpen(false);
+    // Resetear las fechas temporales
+    setTempStartDate("");
+    setTempEndDate("");
+    setTempStartTime("00:00");
+    setTempEndTime("23:59");
+    // Revertir el selectValue al período anterior si no había fechas confirmadas
+    if (!customStartDate || !customEndDate) {
+      setSelectValue(timePeriod);
+    }
+  };
+
+  // Función para aplicar el filtro de base de datos
+  const applyDatabaseFilter = () => {
+    setAppliedDatabaseFilter(databaseFilter.trim());
+  };
+
+  // Función para limpiar el filtro de base de datos
+  const clearDatabaseFilter = () => {
+    setDatabaseFilter("");
+    setAppliedDatabaseFilter("");
+  };
+
+  // Efecto para recargar datos cuando cambia el filtro de período o base de datos aplicada
+  React.useEffect(() => {
     if (!loadDashboardData) return;
+
     const bddFilter = appliedDatabaseFilter || undefined;
 
-    if (
-      timePeriod === "all" ||
-      timePeriod === "today" ||
-      timePeriod === "week" ||
-      timePeriod === "month"
-    ) {
-      loadDashboardData(undefined, undefined, timePeriod, bddFilter);
+    if (timePeriod === "all") {
+      // Para "all", cargar sin fechas usando el endpoint genérico
+      // console.log(
+      //   "Recargando datos del dashboard sin filtros de fecha",
+      //   bddFilter ? `con base de datos: ${bddFilter}` : "",
+      // );
+      loadDashboardData(undefined, undefined, "all", bddFilter);
     } else if (timePeriod === "custom" && customStartDate && customEndDate) {
+      // Para período personalizado, usar fechas específicas con horas
       const dates = calculateDatesForPeriod(
-        "custom",
+        timePeriod,
         customStartDate,
         customEndDate,
         customStartTime,
         customEndTime,
       );
-      if (dates)
+      if (dates) {
+        // console.log(
+        //   "Recargando datos del dashboard con fechas personalizadas:",
+        //   dates,
+        //   bddFilter ? `con base de datos: ${bddFilter}` : "",
+        // );
         loadDashboardData(
           dates.fechaInicio,
           dates.fechaFin,
           "custom",
           bddFilter,
         );
+      }
+    } else if (
+      timePeriod === "today" ||
+      timePeriod === "week" ||
+      timePeriod === "month"
+    ) {
+      // Para otros períodos (today, week, month), usar endpoints específicos
+      // console.log(
+      //   "Recargando datos del dashboard para período:",
+      //   timePeriod,
+      //   bddFilter ? `con base de datos: ${bddFilter}` : "",
+      // );
+      loadDashboardData(undefined, undefined, timePeriod, bddFilter);
     }
   }, [
     timePeriod,
     customStartDate,
     customEndDate,
+    customStartTime,
+    customEndTime,
     appliedDatabaseFilter,
     loadDashboardData,
   ]);
 
-  // --- Cargar Métricas de Ventas y Funnel ---
-  const loadExtraMetrics = useCallback(async () => {
-    const dates = calculateDatesForPeriod(timePeriod, customStartDate, customEndDate);
-    const start = dates?.fechaInicio?.split('T')[0];
-    const end = dates?.fechaFin?.split('T')[0];
-
-    if (salesEnabled) {
-      setSalesLoading(true);
+  // Cargar métricas de lanzamiento por región cuando el usuario tiene permiso y cambia el período
+  React.useEffect(() => {
+    const loadLaunchRegionMetrics = async () => {
+      if (!launchEnabled) {
+        setLaunchRegionMetrics(null);
+        return;
+      }
       try {
-        let metrics;
-        if (timePeriod === "today") metrics = await fetchSalesMetricsToday();
-        else if (timePeriod === "week") metrics = await fetchSalesMetricsWeek();
-        else if (timePeriod === "month") metrics = await fetchSalesMetricsMonth();
-        else metrics = await fetchSalesMetrics(start, end);
-        setSalesMetrics(metrics);
+        setLaunchRegionLoading(true);
+        setLaunchRegionError(null);
 
-        // Cargar datos de tendencia
-        const [fData, rData] = await Promise.all([
-          fetchFacturacionByDay(start, end),
-          fetchROIByDay(start, end)
-        ]);
-        setFacturacionData(fData);
-        setROIData(rData);
-      } catch (err) {
-        // console.error("Error loading sales metrics:", err);
+        // Seleccionar endpoint según período
+        if (timePeriod === "today") {
+          const data = await fetchLanzamientoMetricsToday();
+          const normalized = normalizeLaunchRegionFromMetricsByRegion(data);
+          setLaunchRegionMetrics(normalized);
+        } else if (timePeriod === "week") {
+          // Calcular fechas para la semana y usar endpoint genérico
+          const dates = calculateDatesForPeriod("week");
+          if (dates) {
+            const data = await fetchLanzamientoMetricsCustom(
+              dates.fechaInicio,
+              dates.fechaFin,
+            );
+            const normalized = normalizeLaunchRegionFromMetricsByRegion(data);
+            setLaunchRegionMetrics(normalized);
+          } else {
+            setLaunchRegionMetrics(null);
+          }
+        } else if (timePeriod === "month") {
+          // Calcular fechas para el mes y usar endpoint genérico
+          const dates = calculateDatesForPeriod("month");
+          if (dates) {
+            const data = await fetchLanzamientoMetricsCustom(
+              dates.fechaInicio,
+              dates.fechaFin,
+            );
+            const normalized = normalizeLaunchRegionFromMetricsByRegion(data);
+            setLaunchRegionMetrics(normalized);
+          } else {
+            setLaunchRegionMetrics(null);
+          }
+        } else if (
+          timePeriod === "custom" &&
+          customStartDate &&
+          customEndDate
+        ) {
+          const data = await fetchLanzamientoMetricsCustom(
+            customStartDate,
+            customEndDate,
+          );
+          const normalized = normalizeLaunchRegionFromMetricsByRegion(data);
+          setLaunchRegionMetrics(normalized);
+        } else if (timePeriod === "all") {
+          const metrics = await fetchLanzamientoMetrics();
+          const normalized = normalizeLaunchRegionFromMetrics(metrics);
+          setLaunchRegionMetrics(normalized);
+        } else {
+          setLaunchRegionMetrics(null);
+        }
+      } catch (error: any) {
+        // console.error(
+        //   "Error al cargar métricas de lanzamiento por región en Dashboard:",
+        //   error,
+        // );
+        setLaunchRegionError(
+          error?.message ||
+            "Error al cargar métricas de lanzamiento por región",
+        );
+        setLaunchRegionMetrics(null);
       } finally {
-        setSalesLoading(false);
+        setLaunchRegionLoading(false);
+      }
+    };
+
+    loadLaunchRegionMetrics();
+  }, [
+    launchEnabled,
+    timePeriod,
+    customStartDate,
+    customEndDate,
+    normalizeLaunchRegionFromMetrics,
+    normalizeLaunchRegionFromMetricsByRegion,
+  ]);
+
+  // Cargar métricas de asistencia por hora (clicks) según el período seleccionado
+  React.useEffect(() => {
+    const loadAsistenciaByHour = async () => {
+      if (!launchEnabled) {
+        setAsistenciaByHour([]);
+        return;
+      }
+      try {
+        setAsistenciaLoading(true);
+        setAsistenciaError(null);
+
+        let fechaInicio: string | undefined;
+        let fechaFin: string | undefined;
+
+        if (timePeriod === "all") {
+          // Sin filtros de fecha: backend devolverá todos los datos
+          fechaInicio = undefined;
+          fechaFin = undefined;
+        } else if (
+          timePeriod === "custom" &&
+          customStartDate &&
+          customEndDate
+        ) {
+          const dates = calculateDatesForPeriod(
+            "custom",
+            customStartDate,
+            customEndDate,
+            customStartTime,
+            customEndTime,
+          );
+          fechaInicio = dates?.fechaInicio;
+          fechaFin = dates?.fechaFin;
+        } else {
+          const dates = calculateDatesForPeriod(
+            timePeriod,
+            customStartDate,
+            customEndDate,
+          );
+          fechaInicio = dates?.fechaInicio;
+          fechaFin = dates?.fechaFin;
+        }
+
+        const raw = await fetchAsistenciaClicksByHour(fechaInicio, fechaFin);
+
+        const processed =
+          raw
+            ?.filter((item: any) => (item.clicks_totales || 0) > 0)
+            .map((item: any) => {
+              const hour =
+                typeof item.hora === "number"
+                  ? item.hora
+                  : parseInt(item.hora || "0", 10);
+              return {
+                label: `${hour.toString().padStart(2, "0")}:00`,
+                clicks: item.clicks_totales || 0,
+                hour,
+              };
+            }) || [];
+
+        setAsistenciaByHour(processed);
+      } catch (error: any) {
+        // console.error(
+        //   "Error al cargar métricas de asistencia por hora:",
+        //   error,
+        // );
+        setAsistenciaError(
+          error?.message || "Error al cargar métricas de asistencia por hora",
+        );
+        setAsistenciaByHour([]);
+      } finally {
+        setAsistenciaLoading(false);
+      }
+    };
+
+    loadAsistenciaByHour();
+  }, [
+    launchEnabled,
+    timePeriod,
+    customStartDate,
+    customEndDate,
+    customStartTime,
+    customEndTime,
+  ]);
+
+  // Función para filtrar datos por período (usando medianoche en Madrid)
+  const filterDataByPeriod = (data: any[], dateField: string = "fecha") => {
+    if (!data || !Array.isArray(data)) return data;
+
+    try {
+      const today = getMadridMidnight();
+
+      switch (timePeriod) {
+        case "today":
+          const tomorrowForFilter = addDaysUTC(today, 1);
+          return data.filter((item) => {
+            try {
+              const itemDate = new Date(item[dateField]);
+              return (
+                !isNaN(itemDate.getTime()) &&
+                itemDate >= today &&
+                itemDate < tomorrowForFilter
+              );
+            } catch (error) {
+              // console.warn("Error procesando fecha:", item[dateField], error);
+              return false;
+            }
+          });
+
+        case "week":
+          const weekStart = addDaysUTC(today, -6);
+          const weekEndExclusive = addDaysUTC(today, 1);
+          return data.filter((item) => {
+            try {
+              const itemDate = new Date(item[dateField]);
+              return (
+                !isNaN(itemDate.getTime()) &&
+                itemDate >= weekStart &&
+                itemDate < weekEndExclusive
+              );
+            } catch (error) {
+              // console.warn("Error procesando fecha:", item[dateField], error);
+              return false;
+            }
+          });
+
+        case "month":
+          const monthStart = addDaysUTC(today, -30);
+          return data.filter((item) => {
+            try {
+              const itemDate = new Date(item[dateField]);
+              return !isNaN(itemDate.getTime()) && itemDate >= monthStart;
+            } catch (error) {
+              // console.warn("Error procesando fecha:", item[dateField], error);
+              return false;
+            }
+          });
+
+        case "custom":
+          if (customStartDate && customEndDate) {
+            try {
+              // Parsear fechas considerando horas si están disponibles
+              let startDate: Date;
+              let endDateExclusive: Date;
+
+              if (customStartTime && customEndTime) {
+                const [yS, mS, dS] = customStartDate.split("-").map(Number);
+                const [hS, minS] = customStartTime.split(":").map(Number);
+                const [yE, mE, dE] = customEndDate.split("-").map(Number);
+                const [hE, minE] = customEndTime.split(":").map(Number);
+
+                startDate = new Date(
+                  Date.UTC(
+                    yS,
+                    (mS || 1) - 1,
+                    dS || 1,
+                    hS || 0,
+                    minS || 0,
+                    0,
+                    0,
+                  ),
+                );
+                endDateExclusive = new Date(
+                  Date.UTC(
+                    yE,
+                    (mE || 1) - 1,
+                    dE || 1,
+                    hE || 23,
+                    minE || 59,
+                    59,
+                    999,
+                  ),
+                );
+                endDateExclusive = addDaysUTC(endDateExclusive, 0);
+                endDateExclusive.setUTCMilliseconds(999);
+              } else {
+                const [yS, mS, dS] = customStartDate.split("-").map(Number);
+                const [yE, mE, dE] = customEndDate.split("-").map(Number);
+                startDate = new Date(
+                  Date.UTC(yS, (mS || 1) - 1, dS || 1, 0, 0, 0, 0),
+                );
+                endDateExclusive = addDaysUTC(
+                  new Date(
+                    Date.UTC(yE, (mE || 1) - 1, dE || 1, 23, 59, 59, 999),
+                  ),
+                  0,
+                );
+              }
+
+              return data.filter((item) => {
+                try {
+                  const fechaStr = item[dateField];
+                  if (!fechaStr) return false;
+
+                  // Parsear fecha como string YYYY-MM-DD directamente (sin usar new Date que puede cambiar zona horaria)
+                  const fechaParts = fechaStr
+                    .toString()
+                    .split("T")[0]
+                    .split("-");
+                  if (fechaParts.length !== 3) return false;
+
+                  const [itemYear, itemMonth, itemDay] = fechaParts.map(Number);
+
+                  // Comparar directamente los componentes de fecha
+                  const itemDateOnly = new Date(
+                    Date.UTC(itemYear, itemMonth - 1, itemDay),
+                  );
+                  const startDateOnly = new Date(
+                    Date.UTC(
+                      startDate.getUTCFullYear(),
+                      startDate.getUTCMonth(),
+                      startDate.getUTCDate(),
+                    ),
+                  );
+                  const endDateOnly = new Date(
+                    Date.UTC(
+                      endDateExclusive.getUTCFullYear(),
+                      endDateExclusive.getUTCMonth(),
+                      endDateExclusive.getUTCDate(),
+                    ),
+                  );
+
+                  return (
+                    itemDateOnly >= startDateOnly && itemDateOnly < endDateOnly
+                  );
+                } catch (error) {
+                  // console.warn(
+                  //   "Error procesando fecha:",
+                  //   item[dateField],
+                  //   error,
+                  // );
+                  return false;
+                }
+              });
+            } catch (error) {
+              // console.warn("Error procesando fechas personalizadas:", error);
+              return data;
+            }
+          }
+          return data;
+
+        default:
+          return data;
+      }
+    } catch (error) {
+      // console.error("Error en filterDataByPeriod:", error);
+      return data;
+    }
+  };
+
+  // Datos para los gráficos con filtrado
+  const filteredDailyData = useMemo(() => {
+    try {
+      if (dashboardData?.dashboard_data?.llamadas_por_dia) {
+        // console.log(
+        //   "Datos originales de llamadas_por_dia:",
+        //   dashboardData.dashboard_data.llamadas_por_dia,
+        // );
+        // Para períodos específicos (week, month, today), el backend ya devuelve datos filtrados
+        // No necesitamos filtrar de nuevo, solo para 'custom' y 'all'
+        let filtered = dashboardData.dashboard_data.llamadas_por_dia;
+        if (timePeriod === "custom" || timePeriod === "all") {
+          filtered = filterDataByPeriod(
+            dashboardData.dashboard_data.llamadas_por_dia,
+            "fecha",
+          );
+        }
+        // console.log("Datos filtrados:", filtered);
+        return filtered;
+      }
+      // console.log("No hay datos de llamadas_por_dia en dashboardData");
+      return [];
+    } catch (error) {
+      // console.error("Error procesando filteredDailyData:", error);
+      return [];
+    }
+  }, [dashboardData, timePeriod, customStartDate, customEndDate]);
+
+  // Rellenar días faltantes en el rango (semana, mes, personalizado) para que todos aparezcan en el gráfico
+  const filledDailyData = useMemo(() => {
+    const today = getMadridMidnight();
+    const mapByFecha = new Map<string, any>();
+    // Solo incluir datos que estén dentro del rango correcto
+    (filteredDailyData || []).forEach((item: any) => {
+      const f = item.fecha ? String(item.fecha).split("T")[0] : "";
+      if (f) {
+        // Verificar que la fecha esté en el rango correcto antes de agregarla
+        let shouldInclude = true;
+        if (timePeriod === "week") {
+          const weekStart = addDaysUTC(today, -6);
+          const weekEndExclusive = addDaysUTC(today, 1);
+          const itemDate = new Date(f + "T00:00:00Z");
+          if (itemDate < weekStart || itemDate >= weekEndExclusive) {
+            shouldInclude = false;
+          }
+        } else if (timePeriod === "month") {
+          // Para mes: desde el día 1 del mes actual hasta hoy
+          const { year, month } = getMadridYmdParts(today);
+          const monthStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+          const monthEndExclusive = addDaysUTC(today, 1);
+          const itemDate = new Date(f + "T00:00:00Z");
+          if (itemDate < monthStart || itemDate >= monthEndExclusive) {
+            shouldInclude = false;
+          }
+        }
+        if (shouldInclude) {
+          mapByFecha.set(f, item);
+        }
+      }
+    });
+
+    if (timePeriod === "week") {
+      const days: any[] = [];
+      for (let i = -6; i <= 0; i++) {
+        const d = addDaysUTC(today, i);
+        const fechaStr = formatMadridDateYYYYMMDD(d);
+        const existing = mapByFecha.get(fechaStr);
+        days.push(
+          existing ?? {
+            fecha: fechaStr,
+            dia_label: formatDiaLabel(fechaStr),
+            total_llamadas: 0,
+            llamadas_efectivas: 0,
+            llamadas_fallidas: 0,
+            costo_dia: 0,
+            total_agendamientos: 0,
+          },
+        );
+      }
+      return days;
+    }
+    if (timePeriod === "month") {
+      // Para mes: desde el día 1 del mes actual hasta hoy
+      const { year, month } = getMadridYmdParts(today);
+      const monthStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+      const days: any[] = [];
+      const cursor = new Date(monthStart);
+      const todayEnd = addDaysUTC(today, 1);
+      while (cursor < todayEnd) {
+        const fechaStr = formatMadridDateYYYYMMDD(cursor);
+        const existing = mapByFecha.get(fechaStr);
+        days.push(
+          existing ?? {
+            fecha: fechaStr,
+            dia_label: formatDiaLabel(fechaStr),
+            total_llamadas: 0,
+            llamadas_efectivas: 0,
+            llamadas_fallidas: 0,
+            costo_dia: 0,
+            total_agendamientos: 0,
+          },
+        );
+        cursor.setUTCDate(cursor.getUTCDate() + 1);
+      }
+      return days;
+    }
+    if (timePeriod === "custom" && customStartDate && customEndDate) {
+      try {
+        const [yS, mS, dS] = customStartDate.split("-").map(Number);
+        const [yE, mE, dE] = customEndDate.split("-").map(Number);
+        const start = new Date(
+          Date.UTC(yS, (mS || 1) - 1, dS || 1, 0, 0, 0, 0),
+        );
+        const end = new Date(
+          Date.UTC(yE, (mE || 1) - 1, dE || 1, 23, 59, 59, 999),
+        );
+        const days: any[] = [];
+        const cursor = new Date(start);
+        while (cursor <= end) {
+          const fechaStr = formatMadridDateYYYYMMDD(cursor);
+          const existing = mapByFecha.get(fechaStr);
+          days.push(
+            existing ?? {
+              fecha: fechaStr,
+              dia_label: formatDiaLabel(fechaStr),
+              total_llamadas: 0,
+              llamadas_efectivas: 0,
+              llamadas_fallidas: 0,
+              costo_dia: 0,
+              total_agendamientos: 0,
+            },
+          );
+          cursor.setUTCDate(cursor.getUTCDate() + 1);
+        }
+        return days;
+      } catch {
+        return filteredDailyData || [];
       }
     }
+    return filteredDailyData || [];
+  }, [timePeriod, filteredDailyData, customStartDate, customEndDate]);
 
-    if (launchEnabled) {
-      setFunnelLoading(true);
-      try {
-        const funnel = await fetchAsistenciaFunnelMetrics({
-          fecha_inicio: start,
-          fecha_fin: end
+  const disconnectionData = useMemo(
+    () => generateDisconnectionData([], dashboardData),
+    [dashboardData],
+  );
+  const dailyCallsData = useMemo(() => {
+    // console.log(
+    //   "Procesando dailyCallsData con filledDailyData:",
+    //   filledDailyData,
+    // );
+    try {
+      if (filledDailyData && filledDailyData.length > 0) {
+        const processedData = filledDailyData.map((item: any) => {
+          try {
+            return {
+              label: item.dia_label || item.fecha || "Fecha desconocida",
+              llamadas: Number(item.total_llamadas) || 0,
+              llamadas_efectivas: Number(item.llamadas_efectivas) || 0,
+              costo: Number(item.costo_dia) || 0,
+              fecha: item.fecha || "",
+              total_agendamientos: Number(item.total_agendamientos) || 0,
+            };
+          } catch (error) {
+            // console.warn(
+            //   "Error procesando item en dailyCallsData:",
+            //   item,
+            //   error,
+            // );
+            return {
+              label: "Error",
+              llamadas: 0,
+              llamadas_efectivas: 0,
+              costo: 0,
+              fecha: "",
+              total_agendamientos: 0,
+            };
+          }
         });
-        setFunnelData(funnel);
-      } catch (err) {
-        // console.error("Error loading funnel metrics:", err);
-      } finally {
-        setFunnelLoading(false);
+        // console.log("dailyCallsData procesado:", processedData);
+        return processedData;
       }
+      // console.log("No hay datos para dailyCallsData");
+      return [];
+    } catch (error) {
+      // console.error("Error procesando dailyCallsData:", error);
+      return [];
     }
-  }, [salesEnabled, launchEnabled, timePeriod, customStartDate, customEndDate]);
+  }, [filledDailyData]);
 
-  useEffect(() => {
-    loadExtraMetrics();
-  }, [loadExtraMetrics]);
-
-  // --- Helpers Chart Data ---
-  // Usa exactamente los mismos useMemo que tenías (hourlyAgendasData, housingTypeData, etc...)
   const hourlyAgendasData = useMemo(
     () =>
       generateHourlyAgendasData(dashboardData, hourRangeStart, hourRangeEnd),
@@ -326,12 +1213,33 @@ export function Dashboard({
     () => generateHousingTypeData(dashboardData),
     [dashboardData],
   );
-  const interestData = useMemo(
-    () => generateInterestData(dashboardData),
+  const agendaHousingTypeData = useMemo(
+    () => generateAgendaHousingTypeData(dashboardData),
     [dashboardData],
   );
-  const agentesPorAgendasData = useMemo(
-    () => generateAgentesPorAgendasData(dashboardData),
+  const hasAgendasInPeriod = !!(
+    dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos &&
+    dashboardData.dashboard_data.metricas_generales.total_agendamientos > 0
+  );
+  const agendaPropertyTypeData = useMemo(() => {
+    if (
+      !hasAgendasInPeriod ||
+      !agendaHousingTypeData ||
+      agendaHousingTypeData.length === 0
+    )
+      return [];
+    return agendaHousingTypeData
+      .map((item: any) => ({
+        label: item.label,
+        porcentaje:
+          typeof item.porcentaje === "string"
+            ? parseFloat(item.porcentaje)
+            : item.porcentaje || 0,
+      }))
+      .filter((item: any) => item.porcentaje && item.porcentaje > 0);
+  }, [agendaHousingTypeData, hasAgendasInPeriod]);
+  const interestData = useMemo(
+    () => generateInterestData(dashboardData),
     [dashboardData],
   );
   const effectiveCallsData = useMemo(
@@ -343,497 +1251,2228 @@ export function Dashboard({
       ),
     [dashboardData, effectiveCallsHourStart, effectiveCallsHourEnd],
   );
-  const disconnectionData = useMemo(
-    () => generateDisconnectionData([], dashboardData),
+  const agentesPorAgendasData = useMemo(
+    () => generateAgentesPorAgendasData(dashboardData),
     [dashboardData],
   );
 
-  // (Mismo bloque de logic que tenías para combinedCallsAgendasData)
+  // Datos combinados para gráfico llamadas (barras) vs agendas (línea)
   const combinedCallsAgendasData = useMemo(() => {
-    if (!effectiveCallsData || effectiveCallsData.length === 0) {
-      if (!hourlyAgendasData || hourlyAgendasData.length === 0) {
+    // Modo "hoy": usar series por hora
+    if (timePeriod === "today") {
+      if (
+        (!effectiveCallsData || effectiveCallsData.length === 0) &&
+        (!hourlyAgendasData || hourlyAgendasData.length === 0)
+      ) {
         return [];
+      }
+
+      const map = new Map<
+        string,
+        { label: string; llamadas: number; agendas: number }
+      >();
+
+      if (effectiveCallsData && effectiveCallsData.length > 0) {
+        effectiveCallsData.forEach((item: any) => {
+          const label = item.label ?? "";
+          const llamadas =
+            typeof item.llamadas === "number" ? item.llamadas : 0;
+          if (!label) return;
+          map.set(label, { label, llamadas, agendas: 0 });
+        });
+      }
+
+      if (hourlyAgendasData && hourlyAgendasData.length > 0) {
+        hourlyAgendasData.forEach((item: any) => {
+          const label = item.label ?? "";
+          const agendas = typeof item.agendas === "number" ? item.agendas : 0;
+          if (!label) return;
+          const existing = map.get(label);
+          if (existing) {
+            existing.agendas = agendas;
+          } else {
+            map.set(label, { label, llamadas: 0, agendas });
+          }
+        });
+      }
+
+      const result = Array.from(map.values());
+      result.sort((a, b) => a.label.localeCompare(b.label));
+      return result;
+    }
+
+    // Otros períodos (semana, mes, personalizado): usar llamadas efectivas reales por día
+    if (!dailyCallsData || dailyCallsData.length === 0) {
+      return [];
+    }
+
+    // Construir array preservando fecha para ordenar cronológicamente (más antiguo primero)
+    const result = dailyCallsData.map((item: any) => {
+      const label = item.label ?? item.fecha ?? "";
+      const fecha = item.fecha ?? "";
+      const llamadas =
+        typeof item.llamadas_efectivas === "number"
+          ? item.llamadas_efectivas
+          : 0;
+      const agendas =
+        typeof item.total_agendamientos === "number"
+          ? item.total_agendamientos
+          : 0;
+      return { label, fecha, llamadas, agendas };
+    });
+
+    // Ordenar por fecha ascendente (día más antiguo primero, hoy al final)
+    result.sort((a: any, b: any) => {
+      const dateA = a.fecha ? String(a.fecha).split("T")[0] : "";
+      const dateB = b.fecha ? String(b.fecha).split("T")[0] : "";
+      return dateA.localeCompare(dateB);
+    });
+
+    // Log para validar suma de llamadas efectivas
+    if (timePeriod === "week" && result.length > 0) {
+      const sumaGrafico = result.reduce(
+        (sum: number, item: any) => sum + item.llamadas,
+        0,
+      );
+      const totalCard =
+        dashboardData?.dashboard_data?.metricas_generales?.llamadas_efectivas ||
+        0;
+      // console.log("🔍 Validación llamadas efectivas (semana):", {
+      //   sumaGrafico,
+      //   totalCard,
+      //   diferencia: sumaGrafico - totalCard,
+      //   datosPorDia: result.map((r: any) => ({
+      //     fecha: r.fecha,
+      //     llamadas: r.llamadas,
+      //   })),
+      // });
+    }
+
+    // Si el rango de fechas es mayor a 30 días, agrupar por semana
+    if (result.length > 0) {
+      const firstDateStr = result[0].fecha
+        ? String(result[0].fecha).split("T")[0]
+        : "";
+      const lastDateStr = result[result.length - 1].fecha
+        ? String(result[result.length - 1].fecha).split("T")[0]
+        : "";
+
+      if (firstDateStr && lastDateStr) {
+        const firstDate = new Date(firstDateStr);
+        const lastDate = new Date(lastDateStr);
+        const diffMs = lastDate.getTime() - firstDate.getTime();
+        const diffDays = diffMs / (1000 * 60 * 60 * 24) + 1;
+
+        if (!isNaN(diffDays) && diffDays > 30) {
+          const msPerDay = 24 * 60 * 60 * 1000;
+          const weekMap = new Map<
+            number,
+            {
+              fecha_inicio: string;
+              fecha_fin: string;
+              llamadas: number;
+              agendas: number;
+            }
+          >();
+
+          result.forEach((item: any) => {
+            const fechaStr = item.fecha ? String(item.fecha).split("T")[0] : "";
+            if (!fechaStr) return;
+            const d = new Date(fechaStr);
+            if (isNaN(d.getTime())) return;
+
+            const weekIndex = Math.floor(
+              (d.getTime() - firstDate.getTime()) / (7 * msPerDay),
+            );
+            const llamadas =
+              typeof item.llamadas === "number" ? item.llamadas : 0;
+            const agendas = typeof item.agendas === "number" ? item.agendas : 0;
+
+            const existing = weekMap.get(weekIndex);
+            if (existing) {
+              existing.llamadas += llamadas;
+              existing.agendas += agendas;
+              if (fechaStr < existing.fecha_inicio)
+                existing.fecha_inicio = fechaStr;
+              if (fechaStr > existing.fecha_fin) existing.fecha_fin = fechaStr;
+            } else {
+              weekMap.set(weekIndex, {
+                fecha_inicio: fechaStr,
+                fecha_fin: fechaStr,
+                llamadas,
+                agendas,
+              });
+            }
+          });
+
+          const weeklyResult = Array.from(weekMap.entries())
+            .sort((a, b) => a[0] - b[0])
+            .map(([_, value]) => {
+              const formatShort = (iso: string) => {
+                const d = new Date(iso);
+                if (isNaN(d.getTime())) return iso;
+                return d.toLocaleDateString("es-ES", {
+                  day: "2-digit",
+                  month: "2-digit",
+                });
+              };
+
+              const label = `${formatShort(value.fecha_inicio)} al ${formatShort(value.fecha_fin)}`;
+
+              return {
+                label,
+                fecha_inicio: value.fecha_inicio,
+                fecha_fin: value.fecha_fin,
+                llamadas: value.llamadas,
+                agendas: value.agendas,
+              };
+            });
+
+          return weeklyResult;
+        }
       }
     }
 
-    const map = new Map<string, { label: string; llamadas: number; agendas: number }>();
+    return result;
+  }, [
+    timePeriod,
+    effectiveCallsData,
+    hourlyAgendasData,
+    dailyCallsData,
+    dashboardData,
+  ]);
 
-    if (effectiveCallsData && effectiveCallsData.length > 0) {
-      effectiveCallsData.forEach((item: any) => {
-        const label = item.label ?? "";
-        const llamadas = typeof item.llamadas === "number" ? item.llamadas : 0;
-        if (!label) return;
-        map.set(label, { label, llamadas, agendas: 0 });
-      });
+  // Determinar si estamos en un rango "largo" (agrupado por semanas o todos los datos)
+  const isLongRange = useMemo(() => {
+    // Si estamos mostrando todos los datos, siempre considerar rango largo
+    if (timePeriod === "all") return true;
+
+    // Si los datos combinados tienen campos de rango semanal, también es rango largo
+    if (combinedCallsAgendasData && combinedCallsAgendasData.length > 0) {
+      const hasWeeklyRange = combinedCallsAgendasData.some(
+        (item: any) => item.fecha_inicio && item.fecha_fin,
+      );
+      if (hasWeeklyRange) return true;
     }
 
-    if (hourlyAgendasData && hourlyAgendasData.length > 0) {
-      hourlyAgendasData.forEach((item: any) => {
-        const label = item.label ?? "";
-        const agendas = typeof item.agendas === "number" ? item.agendas : 0;
-        if (!label) return;
-        const existing = map.get(label);
-        if (existing) {
-          existing.agendas = agendas;
-        } else {
-          map.set(label, { label, llamadas: 0, agendas });
-        }
-      });
+    return false;
+  }, [timePeriod, combinedCallsAgendasData]);
+
+  // Métricas calculadas con datos filtrados
+  const filteredMetrics = useMemo(() => {
+    if (!filteredDailyData || filteredDailyData.length === 0) {
+      return {
+        totalLlamadas:
+          dashboardData?.dashboard_data?.metricas_generales?.total_llamadas ||
+          0,
+        costoTotal: dashboardData?.dashboard_data?.llamadas_por_dia
+          ? dashboardData.dashboard_data.llamadas_por_dia.reduce(
+              (sum: number, item: any) => sum + (item.costo_dia || 0),
+              0,
+            )
+          : 0,
+      };
     }
 
-    return Array.from(map.values()).sort((a, b) => {
-      const hA = parseInt(a.label.split(":")[0]);
-      const hB = parseInt(b.label.split(":")[0]);
-      return hA - hB;
-    });
-  }, [effectiveCallsData, hourlyAgendasData]);
-
-  const agendaHousingTypeData = useMemo(
-    () => generateAgendaHousingTypeData(dashboardData),
-    [dashboardData],
-  );
-  const hasAgendasInPeriod = !!(
-    dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos > 0
-  );
-  const agendaPropertyTypeData = useMemo(() => {
-    if (!hasAgendasInPeriod || !agendaHousingTypeData) return [];
-    return agendaHousingTypeData
-      .map((item: any) => ({
-        label: item.label,
-        porcentaje: parseFloat(item.porcentaje) || 0,
-      }))
-      .filter((i: any) => i.porcentaje > 0);
-  }, [agendaHousingTypeData, hasAgendasInPeriod]);
-
-  const isLongRange = timePeriod === "all" || timePeriod === "month";
-
-  const calculateLaunchPercentage = (val: number, tot: number) =>
-    tot > 0 ? Math.round((val / tot) * 100) : 0;
-
-  // --- Render ---
-  if (hasError) {
-    return (
-      <div className="p-8">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-          <h2 className="text-lg font-semibold text-red-800 mb-2">
-            Error en el Dashboard
-          </h2>
-          <p className="text-red-700 mb-4">{errorMessage}</p>
-          <Button
-            onClick={() => window.location.reload()}
-            className="bg-red-600 text-white"
-          >
-            Recargar página
-          </Button>
-        </div>
-      </div>
+    const totalLlamadas = filteredDailyData.reduce(
+      (sum: number, item: any) => sum + (item.total_llamadas || 0),
+      0,
     );
-  }
+    const costoTotal = filteredDailyData.reduce(
+      (sum: number, item: any) => sum + (item.costo_dia || 0),
+      0,
+    );
+
+    return { totalLlamadas, costoTotal };
+  }, [filteredDailyData, dashboardData]);
+
+  // Eliminar la Card y el contenido del gráfico de llamadas por día
+
+  // Procesar los datos para el gráfico apilado (efectivas/fallidas) optimizado
+  const stackedDailyChartData = React.useMemo(() => {
+    // Filtrar días sin llamadas
+    const filtered = filteredDailyData.filter((item: any) => {
+      const anyItem = item as any;
+      const total =
+        (typeof anyItem.llamadas_efectivas === "number"
+          ? anyItem.llamadas_efectivas
+          : 0) +
+        (typeof anyItem.llamadas_fallidas === "number"
+          ? anyItem.llamadas_fallidas
+          : 0);
+      return total > 0;
+    });
+    // Limitar a los últimos 30 días si hay muchos datos
+    const limited = filtered.length > 30 ? filtered.slice(-30) : filtered;
+    return limited.map((item: any) => {
+      const anyItem = item as any;
+      return {
+        label: item.label,
+        efectivas:
+          typeof anyItem.llamadas_efectivas === "number"
+            ? anyItem.llamadas_efectivas
+            : 0,
+        fallidas:
+          typeof anyItem.llamadas_fallidas === "number"
+            ? anyItem.llamadas_fallidas
+            : 0,
+        fecha: item.fecha,
+        costo: typeof anyItem.costo_dia === "number" ? anyItem.costo_dia : 0,
+      };
+    });
+  }, [filteredDailyData]);
 
   return (
     <div className="p-8">
-      <DashboardHeader
-        loading={loading}
-        dashboardData={dashboardData}
-        timePeriod={timePeriod}
-        selectValue={selectValue}
-        hasFiltroSolar={hasFiltroSolar}
-        databaseFilter={databaseFilter}
-        appliedDatabaseFilter={appliedDatabaseFilter}
-        setDatabaseFilter={setDatabaseFilter}
-        applyDatabaseFilter={() => setAppliedDatabaseFilter(databaseFilter)}
-        clearDatabaseFilter={() => {
-          setDatabaseFilter("");
-          setAppliedDatabaseFilter("");
-        }}
-        handleTimePeriodChange={(val) => {
-          if (val === "custom") {
-            setIsCustomDateDialogOpen(true);
-            setSelectValue("custom");
-          } else {
-            setTimePeriod(val);
-            setSelectValue(val);
-          }
-        }}
-        isCustomDateDialogOpen={isCustomDateDialogOpen}
-        setIsCustomDateDialogOpen={setIsCustomDateDialogOpen}
-        tempStartDate={tempStartDate}
-        setTempStartDate={setTempStartDate}
-        tempStartTime={tempStartTime}
-        setTempStartTime={setTempStartTime}
-        tempEndDate={tempEndDate}
-        setTempEndDate={setTempEndDate}
-        tempEndTime={tempEndTime}
-        setTempEndTime={setTempEndTime}
-        handleCancelCustomDates={() => setIsCustomDateDialogOpen(false)}
-        handleConfirmCustomDates={() => {
-          setCustomStartDate(tempStartDate);
-          setCustomEndDate(tempEndDate);
-          setCustomStartTime(tempStartTime);
-          setCustomEndTime(tempEndTime);
-          setTimePeriod("custom");
-          setIsCustomDateDialogOpen(false);
-        }}
-        customStartDate={customStartDate}
-        customEndDate={customEndDate}
-        customStartTime={customStartTime}
-        customEndTime={customEndTime}
-      />
-
-      {loading && !dashboardData ? (
-        <DashboardSkeleton />
-      ) : error ? (
-        <div className="p-8 bg-red-50 rounded-xl border border-red-200 text-red-700">
-          {error}
-        </div>
-      ) : !dashboardData ? (
-        <div className="p-8 bg-yellow-50 rounded-xl border border-yellow-200 text-yellow-700">
-          No hay datos cargados.
-        </div>
-      ) : (
-        <>
-          {/* Top Cards (Métricas Generales) */}
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800 mb-2">
+          Dashboard
+        </h2>
+        <p className="text-slate-600">Análisis de llamadas con uMindsAI</p>
+        {dashboardData && (
           <div
-            className={`grid gap-4 mb-4 ${agendaEnabled ? "md:grid-cols-2 lg:grid-cols-4" : "md:grid-cols-2 lg:grid-cols-4"}`}
+            className={`mt-2 inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+              loading
+                ? "bg-blue-50 text-blue-700 border-blue-200"
+                : "bg-green-100 text-green-800 border-green-200"
+            }`}
           >
-            <DashboardMetricsCard
-              title="Llamadas Lanzadas"
-              value={
-                dashboardData?.dashboard_data?.metricas_generales?.total_llamadas?.toLocaleString() ||
-                0
-              }
-              description="Total registrado"
-            />
-            <DashboardMetricsCard
-              title="Costo Total"
-              value={`$${dashboardData?.dashboard_data?.metricas_generales?.costo_total?.toFixed(2) || "0.00"}`}
-              description="Costo de llamadas"
-            />
-            <DashboardMetricsCard
-              title="Llamadas Contestadas"
-              value={
-                dashboardData?.dashboard_data?.metricas_generales?.llamadas_efectivas?.toLocaleString() ||
-                0
-              }
-            />
-            <DashboardMetricsCard
-              title="Llamadas Fallidas"
-              value={
-                dashboardData?.dashboard_data?.metricas_generales?.llamadas_fallidas?.toLocaleString() ||
-                0
-              }
-            />
+            {loading ? (
+              <>
+                <svg
+                  className="animate-spin w-3 h-3 mr-2"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+                Actualizando métricas...
+              </>
+            ) : (
+              <>
+                <svg
+                  className="w-3 h-3 mr-1"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                Datos actualizados del servidor
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Filtros de período */}
+      {dashboardData && (
+        <div className="mb-6 flex flex-wrap gap-4 items-center p-4 bg-slate-100 rounded-lg border border-slate-200">
+          <div className="flex items-center gap-2">
+            <label
+              htmlFor="timePeriod"
+              className="text-sm font-medium text-slate-700"
+            >
+              Período:
+            </label>
+            <Select value={selectValue} onValueChange={handleTimePeriodChange}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Seleccionar período" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los datos</SelectItem>
+                <SelectItem value="today">Hoy</SelectItem>
+                <SelectItem value="week">Última semana</SelectItem>
+                <SelectItem value="month">Último mes</SelectItem>
+                <SelectItem value="custom">Personalizado</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
-          {agendaEnabled && (
-            <div className="grid gap-4 mb-8 md:grid-cols-2 lg:grid-cols-3">
-              <DashboardMetricsCard
-                title="Total Agendamientos"
-                value={
-                  dashboardData?.dashboard_data?.metricas_generales
-                    ?.total_agendamientos || 0
-                }
+          {hasFiltroSolar && (
+            <div className="flex items-center gap-2">
+              <label
+                htmlFor="databaseFilter"
+                className="text-sm font-medium text-slate-700"
+              >
+                Base de datos:
+              </label>
+              <input
+                type="text"
+                id="databaseFilter"
+                value={databaseFilter}
+                onChange={(e) => setDatabaseFilter(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    applyDatabaseFilter();
+                  }
+                }}
+                placeholder="Nombre de la base de datos"
+                className="px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
               />
-              <DashboardMetricsCard
-                title="Costo por Agenda"
-                value={`$${((dashboardData?.dashboard_data?.metricas_generales?.costo_total || 0) / (dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos || 1)).toFixed(2)}`}
-              />
-              <DashboardMetricsCard
-                title="Promedio de Agenda"
-                value={(
-                  (dashboardData?.dashboard_data?.metricas_generales
-                    ?.llamadas_efectivas || 0) /
-                  (dashboardData?.dashboard_data?.metricas_generales
-                    ?.total_agendamientos || 1)
-                ).toFixed(1)}
-                description="llamadas por agenda"
-              />
+              <Button
+                onClick={applyDatabaseFilter}
+                className="text-sm bg-blue-600 hover:bg-blue-700 text-white"
+                disabled={!databaseFilter.trim()}
+              >
+                Filtrar
+              </Button>
+              {appliedDatabaseFilter && (
+                <Button
+                  onClick={clearDatabaseFilter}
+                  variant="outline"
+                  className="text-sm"
+                >
+                  Limpiar
+                </Button>
+              )}
             </div>
           )}
 
+          {timePeriod === "custom" && customStartDate && customEndDate && (
+            <Button
+              onClick={() => {
+                setTempStartDate(customStartDate);
+                setTempEndDate(customEndDate);
+                setTempStartTime(customStartTime);
+                setTempEndTime(customEndTime);
+                setIsCustomDateDialogOpen(true);
+              }}
+              className="text-sm bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              Seleccionar rango de fechas y horas
+            </Button>
+          )}
 
+          <div className="text-xs text-slate-600">
+            {timePeriod === "all" && "Mostrando todos los datos disponibles"}
+            {timePeriod === "today" && "Mostrando datos de hoy"}
+            {timePeriod === "week" && "Mostrando datos de los últimos 7 días"}
+            {timePeriod === "month" && "Mostrando datos del último mes"}
+            {timePeriod === "custom" &&
+              customStartDate &&
+              customEndDate &&
+              `Mostrando datos del ${customStartDate} ${customStartTime} al ${customEndDate} ${customEndTime}`}
+            {timePeriod === "custom" &&
+              (!customStartDate || !customEndDate) &&
+              "Selecciona un rango de fechas personalizado"}
+            {appliedDatabaseFilter &&
+              ` | Filtrado por base de datos: ${appliedDatabaseFilter}`}
+          </div>
+        </div>
+      )}
 
-          <DashboardCharts
-            dashboardData={dashboardData}
-            agendaEnabled={agendaEnabled}
-            launchEnabled={launchEnabled}
-            timePeriod={timePeriod}
-            isLongRange={isLongRange}
-            hourlyAgendasData={hourlyAgendasData}
-            housingTypeData={housingTypeData}
-            interestData={interestData}
-            agentesPorAgendasData={agentesPorAgendasData}
-            effectiveCallsData={effectiveCallsData}
-            asistenciaByHour={asistenciaByHour}
-            disconnectionData={disconnectionData}
-            combinedCallsAgendasData={combinedCallsAgendasData}
-            agendaPropertyTypeData={agendaPropertyTypeData}
-            hasAgendasInPeriod={hasAgendasInPeriod}
-            asistenciaLoading={asistenciaLoading}
-            asistenciaError={asistenciaError}
-            launchRegionLoading={launchRegionLoading}
-            launchRegionError={launchRegionError}
-            launchRegionMetrics={launchRegionMetrics}
-            calculateLaunchPercentage={calculateLaunchPercentage}
-            hourRangeStart={hourRangeStart}
-            hourRangeEnd={hourRangeEnd}
-            handleHourRangeChange={handleHourRangeChange}
-            effectiveCallsHourStart={effectiveCallsHourStart}
-            effectiveCallsHourEnd={effectiveCallsHourEnd}
-            handleEffectiveCallsHourRangeChange={
-              handleEffectiveCallsHourRangeChange
-            }
-            salesMetrics={salesMetrics}
-            facturacionData={facturacionData}
-            roiData={roiData}
-            salesEnabled={salesEnabled}
-          />
+      {/* Dialog para seleccionar fechas personalizadas */}
+      <Dialog
+        open={isCustomDateDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            // Si se cierra el dialog sin confirmar, cancelar
+            handleCancelCustomDates();
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Seleccionar Rango de Fechas Personalizado</DialogTitle>
+            <DialogDescription>
+              Elige el rango de fechas para filtrar los datos del dashboard
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-2">
+                <label
+                  htmlFor="dialogStartDate"
+                  className="text-sm font-medium text-slate-700"
+                >
+                  Fecha de inicio:
+                </label>
+                <input
+                  type="date"
+                  id="dialogStartDate"
+                  value={tempStartDate}
+                  onChange={(e) => setTempStartDate(e.target.value)}
+                  className="px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <label
+                  htmlFor="dialogStartTime"
+                  className="text-sm font-medium text-slate-700"
+                >
+                  Hora de inicio:
+                </label>
+                <input
+                  type="time"
+                  id="dialogStartTime"
+                  value={tempStartTime}
+                  onChange={(e) => {
+                    setTempStartTime(e.target.value || "00:00");
+                  }}
+                  className="px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-2">
+                <label
+                  htmlFor="dialogEndDate"
+                  className="text-sm font-medium text-slate-700"
+                >
+                  Fecha de fin:
+                </label>
+                <input
+                  type="date"
+                  id="dialogEndDate"
+                  value={tempEndDate}
+                  onChange={(e) => setTempEndDate(e.target.value)}
+                  min={tempStartDate || undefined}
+                  className="px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <label
+                  htmlFor="dialogEndTime"
+                  className="text-sm font-medium text-slate-700"
+                >
+                  Hora de fin:
+                </label>
+                <input
+                  type="time"
+                  id="dialogEndTime"
+                  value={tempEndTime}
+                  onChange={(e) => {
+                    setTempEndTime(e.target.value || "23:59");
+                  }}
+                  className="px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            {tempStartDate && tempEndDate && tempStartDate > tempEndDate && (
+              <div className="text-sm text-red-600 bg-red-50 p-2 rounded border border-red-200">
+                La fecha de inicio no puede ser posterior a la fecha de fin
+              </div>
+            )}
+            {tempStartDate &&
+              tempEndDate &&
+              tempStartDate === tempEndDate &&
+              (() => {
+                const startTimeParts = tempStartTime.split(":");
+                const endTimeParts = tempEndTime.split(":");
+                const startMinutes =
+                  parseInt(startTimeParts[0] || "0", 10) * 60 +
+                  parseInt(startTimeParts[1] || "0", 10);
+                const endMinutes =
+                  parseInt(endTimeParts[0] || "23", 10) * 60 +
+                  parseInt(endTimeParts[1] || "59", 10);
+                return startMinutes >= endMinutes;
+              })() && (
+                <div className="text-sm text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
+                  La hora de inicio es mayor o igual que la de fin. Se
+                  considerará hasta el final del día siguiente.
+                </div>
+              )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCancelCustomDates}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleConfirmCustomDates}
+              disabled={
+                !tempStartDate || !tempEndDate || tempStartDate > tempEndDate
+              }
+            >
+              Aplicar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-          {/* Tablas detalladas originales */}
-          <div className="space-y-8 mt-8">
+      {/* Solo mostramos el skeleton si está cargando Y no hay datos previos */}
+      {loading && !dashboardData ? (
+        <DashboardSkeleton />
+      ) : error ? (
+        <div className="p-8 bg-red-50 rounded-xl border border-red-200">
+          <p className="text-red-700">{error}</p>
+        </div>
+      ) : !dashboardData ? (
+        <div className="p-8 bg-yellow-50 rounded-xl border border-yellow-200">
+          <p className="text-yellow-700 text-lg mb-4">
+            ⚠️ No se han cargado los datos del dashboard desde el servidor.
+          </p>
+          {loadDashboardData && (
+            <Button
+              onClick={() => {
+                const bddFilter = appliedDatabaseFilter || undefined;
+                loadDashboardData &&
+                  loadDashboardData(
+                    undefined,
+                    undefined,
+                    timePeriod,
+                    bddFilter,
+                  );
+              }}
+              variant="default"
+            >
+              Cargar datos del servidor
+            </Button>
+          )}
+        </div>
+      ) : (
+        <>
+          {/* Sección de estadísticas del servidor */}
+          <div
+            className={`grid gap-4 mb-4 ${
+              agendaEnabled
+                ? "md:grid-cols-2 lg:grid-cols-4"
+                : "md:grid-cols-2 lg:grid-cols-4"
+            }`}
+          >
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-center gap-2 pb-2">
+                <CardTitle className="text-sm font-medium text-center">
+                  Llamadas Lanzadas
+                </CardTitle>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  className="h-4 w-4 text-muted-foreground"
+                >
+                  <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                </svg>
+              </CardHeader>
+              <CardContent className="flex flex-col items-center justify-center text-center">
+                <div className="text-xl font-bold text-center">
+                  {dashboardData?.dashboard_data?.metricas_generales?.total_llamadas?.toLocaleString() ||
+                    0}
+                </div>
+                <p className="text-xs text-slate-600 text-center">
+                  Total registrado en el servidor
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-center gap-2 pb-2">
+                <CardTitle className="text-sm font-medium text-center">
+                  Costo Total
+                </CardTitle>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  className="h-4 w-4 text-muted-foreground"
+                >
+                  <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                </svg>
+              </CardHeader>
+              <CardContent className="flex flex-col items-center justify-center text-center">
+                <div className="text-xl font-bold text-center">
+                  $
+                  {dashboardData?.dashboard_data?.metricas_generales?.costo_total?.toFixed(
+                    2,
+                  ) || "0.00"}
+                </div>
+                <p className="text-xs text-slate-600 text-center">
+                  Costo total de llamadas
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-center gap-2 pb-2">
+                <CardTitle className="text-sm font-medium text-center">
+                  Llamadas Contestadas
+                </CardTitle>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  className="h-4 w-4 text-emerald-400"
+                >
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                  <polyline points="22,4 12,14.01 9,11.01" />
+                </svg>
+              </CardHeader>
+              <CardContent className="flex flex-col items-center justify-center text-center">
+                <div className="text-xl font-bold text-center">
+                  {(() => {
+                    const total =
+                      dashboardData?.dashboard_data?.metricas_generales
+                        ?.total_llamadas || 0;
+                    const efectivas =
+                      dashboardData?.dashboard_data?.metricas_generales
+                        ?.llamadas_efectivas || 0;
+                    if (total > 0) {
+                      return (
+                        <span className="font-bold">
+                          {((efectivas / total) * 100).toFixed(2)}%
+                        </span>
+                      );
+                    }
+                    return <span className="font-bold">0%</span>;
+                  })()}
+                </div>
+                <div className="text-xs text-slate-600 text-center">
+                  {dashboardData?.dashboard_data?.metricas_generales?.llamadas_efectivas?.toLocaleString() ||
+                    0}{" "}
+                  llamadas contestadas
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-center gap-2 pb-2">
+                <CardTitle className="text-sm font-medium text-center">
+                  Llamadas Fallidas
+                </CardTitle>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  className="h-4 w-4 text-red-400"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="15" y1="9" x2="9" y2="15" />
+                  <line x1="9" y1="9" x2="15" y2="15" />
+                </svg>
+              </CardHeader>
+              <CardContent className="flex flex-col items-center justify-center text-center">
+                <div className="text-xl font-bold text-center">
+                  {(() => {
+                    const total =
+                      dashboardData?.dashboard_data?.metricas_generales
+                        ?.total_llamadas || 0;
+                    const fallidas =
+                      dashboardData?.dashboard_data?.metricas_generales
+                        ?.llamadas_fallidas || 0;
+                    if (total > 0) {
+                      return (
+                        <span className="font-bold">
+                          {((fallidas / total) * 100).toFixed(2)}%
+                        </span>
+                      );
+                    }
+                    return <span className="font-bold">0%</span>;
+                  })()}
+                </div>
+                <div className="text-xs text-slate-600 text-center">
+                  {dashboardData?.dashboard_data?.metricas_generales?.llamadas_fallidas?.toLocaleString() ||
+                    0}{" "}
+                  llamadas fallidas
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+          <div className="grid gap-4 mb-8 md:grid-cols-2 lg:grid-cols-4">
+            {agendaEnabled && (
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-center gap-2 pb-2">
+                  <CardTitle className="text-sm font-medium text-center">
+                    Total Agendamientos
+                  </CardTitle>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    className="h-4 w-4 text-blue-400"
+                  >
+                    <rect width="18" height="18" x="3" y="4" rx="2" ry="2" />
+                    <line x1="16" x2="16" y1="2" y2="6" />
+                    <line x1="8" x2="8" y1="2" y2="6" />
+                    <line x1="3" x2="21" y1="10" y2="10" />
+                  </svg>
+                </CardHeader>
+                <CardContent className="flex flex-col items-center justify-center text-center">
+                  <div className="text-xl font-bold text-center">
+                    {(() => {
+                      const efectivas =
+                        dashboardData?.dashboard_data?.metricas_generales
+                          ?.llamadas_efectivas || 0;
+                      const agendas =
+                        dashboardData?.dashboard_data?.metricas_generales
+                          ?.total_agendamientos || 0;
+                      if (efectivas > 0) {
+                        return (
+                          <span className="font-bold">
+                            {((agendas / efectivas) * 100).toFixed(2)}%
+                          </span>
+                        );
+                      }
+                      return <span className="font-bold">0%</span>;
+                    })()}
+                  </div>
+                  <div className="text-xs text-slate-600 text-center">
+                    {dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos?.toLocaleString() ||
+                      0}{" "}
+                    agendamientos
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            {agendaEnabled && (
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-center gap-2 pb-2">
+                  <CardTitle className="text-sm font-medium text-center">
+                    Costo por Agenda
+                  </CardTitle>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    className="h-4 w-4 text-emerald-400"
+                  >
+                    <line x1="12" x2="12" y1="2" y2="22" />
+                    <path d="M17 5H7L12 2l5 3z" />
+                    <path d="M17 19H7L12 22l5-3z" />
+                    <rect width="18" height="18" x="3" y="4" rx="2" ry="2" />
+                  </svg>
+                </CardHeader>
+                <CardContent className="flex flex-col items-center justify-center text-center">
+                  <div className="text-xl font-bold text-center">
+                    {(() => {
+                      const costo =
+                        dashboardData?.dashboard_data?.metricas_generales
+                          ?.costo_total || 0;
+                      const agendas =
+                        dashboardData?.dashboard_data?.metricas_generales
+                          ?.total_agendamientos || 0;
+                      if (agendas > 0) {
+                        return (
+                          <span className="font-bold">
+                            ${(costo / agendas).toFixed(2)}
+                          </span>
+                        );
+                      }
+                      return <span className="font-bold">$0.00</span>;
+                    })()}
+                  </div>
+                  <div className="text-xs text-slate-600 text-center">
+                    {dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos?.toLocaleString() ||
+                      0}{" "}
+                    agendamientos
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            {agendaEnabled && (
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-center gap-2 pb-2">
+                  <CardTitle className="text-sm font-medium text-center">
+                    Promedio de Agenda
+                  </CardTitle>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    className="h-4 w-4 text-indigo-400"
+                  >
+                    <path d="M9 12l2 2 4-4" />
+                    <path d="M21 12c.552 0 1-.448 1-1V5c0-.552-.448-1-1-1H3c-.552 0-1 .448-1 1v6c0 .552.448 1 1 1h18z" />
+                    <path d="M3 12h18" />
+                  </svg>
+                </CardHeader>
+                <CardContent className="flex flex-col items-center justify-center text-center">
+                  <div className="text-xl font-bold text-center">
+                    {(() => {
+                      const efectivas =
+                        dashboardData?.dashboard_data?.metricas_generales
+                          ?.llamadas_efectivas || 0;
+                      const agendas =
+                        dashboardData?.dashboard_data?.metricas_generales
+                          ?.total_agendamientos || 0;
+                      if (agendas > 0) {
+                        const promedio = efectivas / agendas;
+                        return (
+                          <span className="font-bold">
+                            {promedio.toFixed(1)}
+                          </span>
+                        );
+                      }
+                      return <span className="font-bold">0.0</span>;
+                    })()}
+                  </div>
+                  <div className="text-xs text-slate-600 text-center">
+                    llamadas por agenda
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-center gap-2 pb-2">
+                <CardTitle className="text-sm font-medium text-center">
+                  Duración Total de Llamadas
+                </CardTitle>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  className="h-4 w-4 text-slate-400"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+              </CardHeader>
+              <CardContent className="flex flex-col items-center justify-center text-center">
+                <div className="text-xl font-bold text-center">
+                  {(() => {
+                    const minutes =
+                      dashboardData?.dashboard_data?.metricas_generales
+                        ?.total_duration_minutes || 0;
+                    return (
+                      <span className="font-bold">
+                        {minutes.toLocaleString()} min
+                      </span>
+                    );
+                  })()}
+                </div>
+                <div className="text-xs text-slate-600 text-center">
+                  Suma de duración de llamadas (en minutos)
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Métricas de lanzamiento por región (si el cliente tiene launch habilitado) */}
+          {launchEnabled && (
+            <Card className="mb-8">
+              <CardHeader>
+                <CardTitle className="text-base font-semibold text-slate-800">
+                  Tasa de Contestación por Región
+                </CardTitle>
+                <CardDescription className="text-slate-500">
+                  Comparación de rendimiento de las campañas de lanzamiento por
+                  región
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {launchRegionLoading ? (
+                  <div className="py-4 text-sm text-slate-500">
+                    Cargando métricas de lanzamiento por región...
+                  </div>
+                ) : launchRegionError ? (
+                  <div className="py-4 text-sm text-red-600">
+                    {launchRegionError}
+                  </div>
+                ) : launchRegionMetrics ? (
+                  <div className="grid gap-4 md:grid-cols-3">
+                    {(["europa", "latam", "espana"] as const).map((key) => {
+                      const data = launchRegionMetrics[key];
+                      const label =
+                        key === "europa"
+                          ? "Europa"
+                          : key === "latam"
+                            ? "Latam"
+                            : "España";
+                      const tasa = calculateLaunchPercentage(
+                        data.llamadas_contestadas,
+                        data.total_llamadas,
+                      );
+                      return (
+                        <div
+                          key={key}
+                          className="bg-slate-50 rounded-lg border border-slate-200 p-4 flex flex-col items-center text-center"
+                        >
+                          <div className="text-sm font-medium text-slate-700 mb-1">
+                            {label}
+                          </div>
+                          <div className="text-2xl font-bold text-blue-700 mb-1">
+                            {tasa}%
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            {data.llamadas_contestadas.toLocaleString()}{" "}
+                            contestadas de{" "}
+                            {data.total_llamadas.toLocaleString()} llamadas
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="py-4 text-sm text-slate-500">
+                    No hay métricas de lanzamiento por región disponibles para
+                    este período.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Gráfico de llamadas por día */}
+          {/* Eliminar la Card y el contenido del gráfico de llamadas por día */}
+
+          {/* Gráficos de distribución */}
+          <div
+            className={`grid gap-4 mb-8 ${
+              agendaEnabled ? "md:grid-cols-2" : "md:grid-cols-1"
+            }`}
+          >
+            {/* Gráfico de agendamientos por hora */}
+            {agendaEnabled &&
+              hourlyAgendasData &&
+              hourlyAgendasData.length > 0 && (
+                <Card className="mb-8 shadow-lg border border-slate-200">
+                  <CardHeader>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                      <div>
+                        <CardTitle className="text-base font-semibold text-slate-800">
+                          Agendamientos por Hora
+                        </CardTitle>
+                        <CardDescription className="text-slate-500">
+                          Distribución de agendamientos por hora del día
+                        </CardDescription>
+                      </div>
+
+                      {/* Filtro de rango de horas */}
+                      <div className="flex flex-wrap items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                        <div className="flex items-center gap-2">
+                          <label
+                            htmlFor="hourStart"
+                            className="text-xs font-medium text-slate-700"
+                          >
+                            Desde:
+                          </label>
+                          <Select
+                            value={hourRangeStart}
+                            onValueChange={(value) =>
+                              handleHourRangeChange("start", value)
+                            }
+                          >
+                            <SelectTrigger className="w-20 h-8">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Array.from({ length: 24 }, (_, i) => (
+                                <SelectItem key={i} value={i.toString()}>
+                                  {i.toString().padStart(2, "0")}:00
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <label
+                            htmlFor="hourEnd"
+                            className="text-xs font-medium text-slate-700"
+                          >
+                            Hasta:
+                          </label>
+                          <Select
+                            value={hourRangeEnd}
+                            onValueChange={(value) =>
+                              handleHourRangeChange("end", value)
+                            }
+                          >
+                            <SelectTrigger className="w-20 h-8">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Array.from({ length: 24 }, (_, i) => (
+                                <SelectItem key={i} value={i.toString()}>
+                                  {i.toString().padStart(2, "0")}:00
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="text-xs text-slate-600">
+                          {hourRangeStart === "8" && hourRangeEnd === "23"
+                            ? "Horario laboral (8:00 - 23:00)"
+                            : `${hourRangeStart.padStart(2, "0")}:00 - ${hourRangeEnd.padStart(2, "0")}:00`}
+                        </div>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-0 md:p-6">
+                    <div className="h-[300px] bg-white rounded-xl p-4 md:p-6">
+                      <Chart
+                        data={hourlyAgendasData}
+                        type="line"
+                        xKey="label"
+                        yKey="agendas"
+                        height={300}
+                        colors={["#10b981"]}
+                        showLegend={false}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+            {/* Gráfico de tipos de vivienda */}
+            {agendaEnabled && housingTypeData && housingTypeData.length > 0 && (
+              <Card className="mb-8 shadow-lg border border-slate-200">
+                <CardHeader>
+                  <CardTitle className="text-base font-semibold text-slate-800">
+                    Tipos de Vivienda
+                  </CardTitle>
+                  <CardDescription className="text-slate-500">
+                    Distribución de tipos de vivienda de los clientes
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-0 md:p-6">
+                  <div className="h-[300px] bg-white rounded-xl p-4 md:p-6">
+                    <Chart
+                      data={housingTypeData}
+                      type="pie"
+                      xKey="label"
+                      yKey="cantidad"
+                      height={300}
+                      colors={[
+                        "#f59e0b",
+                        "#10b981",
+                        "#3b82f6",
+                        "#8b5cf6",
+                        "#ef4444",
+                      ]}
+                      showLegend={true}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Gráfico de interés */}
             {interestData && interestData.length > 0 && (
-              <Card>
+              <Card className="mb-8 shadow-lg border border-slate-200">
                 <CardHeader>
-                  <CardTitle>Análisis de Interés</CardTitle>
+                  <CardTitle className="text-base font-semibold text-slate-800">
+                    Interés
+                  </CardTitle>
+                  <CardDescription className="text-slate-500">
+                    Distribución de interés de los clientes
+                  </CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-slate-200">
-                          <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Interés</th>
-                          <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">Cantidad</th>
-                          <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">Porcentaje</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {interestData.map((item: any, idx: number) => (
-                          <tr key={idx} className="border-b border-slate-200 hover:bg-slate-50">
-                            <td className="py-3 px-4 text-sm text-slate-700">{item.label}</td>
-                            <td className="py-3 px-4 text-sm text-slate-600 text-right">{item.cantidad}</td>
-                            <td className="py-3 px-4 text-sm text-slate-600 text-right">{item.porcentaje}%</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                <CardContent className="p-0 md:p-6">
+                  <div className="h-[300px] bg-white rounded-xl p-4 md:p-6">
+                    <Chart
+                      data={interestData}
+                      type="pie"
+                      xKey="label"
+                      yKey="cantidad"
+                      height={300}
+                      colors={[
+                        "#3b82f6",
+                        "#10b981",
+                        "#f59e0b",
+                        "#8b5cf6",
+                        "#ef4444",
+                      ]}
+                      showLegend={true}
+                    />
                   </div>
                 </CardContent>
               </Card>
             )}
 
-            {agendaEnabled && dashboardData?.dashboard_data?.tipos_vivienda && (
-              <Card>
+            {/* Gráfico de agentes por agendas */}
+            {agendaEnabled &&
+              agentesPorAgendasData &&
+              agentesPorAgendasData.length > 0 && (
+                <Card className="mb-8 shadow-lg border border-slate-200">
+                  <CardHeader>
+                    <CardTitle className="text-base font-semibold text-slate-800">
+                      Agentes por Agendas
+                    </CardTitle>
+                    <CardDescription className="text-slate-500">
+                      Distribución de agendas por agente
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0 md:p-6">
+                    <div className="h-[300px] bg-white rounded-xl p-4 md:p-6">
+                      <Chart
+                        data={agentesPorAgendasData}
+                        type="bar"
+                        xKey="label"
+                        yKey="cantidad"
+                        height={300}
+                        colors={[
+                          "#3b82f6",
+                          "#10b981",
+                          "#f59e0b",
+                          "#8b5cf6",
+                          "#ef4444",
+                          "#ec4899",
+                          "#14b8a6",
+                          "#f97316",
+                        ]}
+                        showLegend={false}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+          </div>
+
+          {/* Gráficos adicionales */}
+          <div
+            className={`grid gap-4 mb-8 ${
+              agendaEnabled ? "md:grid-cols-2" : "md:grid-cols-1"
+            }`}
+          >
+            {/* Gráfico de llamadas efectivas por hora */}
+            {effectiveCallsData && effectiveCallsData.length > 0 && (
+              <Card className="mb-8 shadow-lg border border-slate-200">
                 <CardHeader>
-                  <CardTitle>Análisis Detallado de Tipos de Vivienda</CardTitle>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                      <CardTitle className="text-base font-semibold text-slate-800">
+                        Llamadas Efectivas por Hora
+                      </CardTitle>
+                      <CardDescription className="text-slate-500">
+                        Distribución de llamadas efectivas a lo largo del día
+                      </CardDescription>
+                    </div>
+
+                    {/* Filtro de rango de horas */}
+                    <div className="flex flex-wrap items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                      <div className="flex items-center gap-2">
+                        <label
+                          htmlFor="effectiveCallsHourStart"
+                          className="text-xs font-medium text-slate-700"
+                        >
+                          Desde:
+                        </label>
+                        <Select
+                          value={effectiveCallsHourStart}
+                          onValueChange={(value) =>
+                            handleEffectiveCallsHourRangeChange("start", value)
+                          }
+                        >
+                          <SelectTrigger className="w-20 h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Array.from({ length: 24 }, (_, i) => (
+                              <SelectItem key={i} value={i.toString()}>
+                                {i.toString().padStart(2, "0")}:00
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <label
+                          htmlFor="effectiveCallsHourEnd"
+                          className="text-xs font-medium text-slate-700"
+                        >
+                          Hasta:
+                        </label>
+                        <Select
+                          value={effectiveCallsHourEnd}
+                          onValueChange={(value) =>
+                            handleEffectiveCallsHourRangeChange("end", value)
+                          }
+                        >
+                          <SelectTrigger className="w-20 h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Array.from({ length: 24 }, (_, i) => (
+                              <SelectItem key={i} value={i.toString()}>
+                                {i.toString().padStart(2, "0")}:00
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="text-xs text-slate-600">
+                        {effectiveCallsHourStart === "0" &&
+                        effectiveCallsHourEnd === "23"
+                          ? "Todas las horas"
+                          : `${effectiveCallsHourStart.padStart(2, "0")}:00 - ${effectiveCallsHourEnd.padStart(2, "0")}:00`}
+                      </div>
+                    </div>
+                  </div>
                 </CardHeader>
-                <CardContent>
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-slate-200">
-                          <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Tipo de Vivienda</th>
-                          <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">Cantidad</th>
-                          <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">Porcentaje</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {housingTypeData.map((item: any, idx: number) => (
-                          <tr key={idx} className="border-b border-slate-200 hover:bg-slate-50">
-                            <td className="py-3 px-4 text-sm text-slate-700">{item.label}</td>
-                            <td className="py-3 px-4 text-sm text-slate-600 text-right">{item.cantidad}</td>
-                            <td className="py-3 px-4 text-sm text-slate-600 text-right">{item.porcentaje}%</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                <CardContent className="p-0 md:p-6">
+                  <div className="h-[300px] bg-white rounded-xl p-4 md:p-6">
+                    <Chart
+                      data={effectiveCallsData}
+                      type="line"
+                      xKey="label"
+                      yKey="llamadas"
+                      height={300}
+                      colors={["#dc2626"]}
+                      showLegend={false}
+                    />
                   </div>
                 </CardContent>
               </Card>
             )}
 
+            {/* Gráfico de clicks de asistencia por hora (si el cliente tiene launch habilitado) */}
+            {launchEnabled &&
+              asistenciaByHour &&
+              asistenciaByHour.length > 0 && (
+                <Card className="mb-8 shadow-lg border border-slate-200">
+                  <CardHeader>
+                    <CardTitle className="text-base font-semibold text-slate-800">
+                      Clicks de Asistencia por Hora
+                    </CardTitle>
+                    <CardDescription className="text-slate-500">
+                      Hora del día en la que las personas hacen click - Total:{" "}
+                      <span className="font-bold">
+                        {asistenciaByHour
+                          .reduce((sum, item) => sum + (item.clicks || 0), 0)
+                          .toLocaleString()}
+                      </span>{" "}
+                      clicks
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0 md:p-6">
+                    {asistenciaLoading ? (
+                      <div className="py-4 text-sm text-slate-500">
+                        Cargando métricas de asistencia por hora...
+                      </div>
+                    ) : asistenciaError ? (
+                      <div className="py-4 text-sm text-red-600">
+                        {asistenciaError}
+                      </div>
+                    ) : (
+                      <div className="h-[300px] bg-white rounded-xl p-4 md:p-6">
+                        <Chart
+                          data={asistenciaByHour}
+                          type="line"
+                          xKey="label"
+                          yKey="clicks"
+                          height={300}
+                          colors={["#16a34a"]}
+                          showLegend={false}
+                        />
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+            {/* Gráfico de razones de desconexión */}
             {disconnectionData && disconnectionData.length > 0 && (
-              <Card>
+              <Card className="mb-8 shadow-lg border border-slate-200">
                 <CardHeader>
-                  <CardTitle>Análisis Detallado de Desconexiones</CardTitle>
+                  <CardTitle className="text-base font-semibold text-slate-800">
+                    Principales Razones de Desconexión
+                  </CardTitle>
+                  <CardDescription className="text-slate-500">
+                    Top {Math.min(5, disconnectionData.length)} razones con
+                    porcentajes
+                  </CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-slate-200">
-                          <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Razón</th>
-                          <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">Total</th>
-                          <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">Porcentaje</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {disconnectionData.map((item: any, idx: number) => (
-                          <tr key={idx} className="border-b border-slate-200 hover:bg-slate-50">
-                            <td className="py-3 px-4 text-sm text-slate-700">{item.reason}</td>
-                            <td className="py-3 px-4 text-sm text-slate-600 text-right">{item.count}</td>
-                            <td className="py-3 px-4 text-sm text-slate-600 text-right">{item.percentage}%</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                <CardContent className="p-0 md:p-6">
+                  <div className="h-[300px] bg-white rounded-xl p-4 md:p-6">
+                    <Chart
+                      data={disconnectionData}
+                      type="pie"
+                      xKey="reason"
+                      yKey="count"
+                      height={300}
+                      colors={[
+                        "#8b5cf6",
+                        "#d946ef",
+                        "#a855f7",
+                        "#6366f1",
+                        "#3b82f6",
+                      ]}
+                      showLegend={true}
+                    />
                   </div>
                 </CardContent>
               </Card>
             )}
           </div>
 
-          <hr className="my-8 border-gray-200" />
+          {/* Bloque: Llamadas contestadas / Agendas + Agendas por tipo de propiedad */}
+          {(combinedCallsAgendasData && combinedCallsAgendasData.length > 0) ||
+          (hasAgendasInPeriod &&
+            agendaPropertyTypeData &&
+            agendaPropertyTypeData.length > 0) ? (
+            <div
+              className={`grid gap-4 mb-8 ${
+                isLongRange
+                  ? "md:grid-cols-1"
+                  : hasAgendasInPeriod &&
+                      agendaPropertyTypeData &&
+                      agendaPropertyTypeData.length > 0
+                    ? "md:grid-cols-2"
+                    : "md:grid-cols-1"
+              }`}
+            >
+              {combinedCallsAgendasData &&
+                combinedCallsAgendasData.length > 0 && (
+                  <Card className="shadow-lg border border-slate-200">
+                    <CardHeader>
+                      <CardTitle className="text-base font-semibold text-slate-800">
+                        Llamadas contestadas / Agendas
+                      </CardTitle>
+                      <CardDescription className="text-slate-500">
+                        Llamadas contestadas (barras azules) y agendas creadas
+                        (línea roja){" "}
+                        {timePeriod === "today"
+                          ? "por hora"
+                          : "en el período seleccionado"}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-0 md:p-6">
+                      <div className="h-[320px] bg-white rounded-xl p-4 md:p-6">
+                        <RechartsResponsiveContainer width="100%" height="100%">
+                          <RechartsComposedChart
+                            data={combinedCallsAgendasData}
+                          >
+                            <RechartsCartesianGrid
+                              strokeDasharray="3 3"
+                              vertical={false}
+                            />
+                            <RechartsXAxis
+                              dataKey="label"
+                              stroke="#888888"
+                              fontSize={12}
+                            />
+                            <RechartsYAxis
+                              yAxisId="left"
+                              stroke="#1d4ed8"
+                              fontSize={12}
+                              tickFormatter={(v) => v.toLocaleString("es-ES")}
+                            />
+                            <RechartsYAxis
+                              yAxisId="right"
+                              orientation="right"
+                              stroke="#dc2626"
+                              fontSize={12}
+                              tickFormatter={(v) => v.toLocaleString("es-ES")}
+                            />
+                            <RechartsTooltip
+                              contentStyle={{
+                                background: "white",
+                                border: "1px solid #e5e7eb",
+                                color: "#111827",
+                                fontSize: 13,
+                              }}
+                              formatter={(
+                                value: any,
+                                _name: string,
+                                props: any,
+                              ) => {
+                                const dataKey = props?.dataKey;
+                                const label =
+                                  dataKey === "llamadas"
+                                    ? "Llamadas"
+                                    : dataKey === "agendas"
+                                      ? "Agendas"
+                                      : _name;
 
-          {/* Actividad Reciente - Módulo Nuevo al final */}
-          <Card className="bg-gray-900 border-gray-800 shadow-xl mb-8 overflow-hidden">
-            <CardHeader className="border-b border-gray-800 flex flex-row items-center justify-between py-4">
-              <CardTitle className="flex items-center gap-2 text-white text-lg">
-                <Clock className="w-5 h-5 text-purple-400" />
-                Actividad Reciente
-              </CardTitle>
-              <div className="text-xs text-gray-500 bg-gray-800 px-3 py-1 rounded-full border border-gray-700">
-                Últimas {allCalls.slice(0, 10).length} llamadas
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="text-left bg-gray-850">
-                      <th className="px-6 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">Número</th>
-                      <th className="px-6 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">Duración</th>
-                      <th className="px-6 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">Estado</th>
-                      <th className="px-6 py-3 text-xs font-bold text-gray-400 uppercase tracking-wider">Fecha/Hora</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-800">
-                    {allCalls.slice(0, 10).map((call: any) => (
-                      <tr key={call.call_id} className="hover:bg-gray-800/40 transition-colors">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-2">
-                            <div className="p-1.5 bg-gray-800 rounded-lg"><Phone className="w-3 h-3 text-gray-400" /></div>
-                            <span className="text-sm font-medium text-gray-200">{call.to_number}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
-                          {Math.floor(call.duration_ms / 1000)}s
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
-                            call.call_status === 'completed' ? 'bg-emerald-900/40 text-emerald-400 border border-emerald-800/50' :
-                            call.call_status === 'failed' ? 'bg-rose-900/40 text-rose-400 border border-rose-800/50' : 
-                            'bg-blue-900/40 text-blue-400 border border-blue-800/50'
-                          }`}>
-                            {call.call_status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {new Date(call.start_time).toLocaleString('es-ES', { 
-                            day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' 
-                          })}
-                        </td>
-                      </tr>
-                    ))}
-                    {allCalls.length === 0 && (
-                      <tr>
-                        <td colSpan={4} className="px-6 py-10 text-center text-gray-500 italic">No hay actividad reciente para mostrar</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-
-
-          {/* Secciones de Ventas y Lanzamiento - MOVIDAS AL FINAL */}
-          {(salesEnabled || launchEnabled) && (
-            <div className="grid gap-6 mt-8 mb-8 lg:grid-cols-2">
-              {salesEnabled && (
-                <Card className="bg-gradient-to-br from-gray-900 to-gray-800 border-gray-700 shadow-xl overflow-hidden">
-                  <CardHeader className="border-b border-gray-800 pb-3">
-                    <CardTitle className="flex items-center gap-2 text-white text-lg">
-                      <ShoppingCart className="w-5 h-5 text-emerald-400" />
-                      Resumen de Ventas
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="pt-6">
-                    {salesLoading ? (
-                      <div className="flex justify-center py-6"><RefreshCw className="animate-spin text-gray-500" /></div>
-                    ) : salesMetrics ? (
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="p-4 bg-gray-800/50 rounded-lg border border-gray-700">
-                          <p className="text-xs text-gray-400 uppercase font-bold mb-1">ROI</p>
-                          <p className="text-2xl font-bold text-emerald-400">x{salesMetrics.roi?.toFixed(2) || '0.00'}</p>
-                        </div>
-                        <div className="p-4 bg-gray-800/50 rounded-lg border border-gray-700">
-                          <p className="text-xs text-gray-400 uppercase font-bold mb-1">Conversión</p>
-                          <p className="text-2xl font-bold text-blue-400">{salesMetrics.tasaConversion?.toFixed(2) || '0.00'}%</p>
-                        </div>
-                        <div className="p-4 bg-gray-800/50 rounded-lg border border-gray-700">
-                          <p className="text-xs text-gray-400 uppercase font-bold mb-1">Facturación</p>
-                          <p className="text-2xl font-bold text-white">${salesMetrics.totalFacturacion?.toLocaleString() || '0'}</p>
-                        </div>
-                        <div className="p-4 bg-gray-800/50 rounded-lg border border-gray-700">
-                          <p className="text-xs text-gray-400 uppercase font-bold mb-1">Costo/Venta</p>
-                          <p className="text-2xl font-bold text-rose-400">${salesMetrics.costePorVenta?.toFixed(2) || '0'}</p>
-                        </div>
+                                if (typeof value === "number") {
+                                  return [value.toLocaleString("es-ES"), label];
+                                }
+                                return [value, label];
+                              }}
+                            />
+                            <RechartsLegend />
+                            <RechartsBar
+                              yAxisId="left"
+                              dataKey="llamadas"
+                              name="Llamadas"
+                              fill="#3b82f6"
+                              radius={[4, 4, 0, 0]}
+                            />
+                            <RechartsLine
+                              yAxisId="right"
+                              type="monotone"
+                              dataKey="agendas"
+                              name="Agendas"
+                              stroke="#dc2626"
+                              strokeWidth={2}
+                              dot={{ r: 3 }}
+                              activeDot={{ r: 5 }}
+                            />
+                          </RechartsComposedChart>
+                        </RechartsResponsiveContainer>
                       </div>
-                    ) : (
-                      <p className="text-center text-gray-500 py-6">No hay datos de ventas disponibles</p>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
+                    </CardContent>
+                  </Card>
+                )}
 
-              {launchEnabled && (
-                <Card className="bg-gradient-to-br from-gray-900 to-gray-800 border-gray-700 shadow-xl overflow-hidden">
-                  <CardHeader className="border-b border-gray-800 pb-3">
-                    <CardTitle className="flex items-center gap-2 text-white text-lg">
-                      <TrendingUp className="w-5 h-5 text-blue-400" />
-                      Funnel de Lanzamiento
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="pt-6">
-                    {funnelLoading ? (
-                      <div className="flex justify-center py-6"><RefreshCw className="animate-spin text-gray-500" /></div>
-                    ) : funnelData ? (
-                      <div className="space-y-4">
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-xs text-gray-400 font-bold uppercase">
-                            <span>Interés (Llamadas)</span>
-                            <span>{funnelData.totals?.total_links || 0}</span>
-                          </div>
-                          <div className="w-full bg-gray-700 rounded-full h-3">
-                            <div className="bg-blue-500 h-3 rounded-full" style={{ width: '100%' }}></div>
-                          </div>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-xs text-gray-400 font-bold uppercase">
-                            <span>Engagement (Clicks)</span>
-                            <span>{funnelData.totals?.total_clicks || 0} ({funnelData.totals?.pct_clicks_over_links?.toFixed(1) || 0}%)</span>
-                          </div>
-                          <div className="w-full bg-gray-700 rounded-full h-3">
-                            <div className="bg-indigo-500 h-3 rounded-full" style={{ width: `${funnelData.totals?.pct_clicks_over_links || 0}%` }}></div>
-                          </div>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-xs text-gray-400 font-bold uppercase">
-                            <span>Asistencia (Citas)</span>
-                            <span>{funnelData.totals?.total_attendance || 0} ({funnelData.totals?.pct_attendance_over_links?.toFixed(1) || 0}%)</span>
-                          </div>
-                          <div className="w-full bg-gray-700 rounded-full h-3">
-                            <div className="bg-emerald-500 h-3 rounded-full" style={{ width: `${funnelData.totals?.pct_attendance_over_links || 0}%` }}></div>
-                          </div>
-                        </div>
+              {agendaEnabled &&
+                hasAgendasInPeriod &&
+                agendaPropertyTypeData &&
+                agendaPropertyTypeData.length > 0 && (
+                  <Card className="shadow-lg border border-slate-200">
+                    <CardHeader>
+                      <CardTitle className="text-base font-semibold text-slate-800">
+                        Agendas por tipo de propiedad
+                      </CardTitle>
+                      <CardDescription className="text-slate-500">
+                        Distribución porcentual de agendas según tipo de
+                        vivienda
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-0 md:p-6">
+                      <div className="h-[320px] bg-white rounded-xl p-4 md:p-6">
+                        <RechartsResponsiveContainer width="100%" height="100%">
+                          <RechartsPieChart>
+                            <RechartsTooltip
+                              contentStyle={{
+                                background: "white",
+                                border: "1px solid #e5e7eb",
+                                color: "#111827",
+                                fontSize: 13,
+                              }}
+                              formatter={(
+                                value: any,
+                                _name: string,
+                                props: any,
+                              ) => {
+                                const label = props?.payload?.label ?? _name;
+                                if (typeof value === "number") {
+                                  const pct = `${value.toFixed(2)}%`;
+                                  return [pct, label];
+                                }
+                                return [value, label];
+                              }}
+                            />
+                            <RechartsLegend
+                              verticalAlign="bottom"
+                              height={
+                                agendaPropertyTypeData.length > 3 ? 80 : 36
+                              }
+                              wrapperStyle={{ fontSize: "12px" }}
+                              formatter={(value, entry: any) => {
+                                const pct = entry?.payload?.porcentaje;
+                                if (pct != null && pct !== undefined) {
+                                  return `${value} (${Number(pct).toFixed(1)}%)`;
+                                }
+                                return value;
+                              }}
+                            />
+                            <RechartsPie
+                              data={agendaPropertyTypeData}
+                              dataKey="porcentaje"
+                              nameKey="label"
+                              cx="50%"
+                              cy={
+                                agendaPropertyTypeData.length > 3
+                                  ? "40%"
+                                  : "50%"
+                              }
+                              outerRadius={
+                                agendaPropertyTypeData.length > 3 ? 75 : 90
+                              }
+                              labelLine={false}
+                              label={
+                                agendaPropertyTypeData.length > 3
+                                  ? false
+                                  : (entry: any) =>
+                                      `${entry.label}: ${entry.porcentaje.toFixed(2)}%`
+                              }
+                            >
+                              {agendaPropertyTypeData.map(
+                                (entry: any, index: number) => {
+                                  const label = (entry.label || "")
+                                    .toString()
+                                    .toLowerCase();
+                                  let fill = "#6366f1"; // color por defecto
+
+                                  if (label.includes("casa")) {
+                                    fill = "#facc15"; // amarillo
+                                  } else if (label.includes("piso")) {
+                                    fill = "#22c55e"; // verde
+                                  } else if (label.includes("alquiler")) {
+                                    fill = "#3b82f6"; // azul
+                                  }
+
+                                  return (
+                                    <RechartsCell
+                                      key={`cell-${index}`}
+                                      fill={fill}
+                                    />
+                                  );
+                                },
+                              )}
+                            </RechartsPie>
+                          </RechartsPieChart>
+                        </RechartsResponsiveContainer>
                       </div>
-                    ) : (
-                      <p className="text-center text-gray-500 py-6">No hay datos de funnel disponibles</p>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
+                    </CardContent>
+                  </Card>
+                )}
             </div>
+          ) : null}
+
+          {/* Resumen detallado de llamadas efectivas por hora */}
+          {dashboardData?.dashboard_data?.llamadas_efectivas_por_hora && (
+            <Card className="mb-8">
+              <CardHeader>
+                <CardTitle>Resumen de Llamadas Efectivas por Hora</CardTitle>
+                <CardDescription>
+                  Horas con mayor actividad de llamadas efectivas
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {dashboardData.dashboard_data.llamadas_efectivas_por_hora
+                    .sort(
+                      (a: any, b: any) =>
+                        (b.cantidad_llamadas || 0) - (a.cantidad_llamadas || 0),
+                    )
+                    .slice(0, 8)
+                    .map((item: any, index: number) => (
+                      <div
+                        key={`${item.hora}-${index}`}
+                        className="bg-gradient-to-br from-red-50 to-rose-100 p-4 rounded-lg border border-red-200"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-red-700">
+                            {item.hora_label ||
+                              `${item.hora.toString().padStart(2, "0")}:00`}
+                          </span>
+                          <span className="text-xs text-red-600">
+                            #{index + 1}
+                          </span>
+                        </div>
+                        <div className="text-2xl font-bold text-red-900 mb-2">
+                          {item.cantidad_llamadas.toLocaleString()}
+                        </div>
+                        <div className="text-xs text-red-600">
+                          llamadas efectivas
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Resumen detallado de tipos de vivienda */}
+          {agendaEnabled &&
+            (() => {
+              const tiposVivienda =
+                dashboardData?.dashboard_data?.tipos_vivienda;
+              const filteredTiposVivienda =
+                tiposVivienda?.filter(
+                  (item: any) => item.tipo !== "no_identificado",
+                ) || [];
+              const hasData =
+                filteredTiposVivienda.length > 0 &&
+                filteredTiposVivienda.some(
+                  (item: any) => (item.cantidad || 0) > 0,
+                );
+
+              return (
+                <Card className="mb-8">
+                  <CardHeader>
+                    <CardTitle>
+                      Resumen Detallado de Tipos de Vivienda
+                    </CardTitle>
+                    <CardDescription>
+                      Estadísticas completas de distribución de viviendas
+                      (excluyendo no identificados)
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {hasData ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {filteredTiposVivienda.map(
+                          (item: any, index: number) => {
+                            // Calcular porcentaje basado en datos filtrados
+                            const totalFiltered = filteredTiposVivienda.reduce(
+                              (sum: number, filterItem: any) =>
+                                sum + (filterItem.cantidad || 0),
+                              0,
+                            );
+                            const porcentaje =
+                              totalFiltered > 0
+                                ? (
+                                    ((item.cantidad || 0) / totalFiltered) *
+                                    100
+                                  ).toFixed(2)
+                                : "0";
+
+                            return (
+                              <div
+                                key={`${item.tipo}-${index}`}
+                                className="bg-gradient-to-br from-orange-50 to-amber-100 p-4 rounded-lg border border-orange-200"
+                              >
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-sm font-medium text-orange-700">
+                                    {translateHousingType(item.tipo)}
+                                  </span>
+                                  <span className="text-xs text-orange-600">
+                                    {porcentaje}%
+                                  </span>
+                                </div>
+                                <div className="text-2xl font-bold text-orange-900 mb-2">
+                                  {item.cantidad.toLocaleString()}
+                                </div>
+                                <div className="w-full bg-orange-200 rounded-full h-2">
+                                  <div
+                                    className="bg-gradient-to-r from-orange-600 to-amber-600 h-2 rounded-full transition-all duration-500"
+                                    style={{ width: `${porcentaje}%` }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          },
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8">
+                        <p className="text-slate-500 text-sm">
+                          {tiposVivienda && tiposVivienda.length === 0
+                            ? "No hay datos de tipos de vivienda disponibles para este período. Los datos de tipos de vivienda solo están disponibles cuando hay llamadas efectivas con información de vivienda."
+                            : "No hay datos de tipos de vivienda disponibles para este período."}
+                        </p>
+                        <p className="text-slate-400 text-xs mt-2">
+                          Intenta seleccionar un período más amplio (mes o
+                          personalizado) para ver los datos.
+                        </p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })()}
+
+          {/* Resumen detallado de duración de llamadas efectivas */}
+          {dashboardData?.dashboard_data?.duracion_llamadas_efectivas &&
+            (() => {
+              const duracion =
+                dashboardData.dashboard_data.duracion_llamadas_efectivas;
+              const total =
+                (duracion.rango_0_30 || 0) +
+                (duracion.rango_30_50 || 0) +
+                (duracion.rango_50_plus || 0);
+
+              const ranges = [
+                {
+                  label: "0 - 30 segundos",
+                  cantidad: duracion.rango_0_30 || 0,
+                  color: "blue",
+                  gradientFrom: "from-blue-50",
+                  gradientTo: "to-cyan-100",
+                  borderColor: "border-blue-200",
+                  textColor: "text-blue-700",
+                  textColorDark: "text-blue-900",
+                  bgColor: "bg-blue-200",
+                  barGradient: "from-blue-600 to-cyan-600",
+                },
+                {
+                  label: "30 - 50 segundos",
+                  cantidad: duracion.rango_30_50 || 0,
+                  color: "green",
+                  gradientFrom: "from-green-50",
+                  gradientTo: "to-emerald-100",
+                  borderColor: "border-green-200",
+                  textColor: "text-green-700",
+                  textColorDark: "text-green-900",
+                  bgColor: "bg-green-200",
+                  barGradient: "from-green-600 to-emerald-600",
+                },
+                {
+                  label: "50 segundos o más",
+                  cantidad: duracion.rango_50_plus || 0,
+                  color: "purple",
+                  gradientFrom: "from-purple-50",
+                  gradientTo: "to-violet-100",
+                  borderColor: "border-purple-200",
+                  textColor: "text-purple-700",
+                  textColorDark: "text-purple-900",
+                  bgColor: "bg-purple-200",
+                  barGradient: "from-purple-600 to-violet-600",
+                },
+              ];
+
+              // Preparar datos para el gráfico (formato similar a effectiveCallsData)
+              const chartData = ranges.map((range) => ({
+                label: range.label,
+                cantidad: range.cantidad,
+                porcentaje:
+                  total > 0 ? ((range.cantidad / total) * 100).toFixed(2) : "0",
+              }));
+
+              return (
+                <Card className="mb-8 shadow-lg border border-slate-200">
+                  <CardHeader>
+                    <CardTitle className="text-base font-semibold text-slate-800">
+                      Resumen Detallado de Duración de Llamadas Efectivas
+                    </CardTitle>
+                    <CardDescription className="text-slate-500">
+                      Distribución de llamadas efectivas por rangos de duración
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0 md:p-6">
+                    {/* Gráfico de distribución */}
+                    {total > 0 && (
+                      <div className="mb-6">
+                        <div className="h-[300px] bg-white rounded-xl p-4 md:p-6">
+                          <Chart
+                            data={chartData}
+                            type="line"
+                            xKey="label"
+                            yKey="cantidad"
+                            height={300}
+                            colors={["#3b82f6"]}
+                            showLegend={false}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Cards individuales */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {ranges.map((range, index) => {
+                        const porcentaje =
+                          total > 0
+                            ? ((range.cantidad / total) * 100).toFixed(2)
+                            : "0";
+
+                        return (
+                          <div
+                            key={`duracion-${index}`}
+                            className={`bg-gradient-to-br ${range.gradientFrom} ${range.gradientTo} p-4 rounded-lg border ${range.borderColor}`}
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <span
+                                className={`text-sm font-medium ${range.textColor}`}
+                              >
+                                {range.label}
+                              </span>
+                              <span className={`text-xs ${range.textColor}`}>
+                                {porcentaje}%
+                              </span>
+                            </div>
+                            <div
+                              className={`text-2xl font-bold ${range.textColorDark} mb-2`}
+                            >
+                              {range.cantidad.toLocaleString()}
+                            </div>
+                            <div
+                              className={`w-full ${range.bgColor} rounded-full h-2`}
+                            >
+                              <div
+                                className={`bg-gradient-to-r ${range.barGradient} h-2 rounded-full transition-all duration-500`}
+                                style={{ width: `${porcentaje}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })()}
+
+          {/* Resumen detallado de desconexiones */}
+          {dashboardData?.dashboard_data?.razones_desconexion && (
+            <Card className="mb-8">
+              <CardHeader>
+                <CardTitle>Resumen Detallado de Desconexiones</CardTitle>
+                <CardDescription>
+                  Estadísticas completas con números y porcentajes
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {dashboardData.dashboard_data.razones_desconexion
+                    .slice(0, 6)
+                    .map((item: any, index: number) => (
+                      <div
+                        key={`${item.razon}-${index}`}
+                        className="bg-gradient-to-br from-purple-50 to-violet-100 p-4 rounded-lg border border-purple-200"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-purple-700">
+                            {item.razon}
+                          </span>
+                          <span className="text-xs text-purple-600">
+                            {item.porcentaje}%
+                          </span>
+                        </div>
+                        <div className="text-2xl font-bold text-purple-900 mb-2">
+                          {item.total.toLocaleString()}
+                        </div>
+                        <div className="w-full bg-purple-200 rounded-full h-2">
+                          <div
+                            className="bg-gradient-to-r from-purple-600 to-indigo-600 h-2 rounded-full transition-all duration-500"
+                            style={{ width: `${item.porcentaje}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Tabla detallada de llamadas efectivas por hora */}
+          {dashboardData?.dashboard_data?.llamadas_efectivas_por_hora && (
+            <Card className="mb-8">
+              <CardHeader>
+                <CardTitle>
+                  Análisis Detallado de Llamadas Efectivas por Hora
+                </CardTitle>
+                <CardDescription>
+                  Distribución completa de llamadas efectivas a lo largo del día
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-slate-200">
+                        <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">
+                          Hora
+                        </th>
+                        <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">
+                          Llamadas Efectivas
+                        </th>
+                        <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">
+                          Porcentaje
+                        </th>
+                        <th className="py-3 px-4 text-sm font-medium text-slate-600">
+                          Distribución
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dashboardData.dashboard_data.llamadas_efectivas_por_hora
+                        .sort(
+                          (a: any, b: any) =>
+                            parseInt(a.hora) - parseInt(b.hora),
+                        )
+                        .map((item: any, index: number) => {
+                          const total =
+                            dashboardData.dashboard_data.llamadas_efectivas_por_hora.reduce(
+                              (sum: number, totalItem: any) =>
+                                sum + (totalItem.cantidad_llamadas || 0),
+                              0,
+                            );
+                          const porcentaje =
+                            total > 0
+                              ? (
+                                  ((item.cantidad_llamadas || 0) / total) *
+                                  100
+                                ).toFixed(2)
+                              : "0";
+
+                          return (
+                            <tr
+                              key={`${item.hora}-${index}`}
+                              className="border-b border-slate-200 hover:bg-slate-50"
+                            >
+                              <td className="py-3 px-4 text-sm text-slate-700 font-medium">
+                                {item.hora_label ||
+                                  `${item.hora.toString().padStart(2, "0")}:00`}
+                              </td>
+                              <td className="py-3 px-4 text-sm text-slate-600 text-right">
+                                {(item.cantidad_llamadas || 0).toLocaleString()}
+                              </td>
+                              <td className="py-3 px-4 text-sm text-slate-600 text-right">
+                                {porcentaje}%
+                              </td>
+                              <td className="py-3 px-4">
+                                <div className="w-full bg-slate-200 rounded-full h-2">
+                                  <div
+                                    className="bg-gradient-to-r from-red-600 to-rose-600 h-2 rounded-full transition-all duration-500"
+                                    style={{ width: `${porcentaje}%` }}
+                                  />
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-slate-200 bg-slate-50">
+                        <td className="py-3 px-4 text-sm font-medium text-slate-600">
+                          Total
+                        </td>
+                        <td className="py-3 px-4 text-sm font-medium text-slate-800 text-right">
+                          {dashboardData.dashboard_data.llamadas_efectivas_por_hora
+                            .reduce(
+                              (sum: number, item: any) =>
+                                sum + (item.cantidad_llamadas || 0),
+                              0,
+                            )
+                            .toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-sm font-medium text-slate-600 text-right">
+                          100%
+                        </td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Tabla detallada de tipos de vivienda */}
+          {agendaEnabled &&
+            (() => {
+              const tiposVivienda =
+                dashboardData?.dashboard_data?.tipos_vivienda;
+              const filteredTiposVivienda =
+                tiposVivienda?.filter(
+                  (item: any) => item.tipo !== "no_identificado",
+                ) || [];
+              const hasData =
+                filteredTiposVivienda.length > 0 &&
+                filteredTiposVivienda.some(
+                  (item: any) => (item.cantidad || 0) > 0,
+                );
+
+              return (
+                <Card className="mb-8">
+                  <CardHeader>
+                    <CardTitle>
+                      Análisis Detallado de Tipos de Vivienda
+                    </CardTitle>
+                    <CardDescription>
+                      Distribución completa de los tipos de vivienda de los
+                      clientes (excluyendo no identificados)
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {hasData ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="border-b border-slate-200">
+                              <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">
+                                Tipo de Vivienda
+                              </th>
+                              <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">
+                                Cantidad
+                              </th>
+                              <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">
+                                Porcentaje
+                              </th>
+                              <th className="py-3 px-4 text-sm font-medium text-slate-600">
+                                Distribución
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredTiposVivienda.map(
+                              (item: any, index: number) => {
+                                // Calcular porcentaje basado en datos filtrados
+                                const totalFiltered =
+                                  filteredTiposVivienda.reduce(
+                                    (sum: number, filterItem: any) =>
+                                      sum + (filterItem.cantidad || 0),
+                                    0,
+                                  );
+                                const porcentaje =
+                                  totalFiltered > 0
+                                    ? (
+                                        ((item.cantidad || 0) / totalFiltered) *
+                                        100
+                                      ).toFixed(2)
+                                    : "0";
+
+                                return (
+                                  <tr
+                                    key={`${item.tipo}-${index}`}
+                                    className="border-b border-slate-200 hover:bg-slate-50"
+                                  >
+                                    <td className="py-3 px-4 text-sm text-slate-700 font-medium">
+                                      {translateHousingType(
+                                        item.tipo || "Desconocido",
+                                      )}
+                                    </td>
+                                    <td className="py-3 px-4 text-sm text-slate-600 text-right">
+                                      {(item.cantidad || 0).toLocaleString()}
+                                    </td>
+                                    <td className="py-3 px-4 text-sm text-slate-600 text-right">
+                                      {porcentaje}%
+                                    </td>
+                                    <td className="py-3 px-4">
+                                      <div className="w-full bg-slate-200 rounded-full h-2">
+                                        <div
+                                          className="bg-gradient-to-r from-orange-600 to-amber-600 h-2 rounded-full transition-all duration-500"
+                                          style={{ width: `${porcentaje}%` }}
+                                        />
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              },
+                            )}
+                          </tbody>
+                          <tfoot>
+                            <tr className="border-t border-slate-200 bg-slate-50">
+                              <td className="py-3 px-4 text-sm font-medium text-slate-600">
+                                Total
+                              </td>
+                              <td className="py-3 px-4 text-sm font-medium text-slate-800 text-right">
+                                {filteredTiposVivienda
+                                  .reduce(
+                                    (sum: number, item: any) =>
+                                      sum + (item.cantidad || 0),
+                                    0,
+                                  )
+                                  .toLocaleString()}
+                              </td>
+                              <td className="py-3 px-4 text-sm font-medium text-slate-600 text-right">
+                                100%
+                              </td>
+                              <td></td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8">
+                        <p className="text-slate-500 text-sm">
+                          {tiposVivienda && tiposVivienda.length === 0
+                            ? "No hay datos de tipos de vivienda disponibles para este período. Los datos de tipos de vivienda solo están disponibles cuando hay llamadas efectivas con información de vivienda."
+                            : "No hay datos de tipos de vivienda disponibles para este período."}
+                        </p>
+                        <p className="text-slate-400 text-xs mt-2">
+                          Intenta seleccionar un período más amplio (mes o
+                          personalizado) para ver los datos.
+                        </p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })()}
+
+          {/* Tabla detallada de razones de desconexión */}
+          {dashboardData?.dashboard_data?.razones_desconexion && (
+            <Card className="mb-8">
+              <CardHeader>
+                <CardTitle>Análisis Detallado de Desconexiones</CardTitle>
+                <CardDescription>
+                  Distribución completa de las razones por las que terminan las
+                  llamadas
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-slate-200">
+                        <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">
+                          Razón
+                        </th>
+                        <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">
+                          Total
+                        </th>
+                        <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">
+                          Porcentaje
+                        </th>
+                        <th className="py-3 px-4 text-sm font-medium text-slate-600">
+                          Distribución
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dashboardData.dashboard_data.razones_desconexion.map(
+                        (item: any, index: number) => (
+                          <tr
+                            key={`${item.razon}-${index}`}
+                            className="border-b border-slate-200 hover:bg-slate-50"
+                          >
+                            <td className="py-3 px-4 text-sm text-slate-700 font-medium">
+                              {item.razon || "Desconocida"}
+                            </td>
+                            <td className="py-3 px-4 text-sm text-slate-600 text-right">
+                              {(item.total || 0).toLocaleString()}
+                            </td>
+                            <td className="py-3 px-4 text-sm text-slate-600 text-right">
+                              {item.porcentaje || 0}%
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="w-full bg-slate-200 rounded-full h-2">
+                                <div
+                                  className="bg-gradient-to-r from-purple-600 to-indigo-600 h-2 rounded-full transition-all duration-500"
+                                  style={{ width: `${item.porcentaje || 0}%` }}
+                                />
+                              </div>
+                            </td>
+                          </tr>
+                        ),
+                      )}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-slate-200 bg-slate-50">
+                        <td className="py-3 px-4 text-sm font-medium text-slate-600">
+                          Total
+                        </td>
+                        <td className="py-3 px-4 text-sm font-medium text-slate-800 text-right">
+                          {dashboardData.dashboard_data.razones_desconexion
+                            .reduce(
+                              (sum: number, item: any) =>
+                                sum + (item.total || 0),
+                              0,
+                            )
+                            .toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-sm font-medium text-slate-600 text-right">
+                          100%
+                        </td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
           )}
         </>
       )}
