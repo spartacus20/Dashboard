@@ -573,19 +573,6 @@ export function Sidebar({
               Campaña
             </button>
           )}
-          <button
-            onClick={() => {
-              navigateWithParams('tickets');
-            }}
-            className={`flex w-full items-center gap-2 px-4 py-2 ${
-              currentPage === 'tickets'
-                ? 'text-white bg-[#0a2a5a] border border-[#1e4a8a]'
-                : 'text-gray-300 hover:bg-[#0a2a5a]'
-            } rounded-lg`}
-          >
-            <ClipboardList className="w-5 h-5" />
-            Tickets
-          </button>
           {canAccessSales && (
             <button
               onClick={() => {
