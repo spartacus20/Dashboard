@@ -384,3 +384,25 @@ export interface DontCall {
   campaña?: string;
   region?: string;
 }
+
+export interface Ticket {
+  id: number;
+  created_at: string;
+  client_id: string;
+  title: string;
+  description: string;
+  comment?: string | null;
+  responsible: string;
+  state: string;
+}
+
+export interface Ticket {
+  id: number;
+  created_at: string;
+  client_id: string;
+  title: string;
+  description: string;
+  comment?: string | null;
+  responsible: string;
+  state: string;
+}

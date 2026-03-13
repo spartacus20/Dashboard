@@ -8,7 +8,7 @@ import { AuthProvider } from './context/AuthContext'
 import { BASE_URL } from './lib/supabase'
 
 // Mostrar la URL base en la consola al cargar
-console.log('🌐 BASE_URL:', BASE_URL)
+// console.log('🌐 BASE_URL:', BASE_URL)
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

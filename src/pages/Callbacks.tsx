@@ -1,22 +1,26 @@
-import { useState, useEffect } from 'react';
-import { fetchCallbacksWithLimit, loadMoreCallbacks, exportAllCallbacks } from '../api';
-import { Callback } from '../types';
-import { useCallsContext } from '../context/CallsContext';
-import { 
-  Phone, 
-  Calendar, 
-  MapPin, 
-  User, 
-  Building, 
-  Search, 
-  RefreshCw, 
-  AlertCircle, 
+import { useState, useEffect } from "react";
+import {
+  fetchCallbacksWithLimit,
+  loadMoreCallbacks,
+  exportAllCallbacks,
+} from "../api";
+import { Callback } from "../types";
+import { useCallsContext } from "../context/CallsContext";
+import {
+  Phone,
+  Calendar,
+  MapPin,
+  User,
+  Building,
+  Search,
+  RefreshCw,
+  AlertCircle,
   Clock,
   CheckCircle,
   Download,
   X,
-  Filter
-} from 'lucide-react';
+  Filter,
+} from "lucide-react";
 
 interface CallbacksProps {
   onNavigate: (page: string) => void;
@@ -29,31 +33,31 @@ export function Callbacks({}: CallbacksProps) {
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMoreCallbacks, setHasMoreCallbacks] = useState(false);
   const [totalCallbacks, setTotalCallbacks] = useState(0);
   const itemsPerPage = 25;
-  
+
   // Estados para filtros de fecha
-  const [filterStartDate, setFilterStartDate] = useState('');
-  const [filterEndDate, setFilterEndDate] = useState('');
+  const [filterStartDate, setFilterStartDate] = useState("");
+  const [filterEndDate, setFilterEndDate] = useState("");
   const [showDateFilterModal, setShowDateFilterModal] = useState(false);
 
   // Estados para exportación con filtros de fecha
   const [showExportModal, setShowExportModal] = useState(false);
-  const [exportStartDate, setExportStartDate] = useState('');
-  const [exportEndDate, setExportEndDate] = useState('');
-  const [exportStartTime, setExportStartTime] = useState('');
-  const [exportEndTime, setExportEndTime] = useState('');
+  const [exportStartDate, setExportStartDate] = useState("");
+  const [exportEndDate, setExportEndDate] = useState("");
+  const [exportStartTime, setExportStartTime] = useState("");
+  const [exportEndTime, setExportEndTime] = useState("");
   const [exportLoading, setExportLoading] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
   // Cargar callbacks iniciales (solo 500)
   const loadCallbacks = async () => {
     if (!clientId) {
-      setError('Client ID no disponible');
+      setError("Client ID no disponible");
       return;
     }
 
@@ -61,27 +65,29 @@ export function Callbacks({}: CallbacksProps) {
     setError(null);
 
     try {
-      console.log('Cargando primeros 500 callbacks para client_id:', clientId);
-      console.log('Filtros de fecha aplicados:', { filterStartDate, filterEndDate });
-      
+      // console.log('Cargando primeros 500 callbacks para client_id:', clientId);
+      // console.log('Filtros de fecha aplicados:', { filterStartDate, filterEndDate });
+
       const result = await fetchCallbacksWithLimit(
-        clientId, 
+        clientId,
         500,
         filterStartDate || undefined,
-        filterEndDate || undefined
+        filterEndDate || undefined,
       );
-      
-      console.log('Callbacks iniciales recibidos:', result.callbacks.length);
-      console.log('Total de callbacks disponibles:', result.totalCallbacks);
-      console.log('Hay más callbacks:', result.hasMore);
-      
+
+      // console.log('Callbacks iniciales recibidos:', result.callbacks.length);
+      // console.log('Total de callbacks disponibles:', result.totalCallbacks);
+      // console.log('Hay más callbacks:', result.hasMore);
+
       setCallbacks(result.callbacks);
       setFilteredCallbacks(result.callbacks);
       setHasMoreCallbacks(result.hasMore);
       setTotalCallbacks(result.totalCallbacks);
     } catch (err) {
-      console.error('Error al cargar callbacks:', err);
-      setError(err instanceof Error ? err.message : 'Error al cargar callbacks');
+      // console.error("Error al cargar callbacks:", err);
+      setError(
+        err instanceof Error ? err.message : "Error al cargar callbacks",
+      );
       // En caso de error, asegurar que tenemos arrays vacíos
       setCallbacks([]);
       setFilteredCallbacks([]);
@@ -102,28 +108,30 @@ export function Callbacks({}: CallbacksProps) {
     setError(null);
 
     try {
-      console.log('Cargando más callbacks...');
-      console.log('Filtros de fecha aplicados:', { filterStartDate, filterEndDate });
-      
+      // console.log('Cargando más callbacks...');
+      // console.log('Filtros de fecha aplicados:', { filterStartDate, filterEndDate });
+
       const result = await loadMoreCallbacks(
-        clientId, 
-        callbacks, 
+        clientId,
+        callbacks,
         500,
         filterStartDate || undefined,
-        filterEndDate || undefined
+        filterEndDate || undefined,
       );
-      
-      console.log('Callbacks adicionales cargados:', result.callbacks.length - callbacks.length);
-      console.log('Total de callbacks ahora:', result.callbacks.length);
-      console.log('Hay más callbacks:', result.hasMore);
-      
+
+      // console.log('Callbacks adicionales cargados:', result.callbacks.length - callbacks.length);
+      // console.log('Total de callbacks ahora:', result.callbacks.length);
+      // console.log('Hay más callbacks:', result.hasMore);
+
       setCallbacks(result.callbacks);
       setFilteredCallbacks(result.callbacks);
       setHasMoreCallbacks(result.hasMore);
       setTotalCallbacks(result.totalCallbacks);
     } catch (err) {
-      console.error('Error al cargar más callbacks:', err);
-      setError(err instanceof Error ? err.message : 'Error al cargar más callbacks');
+      // console.error("Error al cargar más callbacks:", err);
+      setError(
+        err instanceof Error ? err.message : "Error al cargar más callbacks",
+      );
     } finally {
       setLoadingMore(false);
     }
@@ -142,24 +150,29 @@ export function Callbacks({}: CallbacksProps) {
 
     // Filtrar por búsqueda
     if (searchTerm) {
-      filtered = filtered.filter(callback =>
-        callback.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        callback.last_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        callback.phone_number?.includes(searchTerm) ||
-        callback.direccion?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        callback.ciudad?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        callback.region?.toLowerCase().includes(searchTerm.toLowerCase())
+      filtered = filtered.filter(
+        (callback) =>
+          callback.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          callback.last_name
+            ?.toLowerCase()
+            .includes(searchTerm.toLowerCase()) ||
+          callback.phone_number?.includes(searchTerm) ||
+          callback.direccion
+            ?.toLowerCase()
+            .includes(searchTerm.toLowerCase()) ||
+          callback.ciudad?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          callback.region?.toLowerCase().includes(searchTerm.toLowerCase()),
       );
     }
 
     // Filtrar por estado (Llamado/Pendiente/Programado)
-    if (statusFilter !== 'all') {
-      if (statusFilter === 'llamado') {
-        filtered = filtered.filter(callback => callback.Llamado);
-      } else if (statusFilter === 'pendiente') {
-        filtered = filtered.filter(callback => isCallbackPending(callback));
-      } else if (statusFilter === 'programado') {
-        filtered = filtered.filter(callback => {
+    if (statusFilter !== "all") {
+      if (statusFilter === "llamado") {
+        filtered = filtered.filter((callback) => callback.Llamado);
+      } else if (statusFilter === "pendiente") {
+        filtered = filtered.filter((callback) => isCallbackPending(callback));
+      } else if (statusFilter === "programado") {
+        filtered = filtered.filter((callback) => {
           // No llamado y no pendiente = programado
           return !callback.Llamado && !isCallbackPending(callback);
         });
@@ -173,18 +186,21 @@ export function Callbacks({}: CallbacksProps) {
   // Paginación
   const totalPages = Math.ceil(filteredCallbacks.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const currentCallbacks = filteredCallbacks.slice(startIndex, startIndex + itemsPerPage);
+  const currentCallbacks = filteredCallbacks.slice(
+    startIndex,
+    startIndex + itemsPerPage,
+  );
 
   // Formatear fecha
   const formatDate = (dateString: string) => {
     try {
       const date = new Date(dateString);
-      return date.toLocaleDateString('es-ES', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
+      return date.toLocaleDateString("es-ES", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
       });
     } catch {
       return dateString;
@@ -195,96 +211,102 @@ export function Callbacks({}: CallbacksProps) {
   const isCallbackPending = (callback: Callback) => {
     // Si ya fue llamado, no es pendiente
     if (callback.Llamado) {
-      console.log(`Callback ${callback.id} ya fue llamado, no es pendiente`);
+      // console.log(`Callback ${callback.id} ya fue llamado, no es pendiente`);
       return false;
     }
-    
+
     // Si no tiene fecha programada, considerarlo pendiente
     if (!callback.date_to_call) {
-      console.log(`Callback ${callback.id} no tiene fecha programada, es pendiente`);
+      // console.log(`Callback ${callback.id} no tiene fecha programada, es pendiente`);
       return true;
     }
-    
+
     // Un callback es pendiente cuando la fecha actual es SUPERIOR (posterior) a date_to_call
     // Es decir, cuando ya debería haberse llamado
     const now = new Date();
     const fechaProgramada = new Date(callback.date_to_call);
-    
+
     // Verificar si la fecha se parseó correctamente
     if (isNaN(fechaProgramada.getTime())) {
-      console.log(`Callback ${callback.id}: Fecha inválida - ${callback.date_to_call}`);
+      // console.log(
+      //   `Callback ${callback.id}: Fecha inválida - ${callback.date_to_call}`,
+      // );
       return true; // Si la fecha es inválida, considerarlo pendiente
     }
-    
+
     const isPending = now > fechaProgramada;
-    
-    console.log(`Callback ${callback.id}:`, {
-      date_to_call: callback.date_to_call,
-      fechaProgramada: fechaProgramada.toISOString(),
-      now: now.toISOString(),
-      isPending,
-      Llamado: callback.Llamado,
-      diferenciaDias: Math.floor((now.getTime() - fechaProgramada.getTime()) / (1000 * 60 * 60 * 24))
-    });
-    
+
+    // console.log(`Callback ${callback.id}:`, {
+    //   date_to_call: callback.date_to_call,
+    //   fechaProgramada: fechaProgramada.toISOString(),
+    //   now: now.toISOString(),
+    //   isPending,
+    //   Llamado: callback.Llamado,
+    //   diferenciaDias: Math.floor(
+    //     (now.getTime() - fechaProgramada.getTime()) / (1000 * 60 * 60 * 24),
+    //   ),
+    // });
+
     return isPending;
   };
-
 
   // Función para construir y descargar CSV
   const buildCsvAndDownload = (dataToExport: Callback[]) => {
     // Crear headers
     const headers = [
-      'ID',
-      'Nombre',
-      'Apellido',
-      'Teléfono',
-      'Dirección',
-      'Local',
-      'Ciudad',
-      'Región',
-      'Código Postal',
-      'Fecha de Creación',
-      'Fecha a Llamar',
-      'Call ID',
-      'Llamado'
+      "ID",
+      "Nombre",
+      "Apellido",
+      "Teléfono",
+      "Dirección",
+      "Local",
+      "Ciudad",
+      "Región",
+      "Código Postal",
+      "Fecha de Creación",
+      "Fecha a Llamar",
+      "Call ID",
+      "Llamado",
     ];
 
     // Crear filas de datos
-    const rows = dataToExport.map(callback => [
+    const rows = dataToExport.map((callback) => [
       callback.id,
-      callback.nombre || '',
-      callback.last_name || '',
-      callback.phone_number || '',
-      callback.direccion || '',
-      callback.local || '',
-      callback.ciudad || '',
-      callback.region || '',
-      callback.codigo_postal || '',
+      callback.nombre || "",
+      callback.last_name || "",
+      callback.phone_number || "",
+      callback.direccion || "",
+      callback.local || "",
+      callback.ciudad || "",
+      callback.region || "",
+      callback.codigo_postal || "",
       formatDate(callback.created_at),
       formatDate(callback.date_to_call),
-      callback.call_id || '',
-      callback.Llamado ? 'Sí' : 'No'
+      callback.call_id || "",
+      callback.Llamado ? "Sí" : "No",
     ]);
 
     // Convertir a CSV
-    let csvContent = headers.join(',') + '\n';
-    rows.forEach(row => {
-      const values = row.map(value => {
+    let csvContent = headers.join(",") + "\n";
+    rows.forEach((row) => {
+      const values = row.map((value) => {
         // Escapar comillas y valores que contengan comas
         const stringValue = String(value).replace(/"/g, '""');
-        return stringValue.includes(',') ? `"${stringValue}"` : stringValue;
+        return stringValue.includes(",") ? `"${stringValue}"` : stringValue;
       });
-      csvContent += values.join(',') + '\n';
+      csvContent += values.join(",") + "\n";
     });
 
     // Crear un blob y descargar
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `callbacks_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute(
+      "download",
+      `callbacks_${new Date().toISOString().split("T")[0]}.csv`,
+    );
+    link.style.visibility = "hidden";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -292,10 +314,10 @@ export function Callbacks({}: CallbacksProps) {
 
   // Abrir modal de exportación
   const openExportModal = () => {
-    setExportStartDate('');
-    setExportEndDate('');
-    setExportStartTime('');
-    setExportEndTime('');
+    setExportStartDate("");
+    setExportEndDate("");
+    setExportStartTime("");
+    setExportEndTime("");
     setExportError(null);
     setShowExportModal(true);
   };
@@ -303,51 +325,51 @@ export function Callbacks({}: CallbacksProps) {
   // Confirmar exportación: traer todos los callbacks con filtros de fecha y exportar CSV
   const confirmExport = async () => {
     if (!clientId) {
-      setExportError('No se encontró client_id.');
+      setExportError("No se encontró client_id.");
       return;
     }
-    
+
     // Validación de fechas
     if (!exportStartDate && !exportEndDate) {
-      setExportError('Selecciona al menos una fecha (inicio o fin).');
+      setExportError("Selecciona al menos una fecha (inicio o fin).");
       return;
     }
-    
+
     setExportLoading(true);
     setExportError(null);
-    
+
     try {
       // Construir fechas UTC sin convertir husos: agregar 'Z' explícito
       let startISO: string | undefined;
       let endISO: string | undefined;
-      
+
       if (exportStartDate) {
-        const hhmm = exportStartTime ? exportStartTime : '00:00';
+        const hhmm = exportStartTime ? exportStartTime : "00:00";
         startISO = `${exportStartDate}T${hhmm}:00Z`;
       }
-      
+
       if (exportEndDate) {
-        const hhmm = exportEndTime ? exportEndTime : '23:59';
+        const hhmm = exportEndTime ? exportEndTime : "23:59";
         endISO = `${exportEndDate}T${hhmm}:59Z`;
       }
 
       // Construir parámetros para la exportación
       const params: any = {
-        sort_order: 'DESC',
-        sort_by: 'created_at'
+        sort_order: "DESC",
+        sort_by: "created_at",
       };
-      
+
       if (startISO) params.fecha_inicio = startISO;
       if (endISO) params.fecha_fin = endISO;
 
-      console.log('Exportando callbacks con parámetros:', params);
+      // console.log("Exportando callbacks con parámetros:", params);
 
       // Usar endpoint sin paginación del backend para exportar todo
       const allResp = await exportAllCallbacks(clientId, params);
       const allForExport = allResp.callbacks;
 
       if (!allForExport.length) {
-        setExportError('No hay callbacks en el rango seleccionado.');
+        setExportError("No hay callbacks en el rango seleccionado.");
         setExportLoading(false);
         return;
       }
@@ -355,17 +377,19 @@ export function Callbacks({}: CallbacksProps) {
       buildCsvAndDownload(allForExport);
       setShowExportModal(false);
     } catch (err: any) {
-      setExportError(err?.message || 'Error al exportar.');
+      setExportError(err?.message || "Error al exportar.");
     } finally {
       setExportLoading(false);
     }
   };
 
   // Mostrar todos los callbacks con sus fechas para análisis
-  console.log('=== TODOS LOS CALLBACKS ===');
-  callbacks.forEach(callback => {
-    console.log(`ID: ${callback.id}, Llamado: ${callback.Llamado}, date_to_call: ${callback.date_to_call}`);
-  });
+  // console.log("=== TODOS LOS CALLBACKS ===");
+  // callbacks.forEach((callback) => {
+  //   console.log(
+  //     `ID: ${callback.id}, Llamado: ${callback.Llamado}, date_to_call: ${callback.date_to_call}`,
+  //   );
+  // });
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
@@ -373,7 +397,9 @@ export function Callbacks({}: CallbacksProps) {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800 mb-2">Callbacks</h1>
+            <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800 mb-2">
+              Callbacks
+            </h1>
             <p className="text-slate-600">
               Gestiona las llamadas de callback programadas
             </p>
@@ -392,12 +418,13 @@ export function Callbacks({}: CallbacksProps) {
               disabled={loading}
               className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-indigo-600 hover:to-purple-700 disabled:from-slate-400 disabled:to-slate-500 px-4 py-2 rounded-lg transition-all duration-200 text-white shadow-lg hover:shadow-xl"
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw
+                className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
+              />
               Actualizar
             </button>
           </div>
         </div>
-
 
         {/* Información de la lista */}
         <div className="mb-6">
@@ -408,40 +435,49 @@ export function Callbacks({}: CallbacksProps) {
                 (de {totalCallbacks} total disponibles)
               </span>
             )}
-            {(searchTerm || statusFilter !== 'all' || filterStartDate || filterEndDate) && (
-              <span className="text-blue-600 ml-2 font-medium">(filtrados)</span>
+            {(searchTerm ||
+              statusFilter !== "all" ||
+              filterStartDate ||
+              filterEndDate) && (
+              <span className="text-blue-600 ml-2 font-medium">
+                (filtrados)
+              </span>
             )}
           </p>
-          
+
           {/* Mostrar filtros activos */}
-            {(searchTerm || statusFilter !== 'all' || filterStartDate || filterEndDate) && (
-              <div className="flex flex-wrap gap-2 mt-2">
-                {searchTerm && (
-                  <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full border border-blue-200">
-                    Búsqueda: "{searchTerm}"
-                  </span>
-                )}
-                {statusFilter !== 'all' && (
-                  <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full border border-blue-200">
-                    Estado: {
-                      statusFilter === 'llamado' ? 'Llamados' : 
-                      statusFilter === 'pendiente' ? 'Pendientes' : 
-                      'Programados'
-                    }
-                  </span>
-                )}
-                {filterStartDate && (
-                  <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full border border-green-200">
-                    Desde: {new Date(filterStartDate).toLocaleDateString('es-ES')}
-                  </span>
-                )}
-                {filterEndDate && (
-                  <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full border border-green-200">
-                    Hasta: {new Date(filterEndDate).toLocaleDateString('es-ES')}
-                  </span>
-                )}
-              </div>
-            )}
+          {(searchTerm ||
+            statusFilter !== "all" ||
+            filterStartDate ||
+            filterEndDate) && (
+            <div className="flex flex-wrap gap-2 mt-2">
+              {searchTerm && (
+                <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full border border-blue-200">
+                  Búsqueda: "{searchTerm}"
+                </span>
+              )}
+              {statusFilter !== "all" && (
+                <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full border border-blue-200">
+                  Estado:{" "}
+                  {statusFilter === "llamado"
+                    ? "Llamados"
+                    : statusFilter === "pendiente"
+                      ? "Pendientes"
+                      : "Programados"}
+                </span>
+              )}
+              {filterStartDate && (
+                <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full border border-green-200">
+                  Desde: {new Date(filterStartDate).toLocaleDateString("es-ES")}
+                </span>
+              )}
+              {filterEndDate && (
+                <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full border border-green-200">
+                  Hasta: {new Date(filterEndDate).toLocaleDateString("es-ES")}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Filtros y búsqueda */}
@@ -478,8 +514,8 @@ export function Callbacks({}: CallbacksProps) {
               onClick={() => setShowDateFilterModal(true)}
               className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 ${
                 filterStartDate || filterEndDate
-                  ? 'bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-indigo-600 hover:to-purple-700 text-white'
-                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300'
+                  ? "bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-indigo-600 hover:to-purple-700 text-white"
+                  : "bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300"
               }`}
             >
               <Filter className="w-4 h-4" />
@@ -518,13 +554,14 @@ export function Callbacks({}: CallbacksProps) {
               <div className="text-center py-12">
                 <Phone className="w-16 h-16 text-slate-400 mx-auto mb-4" />
                 <h3 className="text-xl font-semibold text-slate-600 mb-2">
-                  {callbacks.length === 0 ? 'No hay callbacks' : 'No se encontraron callbacks'}
+                  {callbacks.length === 0
+                    ? "No hay callbacks"
+                    : "No se encontraron callbacks"}
                 </h3>
                 <p className="text-slate-500">
-                  {callbacks.length === 0 
-                    ? 'Aún no tienes callbacks registrados.'
-                    : 'Intenta ajustar los filtros de búsqueda.'
-                  }
+                  {callbacks.length === 0
+                    ? "Aún no tienes callbacks registrados."
+                    : "Intenta ajustar los filtros de búsqueda."}
                 </p>
               </div>
             ) : (
@@ -571,7 +608,9 @@ export function Callbacks({}: CallbacksProps) {
 
                         <div className="flex items-center space-x-2 text-slate-600">
                           <Calendar className="w-4 h-4" />
-                          <span>Fecha a llamar: {formatDate(callback.date_to_call)}</span>
+                          <span>
+                            Fecha a llamar: {formatDate(callback.date_to_call)}
+                          </span>
                         </div>
 
                         <div className="flex items-center space-x-2 text-slate-600">
@@ -589,13 +628,16 @@ export function Callbacks({}: CallbacksProps) {
                             {callback.local && (
                               <div className="flex items-center space-x-2">
                                 <Building className="w-3 h-3" />
-                                <span className="text-sm">{callback.local}</span>
+                                <span className="text-sm">
+                                  {callback.local}
+                                </span>
                               </div>
                             )}
                             <div className="text-sm">
                               {callback.ciudad}
                               {callback.region && `, ${callback.region}`}
-                              {callback.codigo_postal && ` - ${callback.codigo_postal}`}
+                              {callback.codigo_postal &&
+                                ` - ${callback.codigo_postal}`}
                             </div>
                           </div>
                         </div>
@@ -620,8 +662,12 @@ export function Callbacks({}: CallbacksProps) {
                   disabled={loadingMore}
                   className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-700 hover:from-purple-600 hover:to-pink-700 disabled:from-slate-400 disabled:to-slate-500 px-6 py-3 rounded-lg transition-all duration-200 text-white shadow-lg hover:shadow-xl"
                 >
-                  <RefreshCw className={`w-4 h-4 ${loadingMore ? 'animate-spin' : ''}`} />
-                  {loadingMore ? 'Cargando más callbacks...' : 'Cargar más callbacks'}
+                  <RefreshCw
+                    className={`w-4 h-4 ${loadingMore ? "animate-spin" : ""}`}
+                  />
+                  {loadingMore
+                    ? "Cargando más callbacks..."
+                    : "Cargar más callbacks"}
                 </button>
               </div>
             )}
@@ -630,7 +676,12 @@ export function Callbacks({}: CallbacksProps) {
             {totalPages > 1 && (
               <div className="flex items-center justify-between mt-8">
                 <div className="text-sm text-slate-600">
-                  Mostrando {startIndex + 1} a {Math.min(startIndex + itemsPerPage, filteredCallbacks.length)} de {filteredCallbacks.length} callbacks
+                  Mostrando {startIndex + 1} a{" "}
+                  {Math.min(
+                    startIndex + itemsPerPage,
+                    filteredCallbacks.length,
+                  )}{" "}
+                  de {filteredCallbacks.length} callbacks
                 </div>
                 <div className="flex space-x-2">
                   <button
@@ -640,7 +691,7 @@ export function Callbacks({}: CallbacksProps) {
                   >
                     Anterior
                   </button>
-                  
+
                   {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                     let pageNum;
                     if (totalPages <= 5) {
@@ -652,24 +703,26 @@ export function Callbacks({}: CallbacksProps) {
                     } else {
                       pageNum = currentPage - 2 + i;
                     }
-                    
+
                     return (
                       <button
                         key={pageNum}
                         onClick={() => setCurrentPage(pageNum)}
                         className={`px-3 py-1 rounded transition-colors ${
                           currentPage === pageNum
-                            ? 'bg-gradient-to-r from-blue-600 to-indigo-700 text-white'
-                            : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                            ? "bg-gradient-to-r from-blue-600 to-indigo-700 text-white"
+                            : "bg-slate-200 text-slate-600 hover:bg-slate-300"
                         }`}
                       >
                         {pageNum}
                       </button>
                     );
                   })}
-                  
+
                   <button
-                    onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                    onClick={() =>
+                      setCurrentPage(Math.min(totalPages, currentPage + 1))
+                    }
                     disabled={currentPage === totalPages}
                     className="px-3 py-1 bg-slate-200 text-slate-600 rounded disabled:opacity-50 hover:bg-slate-300 transition-colors"
                   >
@@ -699,7 +752,9 @@ export function Callbacks({}: CallbacksProps) {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Fecha inicial</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Fecha inicial
+                  </label>
                   <input
                     type="date"
                     value={filterStartDate}
@@ -708,7 +763,9 @@ export function Callbacks({}: CallbacksProps) {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Fecha final</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Fecha final
+                  </label>
                   <input
                     type="date"
                     value={filterEndDate}
@@ -720,12 +777,18 @@ export function Callbacks({}: CallbacksProps) {
               </div>
 
               <div className="text-sm text-gray-600">
-                <p>Selecciona un rango de fechas para filtrar los callbacks por fecha de creación.</p>
+                <p>
+                  Selecciona un rango de fechas para filtrar los callbacks por
+                  fecha de creación.
+                </p>
                 {(filterStartDate || filterEndDate) && (
                   <p className="mt-2 text-blue-600">
-                    Filtro activo: {filterStartDate && `Desde ${new Date(filterStartDate).toLocaleDateString('es-ES')}`}
-                    {filterStartDate && filterEndDate && ' - '}
-                    {filterEndDate && `Hasta ${new Date(filterEndDate).toLocaleDateString('es-ES')}`}
+                    Filtro activo:{" "}
+                    {filterStartDate &&
+                      `Desde ${new Date(filterStartDate).toLocaleDateString("es-ES")}`}
+                    {filterStartDate && filterEndDate && " - "}
+                    {filterEndDate &&
+                      `Hasta ${new Date(filterEndDate).toLocaleDateString("es-ES")}`}
                   </p>
                 )}
               </div>
@@ -734,8 +797,8 @@ export function Callbacks({}: CallbacksProps) {
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => {
-                  setFilterStartDate('');
-                  setFilterEndDate('');
+                  setFilterStartDate("");
+                  setFilterEndDate("");
                 }}
                 className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
               >
@@ -757,7 +820,9 @@ export function Callbacks({}: CallbacksProps) {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Exportar CSV - Rango de fechas</h3>
+              <h3 className="text-lg font-semibold">
+                Exportar CSV - Rango de fechas
+              </h3>
               <button
                 onClick={() => setShowExportModal(false)}
                 className="text-gray-500 hover:text-gray-700"
@@ -770,7 +835,9 @@ export function Callbacks({}: CallbacksProps) {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Fecha inicial</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Fecha inicial
+                  </label>
                   <input
                     type="date"
                     value={exportStartDate}
@@ -780,7 +847,9 @@ export function Callbacks({}: CallbacksProps) {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Hora inicial</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Hora inicial
+                  </label>
                   <input
                     type="time"
                     value={exportStartTime}
@@ -792,7 +861,9 @@ export function Callbacks({}: CallbacksProps) {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Fecha final</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Fecha final
+                  </label>
                   <input
                     type="date"
                     value={exportEndDate}
@@ -802,7 +873,9 @@ export function Callbacks({}: CallbacksProps) {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Hora final</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Hora final
+                  </label>
                   <input
                     type="time"
                     value={exportEndTime}
@@ -821,10 +894,10 @@ export function Callbacks({}: CallbacksProps) {
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => {
-                  setExportStartDate('');
-                  setExportEndDate('');
-                  setExportStartTime('');
-                  setExportEndTime('');
+                  setExportStartDate("");
+                  setExportEndDate("");
+                  setExportStartTime("");
+                  setExportEndTime("");
                   setExportError(null);
                 }}
                 className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
@@ -843,7 +916,7 @@ export function Callbacks({}: CallbacksProps) {
                     Exportando...
                   </span>
                 ) : (
-                  'Exportar'
+                  "Exportar"
                 )}
               </button>
             </div>

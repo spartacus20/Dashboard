@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Megaphone, RefreshCw, AlertCircle, Search, BarChart3 } from 'lucide-react';
+import { Megaphone, RefreshCw, AlertCircle, Search, BarChart3, Upload, Pencil, Trash2 } from 'lucide-react';
 import { RetellBatchCall, RetellPhoneNumber } from '../types';
-import { fetchBatchCalls, fetchFolders, getWorkspaceNameFromWebhook } from '../api';
+import { fetchBatchCalls, fetchFolders, getWorkspaceNameFromWebhook, deleteBatchCall } from '../api';
 import { useCallsContext } from '../context/CallsContext';
 import { BatchCallingTab } from './campaign/BatchCallingTab';
+import { Button } from '../components/ui/button';
 
 interface BatchCallWithWorkspace extends RetellBatchCall {
   workspace_api_key: string;
@@ -14,7 +15,7 @@ interface CampaignProps {
   onNavigate: (page: string) => void;
 }
 
-export function Campaign({ onNavigate }: CampaignProps) {
+export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
   const { apiKey, apiKeyTest, phoneNumbers, loadPhoneNumbers, clientId } = useCallsContext();
   const [campaignTab, setCampaignTab] = useState<'campaigns' | 'batch-calling'>('campaigns');
   const [batchCallsByWorkspace, setBatchCallsByWorkspace] = useState<BatchCallWithWorkspace[]>([]);
@@ -23,6 +24,35 @@ export function Campaign({ onNavigate }: CampaignProps) {
   const [workspaceFilter, setWorkspaceFilter] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [workspaceFoldersByApiKey, setWorkspaceFoldersByApiKey] = useState<Record<string, string>>({});
+  const [batchToDelete, setBatchToDelete] = useState<BatchCallWithWorkspace | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const isPlannedStatus = (s: string) => (s || '').toLowerCase().trim() === 'planned';
+
+  // Lanzadas = ya enviadas/en curso/completadas (cualquier estado que no sea planned)
+  const isLaunchedStatus = (s: string) => !isPlannedStatus(s) && (s || '').trim() !== '';
+
+  const handleDeleteClick = (batch: BatchCallWithWorkspace) => setBatchToDelete(batch);
+  const handleDeleteCancel = () => setBatchToDelete(null);
+
+  const handleDeleteConfirm = async () => {
+    if (!batchToDelete) return;
+    setIsDeleting(true);
+    setError(null);
+    try {
+      await deleteBatchCall(batchToDelete.workspace_api_key, batchToDelete.batch_call_id);
+      setBatchToDelete(null);
+      await loadAllBatchCalls();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al eliminar la campaña');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleEditClick = () => {
+    setCampaignTab('batch-calling');
+  };
 
   // Cargar nombres de workspace desde Retell (folders), igual que en PhoneNumbers
   useEffect(() => {
@@ -61,7 +91,7 @@ export function Campaign({ onNavigate }: CampaignProps) {
           }
           newMapping[key] = bestFolder.folderName;
         } catch (e) {
-          console.error('Error al cargar folders para workspace (Campaign):', key, e);
+          // console.error('Error al cargar folders para workspace (Campaign):', key, e);
         }
       }
       if (Object.keys(newMapping).length > 0) {
@@ -104,7 +134,15 @@ export function Campaign({ onNavigate }: CampaignProps) {
     return [];
   }, [apiKey, apiKeyTest]);
 
-  // Filtrar campañas por workspace y búsqueda
+  // Prioridad para ordenar: planned e in_progress/running primero
+  const getSortPriority = (status: string) => {
+    const s = (status || '').toLowerCase().trim();
+    if (s === 'planned') return 0;
+    if (s === 'in_progress' || s === 'running') return 1;
+    return 2;
+  };
+
+  // Filtrar campañas por workspace y búsqueda; ordenar: planned y en lanzamiento primero
   const displayBatchCalls = useMemo(() => {
     let list = batchCallsByWorkspace;
     if (workspaceFilter) {
@@ -119,7 +157,9 @@ export function Campaign({ onNavigate }: CampaignProps) {
           (b.from_number && b.from_number.includes(term))
       );
     }
-    return list;
+    return [...list].sort(
+      (a, b) => getSortPriority(a.status || '') - getSortPriority(b.status || '')
+    );
   }, [batchCallsByWorkspace, workspaceFilter, searchTerm]);
 
   // Cargar batch calls de todas las API keys
@@ -145,7 +185,7 @@ export function Campaign({ onNavigate }: CampaignProps) {
               workspace_name: workspaceName,
             }));
           } catch (err) {
-            console.error(`Error obteniendo batch calls para API key ${key.substring(0, 10)}...:`, err);
+            // console.error(`Error obteniendo batch calls para API key ${key.substring(0, 10)}...:`, err);
             return [] as BatchCallWithWorkspace[];
           }
         })
@@ -154,7 +194,7 @@ export function Campaign({ onNavigate }: CampaignProps) {
       const combined = results.flat();
       setBatchCallsByWorkspace(combined);
     } catch (err) {
-      console.error('Error cargando campañas:', err);
+      // console.error('Error cargando campañas:', err);
       setError(err instanceof Error ? err.message : 'Error al cargar las campañas');
       setBatchCallsByWorkspace([]);
     } finally {
@@ -181,48 +221,54 @@ export function Campaign({ onNavigate }: CampaignProps) {
         }))
       );
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [workspaceNameByApiKey, loading, batchCallsByWorkspace.length]);
 
   const getStatusBadgeClass = (status: string) => {
     if (status === 'completed') return 'bg-emerald-100 text-emerald-700';
     if (status === 'in_progress' || status === 'running') return 'bg-blue-100 text-blue-800';
+    if (isPlannedStatus(status)) return 'bg-amber-100 text-amber-700';
     return 'bg-slate-100 text-slate-700';
   };
 
   return (
     <div className="p-8 bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-slate-800 mb-2">Campaña</h2>
-        <p className="text-slate-600">Gestiona campañas y ejecuta llamadas manuales por lotes</p>
+      <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-800 mb-2">Campaña</h2>
+          <p className="text-slate-600">Lista de batch calls y creación de nuevas campañas desde CSV</p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setCampaignTab('campaigns')}
+            className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 ${
+              campaignTab === 'campaigns'
+                ? 'bg-[#05163b] text-white'
+                : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            <Megaphone className="w-4 h-4" />
+            Campañas
+          </button>
+          <button
+            type="button"
+            onClick={() => setCampaignTab('batch-calling')}
+            className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 ${
+              campaignTab === 'batch-calling'
+                ? 'bg-[#05163b] text-white'
+                : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            <Upload className="w-4 h-4" />
+            Batch Calling
+          </button>
+        </div>
       </div>
 
-      <div className="flex border-b border-slate-200 mb-6">
-        <button
-          onClick={() => setCampaignTab('campaigns')}
-          className={`flex items-center gap-2 px-6 py-3 font-medium transition-colors ${
-            campaignTab === 'campaigns'
-              ? 'text-blue-600 border-b-2 border-blue-600'
-              : 'text-slate-600 hover:text-slate-800'
-          }`}
-        >
-          <BarChart3 className="w-5 h-5" />
-          Campañas
-        </button>
-        <button
-          onClick={() => setCampaignTab('batch-calling')}
-          className={`flex items-center gap-2 px-6 py-3 font-medium transition-colors ${
-            campaignTab === 'batch-calling'
-              ? 'text-indigo-600 border-b-2 border-indigo-600'
-              : 'text-slate-600 hover:text-slate-800'
-          }`}
-        >
-          <Megaphone className="w-5 h-5" />
-          Batch Calling
-        </button>
-      </div>
-
-      {campaignTab === 'campaigns' && (
+      {campaignTab === 'batch-calling' ? (
+        <BatchCallingTab apiKeys={apiKeysToFetch} workspaceNameByApiKey={workspaceNameByApiKey} />
+      ) : (
       <div className="bg-white rounded-xl shadow-lg border border-slate-200">
         <div className="p-6 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4 bg-gradient-to-r from-slate-50 to-blue-50">
           <h3 className="text-lg font-semibold text-slate-800">Campañas</h3>
@@ -335,10 +381,46 @@ export function Campaign({ onNavigate }: CampaignProps) {
                       <p className="text-sm text-slate-500 mt-0.5">ID: {batch.batch_call_id}</p>
                     </div>
                   </div>
-                  <div className="flex items-center">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeClass(status)}`}>
                       {status}
                     </span>
+                    {isPlannedStatus(status) && (
+                      <>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEditClick()}
+                          className="text-slate-700"
+                        >
+                          <Pencil className="w-4 h-4 mr-1" />
+                          Editar
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleDeleteClick(batch)}
+                          disabled={isDeleting}
+                        >
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          {isDeleting && batchToDelete?.batch_call_id === batch.batch_call_id ? 'Eliminando...' : 'Eliminar'}
+                        </Button>
+                      </>
+                    )}
+                    {isLaunchedStatus(status) && (
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleDeleteClick(batch)}
+                        disabled={isDeleting}
+                      >
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        {isDeleting && batchToDelete?.batch_call_id === batch.batch_call_id ? 'Eliminando...' : 'Eliminar'}
+                      </Button>
+                    )}
                   </div>
                 </div>
 
@@ -404,8 +486,35 @@ export function Campaign({ onNavigate }: CampaignProps) {
       </div>
       )}
 
-      {campaignTab === 'batch-calling' && (
-        <BatchCallingTab apiKeys={apiKeysToFetch} workspaceNameByApiKey={workspaceNameByApiKey} />
+      {/* Modal confirmar eliminación */}
+      {batchToDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+          onClick={() => handleDeleteCancel()}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-md w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-slate-800 mb-2">¿Eliminar campaña?</h3>
+            <p className="text-slate-600 text-sm mb-4">
+              Se eliminará la campaña &quot;{batchToDelete.name || batchToDelete.batch_call_id}&quot;. Esta acción no se puede deshacer.
+            </p>
+            <div className="flex justify-end gap-3">
+              <Button type="button" variant="outline" onClick={() => handleDeleteCancel()}>
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => handleDeleteConfirm()}
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'Eliminando...' : 'Eliminar'}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

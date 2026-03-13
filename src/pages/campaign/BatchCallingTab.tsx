@@ -164,7 +164,6 @@ function normalizePhone(value: string): NormalizedPhoneResult {
   if (!compact) return { normalized: '', autoFixedMexico: false };
   const withPlus = compact.startsWith('00') ? `+${compact.slice(2)}` : compact.startsWith('+') ? compact : `+${compact}`;
 
-  // Compatibilidad: algunos CSV traen México como +521XXXXXXXXXX; en E.164 actual suele ser +52XXXXXXXXXX.
   if (/^\+521\d{10}$/.test(withPlus)) {
     return { normalized: `+52${withPlus.slice(4)}`, autoFixedMexico: true };
   }
@@ -223,9 +222,9 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
   const [sendingAll, setSendingAll] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [messageType, setMessageType] = useState<'ok' | 'error' | null>(null);
-  const [skippedRows, setSkippedRows] = useState(0); // sin teléfono
-  const [invalidRows, setInvalidRows] = useState(0); // teléfono inválido
-  const [autoFixedRows, setAutoFixedRows] = useState(0); // corregidos automáticamente (+521 -> +52)
+  const [skippedRows, setSkippedRows] = useState(0);
+  const [invalidRows, setInvalidRows] = useState(0);
+  const [autoFixedRows, setAutoFixedRows] = useState(0);
   const [retellOptionsByKey, setRetellOptionsByKey] = useState<Record<string, RetellOptionsByKey>>({});
   const [retellLoadingByKey, setRetellLoadingByKey] = useState<Record<string, boolean>>({});
   const [retellErrorByKey, setRetellErrorByKey] = useState<Record<string, string | null>>({});
@@ -649,7 +648,7 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
                       <select
                         value={batch.config.timezone}
                         onChange={(e) => updateBatchConfig(batch.id, 'timezone', e.target.value)}
-                        className="w-full appearance-none rounded-md border border-gray-300 bg-white bg-[linear-gradient(45deg,transparent_50%,#64748b_50%),linear-gradient(135deg,#64748b_50%,transparent_50%)] bg-[position:calc(100%-18px)_calc(1em+1px),calc(100%-13px)_calc(1em+1px)] bg-[size:5px_5px,5px_5px] bg-no-repeat px-3 py-2 pr-8 text-sm text-gray-900 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-[#05163b]/30 focus:border-[#05163b]"
+                        className="w-full appearance-none rounded-md border border-gray-300 bg-white px-3 py-2 pr-8 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#05163b]/30 focus:border-[#05163b]"
                       >
                         {COMMON_TIMEZONES.map((tz) => (
                           <option key={tz} value={tz}>
@@ -658,7 +657,10 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
                         ))}
                       </select>
                     </div>
-                    <div className="space-y-1.5"><label className="block text-sm font-medium text-gray-700">Reserved concurrency (opcional)</label><input type="number" min={0} value={batch.config.reservedConcurrency} onChange={(e) => updateBatchConfig(batch.id, 'reservedConcurrency', e.target.value)} className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900" /></div>
+                    <div className="space-y-1.5">
+                      <label className="block text-sm font-medium text-gray-700">Reserved concurrency (opcional)</label>
+                      <input type="number" min={0} value={batch.config.reservedConcurrency} onChange={(e) => updateBatchConfig(batch.id, 'reservedConcurrency', e.target.value)} className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900" />
+                    </div>
                   </div>
 
                   {batch.config.apiKey.trim() && (
@@ -728,4 +730,3 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
     </div>
   );
 }
-

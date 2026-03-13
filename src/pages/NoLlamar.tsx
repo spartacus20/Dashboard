@@ -17,12 +17,12 @@ import {
 import { DontCall } from '../types';
 import { useCallsContext } from '../context/CallsContext';
 import { listDontCallRecords, getClientApiKey } from '../api';
-import { useUserData } from '../hooks/useUserData';
+import { useDashboardData } from "../hooks/useDashboardData";;
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 
 const NoLlamar: React.FC = () => {
   const { dontCallEnabled } = useCallsContext();
-  const { apiKey: userApiKey, clientId } = useUserData();
+  const { apiKey: userApiKey, clientId } = useDashboardData();
   const [dontCallRecords, setDontCallRecords] = useState<DontCall[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,18 +43,18 @@ const NoLlamar: React.FC = () => {
   useEffect(() => {
     const fetchApiKey = async () => {
       if (!apiKey && clientId) {
-        console.log('🔑 Obteniendo API key para client_id:', clientId);
+        // console.log('🔑 Obteniendo API key para client_id:', clientId);
         try {
           const result = await getClientApiKey(clientId);
           if (result.apiKey) {
-            console.log('✅ API key obtenida:', result.apiKey);
+            // console.log('✅ API key obtenida:', result.apiKey);
             setApiKey(result.apiKey);
           } else {
-            console.error('❌ No se pudo obtener la API key');
+            // console.error('❌ No se pudo obtener la API key');
             setError('No se pudo obtener la API key del cliente');
           }
         } catch (err) {
-          console.error('❌ Error al obtener API key:', err);
+          // console.error('❌ Error al obtener API key:', err);
           setError('Error al obtener la API key del cliente');
         }
       }
@@ -95,19 +95,19 @@ const NoLlamar: React.FC = () => {
       setError(null);
 
       if (!apiKey || !clientId) {
-        console.log('⏳ Esperando API key o client ID...', { apiKey: !!apiKey, clientId: !!clientId });
+        // console.log('⏳ Esperando API key o client ID...', { apiKey: !!apiKey, clientId: !!clientId });
         setLoading(false);
         return;
       }
 
       const params = buildDontCallParams(recordsPerPage, page);
 
-      console.log('🔍 Cargando registros de No Llamar con parámetros:', params);
+      // console.log('🔍 Cargando registros de No Llamar con parámetros:', params);
 
       // Llamar al endpoint del backend
       const response = await listDontCallRecords(apiKey, params);
 
-      console.log('📊 Respuesta del backend:', response);
+      // console.log('📊 Respuesta del backend:', response);
 
       setDontCallRecords(response.registros || []);
       setTotalRecords(response.total_registros || 0);
@@ -115,7 +115,7 @@ const NoLlamar: React.FC = () => {
       setCurrentPage(response.pagina_actual || 1);
 
     } catch (err) {
-      console.error('Error al cargar registros de No Llamar:', err);
+      // console.error('Error al cargar registros de No Llamar:', err);
       setError(err instanceof Error ? err.message : 'Error al cargar los registros');
     } finally {
       setLoading(false);
@@ -220,7 +220,7 @@ const NoLlamar: React.FC = () => {
       downloadDontCallCSV(finalRecords, `${finalRecords.length}_registros`);
       setIsExportDialogOpen(false);
     } catch (err) {
-      console.error('Error al exportar registros de No Llamar:', err);
+      // console.error('Error al exportar registros de No Llamar:', err);
       setError(err instanceof Error ? err.message : 'Error al exportar registros');
     } finally {
       setExporting(false);

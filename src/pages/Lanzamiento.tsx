@@ -273,7 +273,7 @@ const Lanzamiento: React.FC = () => {
         no_match_records: funnelResponse.no_match_records
       });
     } catch (funnelError) {
-      console.error('Error al cargar funnel de asistencia:', funnelError);
+      // console.error('Error al cargar funnel de asistencia:', funnelError);
     } finally {
       setLoadingFunnel(false);
     }
@@ -304,7 +304,7 @@ const Lanzamiento: React.FC = () => {
       
       // Verificar si esta es todavía la petición más reciente
       if (currentRequest !== requestCounterRef.current) {
-        console.log('Petición obsoleta ignorada');
+        // console.log('Petición obsoleta ignorada');
         return;
       }
       
@@ -319,10 +319,10 @@ const Lanzamiento: React.FC = () => {
     } catch (err) {
       // Solo procesar errores si esta es la petición más reciente
       if (currentRequest !== requestCounterRef.current) {
-        console.log('Error de petición obsoleta ignorado');
+        // console.log('Error de petición obsoleta ignorado');
         return;
       }
-      console.error('Error al cargar métricas:', err);
+      // console.error('Error al cargar métricas:', err);
       setError(err instanceof Error ? err.message : 'Error al cargar las métricas');
     } finally {
       // Solo actualizar loading si esta es la petición más reciente

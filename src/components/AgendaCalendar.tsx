@@ -30,7 +30,7 @@ export function AgendaCalendar({ agendas, onAgendaClick, onLoadAllAgendas, mode 
           const allAgendasData = await onLoadAllAgendas();
           setAllAgendas(allAgendasData);
         } catch (error) {
-          console.error('Error al cargar todas las agendas:', error);
+          // console.error('Error al cargar todas las agendas:', error);
         } finally {
           setLoadingAllAgendas(false);
         }
