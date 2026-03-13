@@ -41,10 +41,12 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
         // full_name: clientData.full_name || 'Sin nombre'
       // });
       
-      // Guardar metadata_llamadas en sessionStorage si está disponible
+      // Guardar metadata_llamadas en sessionStorage. Siempre actualizar al cambiar de cliente para evitar cache del anterior
       if (clientData.metadata_llamadas) {
         sessionStorage.setItem('metadata_llamadas', JSON.stringify(clientData.metadata_llamadas));
         // console.log('✅ metadata_llamadas guardado en sessionStorage');
+      } else {
+        sessionStorage.removeItem('metadata_llamadas');
       }
 
       // Guardar metadata (incluye filtro_solar y otros permisos de módulos) en sessionStorage
@@ -175,10 +177,12 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
     
     // Si no es un array, intentar obtener directamente
     if (data && typeof data === 'object') {
-      // Guardar metadata_llamadas en sessionStorage si está disponible
+      // Guardar metadata_llamadas en sessionStorage. Limpiar si el cliente no la tiene para evitar cache del anterior
       if (data.metadata_llamadas) {
         sessionStorage.setItem('metadata_llamadas', JSON.stringify(data.metadata_llamadas));
         // console.log('✅ metadata_llamadas guardado en sessionStorage (formato objeto)');
+      } else {
+        sessionStorage.removeItem('metadata_llamadas');
       }
 
       // Guardar metadata (incluye filtro_solar y otros permisos de módulos) en sessionStorage

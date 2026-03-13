@@ -346,52 +346,43 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   const [metadataFields, setMetadataFields] = React.useState<Record<string, boolean>>({});
   const [availableMetadataFields, setAvailableMetadataFields] = React.useState<string[]>([]);
 
-  // Cargar campos de metadata del session storage
+  // Cargar campos de metadata del session storage. Re-ejecutar cuando cambia clientId para traer siempre el del cliente actual
   React.useEffect(() => {
     try {
       const storedMetadata = sessionStorage.getItem('metadata_llamadas');
-      // console.log('🔍 Metadata del session storage:', storedMetadata);
       
       if (storedMetadata) {
         const metadataArray = JSON.parse(storedMetadata);
-        // console.log('🔍 Metadata parseada:', metadataArray);
         
         if (Array.isArray(metadataArray) && metadataArray.length > 0) {
-          // Si es un array, obtener las claves del primer objeto
           const fields = Object.keys(metadataArray[0]);
-          // console.log('🔍 Campos de metadata encontrados (array):', fields);
-          
           setAvailableMetadataFields(fields);
-          
-          // Inicializar todos los campos como no seleccionados
           const initialFields: Record<string, boolean> = {};
           fields.forEach(field => {
             initialFields[field] = false;
           });
           setMetadataFields(initialFields);
         } else if (typeof metadataArray === 'object' && metadataArray !== null) {
-          // Si es un objeto directo, obtener sus claves
           const fields = Object.keys(metadataArray);
-          // console.log('🔍 Campos de metadata encontrados (objeto):', fields);
-          
           setAvailableMetadataFields(fields);
-          
-          // Inicializar todos los campos como no seleccionados
           const initialFields: Record<string, boolean> = {};
           fields.forEach(field => {
             initialFields[field] = false;
           });
           setMetadataFields(initialFields);
         } else {
-          // console.log('🔍 No se encontraron campos de metadata válidos');
+          setAvailableMetadataFields([]);
+          setMetadataFields({});
         }
       } else {
-        // console.log('🔍 No hay metadata en session storage');
+        setAvailableMetadataFields([]);
+        setMetadataFields({});
       }
     } catch (error) {
-      // console.error('Error al cargar metadata del session storage:', error);
+      setAvailableMetadataFields([]);
+      setMetadataFields({});
     }
-  }, []);
+  }, [clientId]);
 
   // Cargar página cuando cambia currentPage
   React.useEffect(() => {
@@ -897,31 +888,41 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         }
         
         // Buscar el campo en la metadata de la llamada
-        let metadataSource = null;
+        let metadataSource: any = null;
         
         // Intentar diferentes ubicaciones posibles para la metadata
-        if (call.metadata) {
-          metadataSource = call.metadata;
-        } else if (call.metadata_llamadas) {
-          metadataSource = call.metadata_llamadas;
-        } else if (call.data && call.data.metadata) {
-          metadataSource = call.data.metadata;
-        } else if (call.data && call.data.metadata_llamadas) {
-          metadataSource = call.data.metadata_llamadas;
+        let rawSource = call.metadata ?? call.metadata_llamadas ?? call.data?.metadata ?? call.data?.metadata_llamadas;
+        if (rawSource) {
+          // Si viene como string JSON (ej: '{"datos":{...},"analisis":{...}}'), parsear
+          if (typeof rawSource === 'string') {
+            try {
+              metadataSource = JSON.parse(rawSource);
+            } catch {
+              metadataSource = rawSource;
+            }
+          } else {
+            metadataSource = rawSource;
+          }
         }
+        
+        // Helper: serializar valor para exportación (objetos como JSON legible)
+        const serializeValue = (val: any): string => {
+          if (val === null || val === undefined) return '';
+          if (typeof val === 'string') return val;
+          if (typeof val === 'object') return JSON.stringify(val);
+          return String(val);
+        };
         
         if (metadataSource && Array.isArray(metadataSource) && metadataSource.length > 0) {
           // Si metadata es un array, buscar en el primer elemento
           const metadataObj = metadataSource[0];
           if (metadataObj && metadataObj[field] !== undefined) {
-            fieldValue = String(metadataObj[field]);
-            // console.log(`🔍 Valor encontrado para ${field}:`, fieldValue);
+            fieldValue = serializeValue(metadataObj[field]);
           }
         } else if (metadataSource && typeof metadataSource === 'object' && !Array.isArray(metadataSource)) {
           // Si metadata es un objeto directo (no array)
           if (metadataSource[field] !== undefined) {
-            fieldValue = String(metadataSource[field]);
-            // console.log(`🔍 Valor encontrado para ${field}:`, fieldValue);
+            fieldValue = serializeValue(metadataSource[field]);
           }
         }
         
@@ -936,9 +937,10 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     
     rows.forEach(row => {
       const values = allColumns.map(column => {
-        // Escapar comillas y valores que contengan comas
+        // Escapar comillas y envolver en comillas si hay comas, saltos de línea o comillas (para JSON legible)
         const value = String(row[column] || '').replace(/"/g, '""');
-        return value.includes(',') ? `"${value}"` : value;
+        const needsQuotes = value.includes(',') || value.includes('\n') || value.includes('\r') || value.includes('"');
+        return needsQuotes ? `"${value}"` : value;
       });
       csvContent += values.join(',') + '\n';
     });
