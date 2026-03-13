@@ -11,6 +11,7 @@ import { Ventas } from './pages/Ventas';
 import Lanzamiento from './pages/Lanzamiento';
 import NoLlamar from './pages/NoLlamar';
 import { Campaign } from './pages/Campaign';
+import { Tickets } from './pages/Tickets';
 import { useCallsContext } from './context/CallsContext';
 import { X, Upload, Phone, Info, Check, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 
@@ -1304,6 +1305,9 @@ function DashboardApp() {
         )}
         {currentPage === 'no-llamar' && (
           <NoLlamar />
+        )}
+        {currentPage === 'tickets' && (
+          <Tickets onNavigate={setCurrentPage as (page: string) => void} />
         )}
         {currentPage === 'campaign' && campaignEnabled && (
           <Campaign onNavigate={setCurrentPage as (page: string) => void} />

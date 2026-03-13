@@ -14,6 +14,7 @@ import {
   Rocket,
   PhoneOff,
   Megaphone,
+  ClipboardList,
 } from "lucide-react";
 import { useCallsContext } from "../../context/CallsContext";
 import { useAuth } from "../../context/AuthContext";
@@ -349,7 +350,7 @@ export function Sidebar({
       )}
 
       <div
-        className={`fixed top-0 left-0 h-full w-64 bg-[#05163b] border-r border-[#0a2a5a] p-4 z-40 transition-transform duration-300 ease-in-out transform ${
+        className={`fixed top-0 left-0 h-full w-64 bg-[#05163b] border-r border-[#0a2a5a] p-4 z-40 transition-transform duration-300 ease-in-out transform flex flex-col ${
           isMobileMenuOpen
             ? "translate-x-0"
             : "-translate-x-full md:translate-x-0"
@@ -617,6 +618,19 @@ export function Sidebar({
               No Llamar
             </button>
           )}
+          <button
+            onClick={() => {
+              navigateWithParams("tickets");
+            }}
+            className={`flex w-full items-center gap-2 px-4 py-2 ${
+              currentPage === "tickets"
+                ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
+                : "text-gray-300 hover:bg-[#0a2a5a]"
+            } rounded-lg`}
+          >
+            <ClipboardList className="w-5 h-5" />
+            Tickets
+          </button>
         </nav>
 
         {/* Información del usuario y botón de logout */}
