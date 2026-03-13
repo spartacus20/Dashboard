@@ -63,6 +63,7 @@ import {
   getMadridMidnight,
   addDaysUTC,
   formatMadridDateYYYYMMDD,
+  formatDiaLabel,
 } from "../lib/dateUtils";
 import { DisconnectionReasonsChart } from "../components/dashboard/charts/DisconnectionReasonsChart";
 import { EffectiveCallsHourlyChart } from "../components/dashboard/charts/EffectiveCallsHourlyChart";

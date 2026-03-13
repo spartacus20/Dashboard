@@ -240,8 +240,22 @@ export async function getDashboardMonth(clientId?: string, bdd?: string): Promis
 
 
 
+// Estructura vacía segura para evitar pantalla en blanco si falla la transformación
+const EMPTY_DASHBOARD = {
+  dashboard_data: {
+    metricas_generales: {
+      total_llamadas: 0, llamadas_efectivas: 0, llamadas_fallidas: 0, costo_total: 0,
+      total_duration_seconds: 0, total_duration_minutes: 0, total_agendamientos: 0, costo_por_agenda: 0
+    },
+    llamadas_por_dia: [], llamadas_por_hora: [], razones_desconexion: [], tipos_vivienda: [],
+    tipos_vivienda_agendas: [], interes: [], llamadas_efectivas_por_hora: [], agentes_por_agendas: [],
+    duracion_llamadas_efectivas: null
+  }
+};
+
 // Función auxiliar para transformar los datos del dashboard
 function transformDashboardData(data: any): any {
+  try {
   if (data && typeof data === 'object') {
     // console.log('Datos del dashboard recibidos:', data);
     
@@ -342,41 +356,41 @@ function transformDashboardData(data: any): any {
 
           return [];
         })(),
-        // Transformar distribucion_por_hora a llamadas_por_hora
-        llamadas_por_hora: data.distribucion_por_hora ? data.distribucion_por_hora.map((item: any) => ({
+        // Transformar distribucion_por_hora a llamadas_por_hora (Array.isArray evita crash si el backend devuelve formato distinto)
+        llamadas_por_hora: Array.isArray(data.distribucion_por_hora) ? data.distribucion_por_hora.map((item: any) => ({
           hora: item.hora,
           hora_label: `${item.hora}:00`,
-          llamadas_mas_16_segundos: item.cantidad_agendas * 5, // Estimación: 5 llamadas por agenda
-          cantidad_agendas: item.cantidad_agendas
+          llamadas_mas_16_segundos: (item.cantidad_agendas || 0) * 5, // Estimación: 5 llamadas por agenda
+          cantidad_agendas: item.cantidad_agendas || 0
         })) : [],
         // Transformar razones_desconexion
-        razones_desconexion: data.razones_desconexion ? data.razones_desconexion.map((item: any) => ({
+        razones_desconexion: Array.isArray(data.razones_desconexion) ? data.razones_desconexion.map((item: any) => ({
           razon: item.razon,
           total: item.cantidad,
           porcentaje: ((item.cantidad / (data.total_llamadas || 1)) * 100).toFixed(2)
         })) : [],
         // Transformar tipos_vivienda (por llamadas)
-        tipos_vivienda: data.tipos_vivienda ? data.tipos_vivienda.map((item: any) => ({
+        tipos_vivienda: Array.isArray(data.tipos_vivienda) ? data.tipos_vivienda.map((item: any) => ({
           tipo: item.tipo,
           cantidad: item.cantidad,
           porcentaje: ((item.cantidad / (data.total_llamadas || 1)) * 100).toFixed(2)
         })) : [],
         // Transformar tipos_vivienda_agendas (por agendas)
-        tipos_vivienda_agendas: data.tipos_vivienda_agendas ? data.tipos_vivienda_agendas.map((item: any) => ({
+        tipos_vivienda_agendas: Array.isArray(data.tipos_vivienda_agendas) ? data.tipos_vivienda_agendas.map((item: any) => ({
           tipo: item.tipo,
           cantidad: item.cantidad,
           porcentaje: ((item.cantidad / (data.total_agendamientos || 1)) * 100).toFixed(2)
         })) : [],
         // Transformar interes
-        interes: data.interes ? data.interes.map((item: any) => ({
+        interes: Array.isArray(data.interes) ? data.interes.map((item: any) => ({
           interes: item.interes,
           cantidad: item.cantidad,
           porcentaje: ((item.cantidad / (data.total_llamadas || 1)) * 100).toFixed(2)
         })) : [],
         // Transformar llamadas_efectivas_por_hora
-        llamadas_efectivas_por_hora: data.llamadas_efectivas_por_hora ? data.llamadas_efectivas_por_hora.map((item: any) => ({
+        llamadas_efectivas_por_hora: Array.isArray(data.llamadas_efectivas_por_hora) ? data.llamadas_efectivas_por_hora.map((item: any) => ({
           hora: item.hora,
-          hora_label: `${item.hora.toString().padStart(2, '0')}:00`,
+          hora_label: `${String(item.hora ?? '').padStart(2, '0')}:00`,
           cantidad_llamadas: item.cantidad_llamadas || 0
         })) : [],
         // Transformar duracion_llamadas_efectivas
@@ -386,7 +400,7 @@ function transformDashboardData(data: any): any {
           rango_50_plus: data.duracion_llamadas_efectivas.rango_50_plus || 0
         } : null,
         // Transformar agentes_por_agendas
-        agentes_por_agendas: data.agentes_por_agendas ? data.agentes_por_agendas.map((item: any) => ({
+        agentes_por_agendas: Array.isArray(data.agentes_por_agendas) ? data.agentes_por_agendas.map((item: any) => ({
           agent_id: item.agent_id,
           cantidad_agendas: item.cantidad_agendas || 0
         })) : []
@@ -398,6 +412,9 @@ function transformDashboardData(data: any): any {
   }
   
   // console.warn('Formato inesperado de respuesta del dashboard:', data);
-  return data;
+  return data ?? EMPTY_DASHBOARD;
+  } catch (_err) {
+    return EMPTY_DASHBOARD;
+  }
 }
 

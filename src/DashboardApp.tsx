@@ -1263,15 +1263,21 @@ function DashboardApp() {
       />
 
       <div className="md:ml-64 p-4 md:p-8 transition-all">
-        {currentPage === 'dashboard' && stats && (
+        {currentPage === 'dashboard' && (
           <Dashboard
+            stats={stats || { total: 0, completed: 0, failed: 0, averageDuration: '0:00', averageDurationSeconds: 0 }}
             loading={loading || loadingAllCalls || loadingDashboardData}
             error={error}
+            onReload={() => loadAllCalls(true)}
+            filterCriteria={filterCriteria}
+            onFilterChange={handleFilterChangeForDashboard}
+            disconnectionReasons={disconnectionReasons}
+            totalCalls={calls.length}
+            filteredCallsCount={filteredCalls.length}
             dashboardData={dashboardData}
             loadDashboardData={loadDashboardData}
             agendaEnabled={agendaEnabled}
             launchEnabled={launchEnabled}
-            salesEnabled={salesEnabled}
           />
         )}
         {currentPage === 'recordings' && (
@@ -1311,9 +1317,6 @@ function DashboardApp() {
         )}
         {currentPage === 'campaign' && campaignEnabled && (
           <Campaign onNavigate={setCurrentPage as (page: string) => void} />
-        )}
-        {currentPage === 'tickets' && (
-          <Tickets onNavigate={setCurrentPage as (page: string) => void} />
         )}
       </div>
     </div>

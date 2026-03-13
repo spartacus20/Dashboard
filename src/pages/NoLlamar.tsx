@@ -11,18 +11,15 @@ import {
   Filter,
   User,
   Phone,
-  AlertCircle,
-  CheckCircle
+  AlertCircle
 } from 'lucide-react';
 import { DontCall } from '../types';
 import { useCallsContext } from '../context/CallsContext';
-import { listDontCallRecords, getClientApiKey } from '../api';
-import { useDashboardData } from "../hooks/useDashboardData";;
+import { listDontCallRecords } from '../api';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 
 const NoLlamar: React.FC = () => {
-  const { dontCallEnabled } = useCallsContext();
-  const { apiKey: userApiKey, clientId } = useDashboardData();
+  const { dontCallEnabled, apiKey, clientId } = useCallsContext();
   const [dontCallRecords, setDontCallRecords] = useState<DontCall[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -32,36 +29,11 @@ const NoLlamar: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
-  const [apiKey, setApiKey] = useState<string | null>(userApiKey);
   const recordsPerPage = 50;
   const [exporting, setExporting] = useState(false);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [exportMode, setExportMode] = useState<'page' | 'all' | 'custom'>('page');
   const [customExportCount, setCustomExportCount] = useState<string>('');
-
-  // Efecto para obtener la API key si no está disponible
-  useEffect(() => {
-    const fetchApiKey = async () => {
-      if (!apiKey && clientId) {
-        // console.log('🔑 Obteniendo API key para client_id:', clientId);
-        try {
-          const result = await getClientApiKey(clientId);
-          if (result.apiKey) {
-            // console.log('✅ API key obtenida:', result.apiKey);
-            setApiKey(result.apiKey);
-          } else {
-            // console.error('❌ No se pudo obtener la API key');
-            setError('No se pudo obtener la API key del cliente');
-          }
-        } catch (err) {
-          // console.error('❌ Error al obtener API key:', err);
-          setError('Error al obtener la API key del cliente');
-        }
-      }
-    };
-
-    fetchApiKey();
-  }, [apiKey, clientId]);
 
   // Construir parámetros comunes para la API de No Llamar
   const buildDontCallParams = (perPage: number, page: number) => {
