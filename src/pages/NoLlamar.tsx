@@ -11,18 +11,15 @@ import {
   Filter,
   User,
   Phone,
-  AlertCircle,
-  CheckCircle
+  AlertCircle
 } from 'lucide-react';
 import { DontCall } from '../types';
 import { useCallsContext } from '../context/CallsContext';
-import { listDontCallRecords, getClientApiKey } from '../api';
-import { useUserData } from '../hooks/useUserData';
+import { listDontCallRecords } from '../api';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 
 const NoLlamar: React.FC = () => {
-  const { dontCallEnabled } = useCallsContext();
-  const { apiKey: userApiKey, clientId } = useUserData();
+  const { dontCallEnabled, apiKey, clientId } = useCallsContext();
   const [dontCallRecords, setDontCallRecords] = useState<DontCall[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -32,36 +29,11 @@ const NoLlamar: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
-  const [apiKey, setApiKey] = useState<string | null>(userApiKey);
   const recordsPerPage = 50;
   const [exporting, setExporting] = useState(false);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [exportMode, setExportMode] = useState<'page' | 'all' | 'custom'>('page');
   const [customExportCount, setCustomExportCount] = useState<string>('');
-
-  // Efecto para obtener la API key si no está disponible
-  useEffect(() => {
-    const fetchApiKey = async () => {
-      if (!apiKey && clientId) {
-        console.log('🔑 Obteniendo API key para client_id:', clientId);
-        try {
-          const result = await getClientApiKey(clientId);
-          if (result.apiKey) {
-            console.log('✅ API key obtenida:', result.apiKey);
-            setApiKey(result.apiKey);
-          } else {
-            console.error('❌ No se pudo obtener la API key');
-            setError('No se pudo obtener la API key del cliente');
-          }
-        } catch (err) {
-          console.error('❌ Error al obtener API key:', err);
-          setError('Error al obtener la API key del cliente');
-        }
-      }
-    };
-
-    fetchApiKey();
-  }, [apiKey, clientId]);
 
   // Construir parámetros comunes para la API de No Llamar
   const buildDontCallParams = (perPage: number, page: number) => {
@@ -95,19 +67,19 @@ const NoLlamar: React.FC = () => {
       setError(null);
 
       if (!apiKey || !clientId) {
-        console.log('⏳ Esperando API key o client ID...', { apiKey: !!apiKey, clientId: !!clientId });
+        // console.log('⏳ Esperando API key o client ID...', { apiKey: !!apiKey, clientId: !!clientId });
         setLoading(false);
         return;
       }
 
       const params = buildDontCallParams(recordsPerPage, page);
 
-      console.log('🔍 Cargando registros de No Llamar con parámetros:', params);
+      // console.log('🔍 Cargando registros de No Llamar con parámetros:', params);
 
       // Llamar al endpoint del backend
       const response = await listDontCallRecords(apiKey, params);
 
-      console.log('📊 Respuesta del backend:', response);
+      // console.log('📊 Respuesta del backend:', response);
 
       setDontCallRecords(response.registros || []);
       setTotalRecords(response.total_registros || 0);
@@ -115,7 +87,7 @@ const NoLlamar: React.FC = () => {
       setCurrentPage(response.pagina_actual || 1);
 
     } catch (err) {
-      console.error('Error al cargar registros de No Llamar:', err);
+      // console.error('Error al cargar registros de No Llamar:', err);
       setError(err instanceof Error ? err.message : 'Error al cargar los registros');
     } finally {
       setLoading(false);
@@ -220,7 +192,7 @@ const NoLlamar: React.FC = () => {
       downloadDontCallCSV(finalRecords, `${finalRecords.length}_registros`);
       setIsExportDialogOpen(false);
     } catch (err) {
-      console.error('Error al exportar registros de No Llamar:', err);
+      // console.error('Error al exportar registros de No Llamar:', err);
       setError(err instanceof Error ? err.message : 'Error al exportar registros');
     } finally {
       setExporting(false);

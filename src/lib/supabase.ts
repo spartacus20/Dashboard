@@ -29,9 +29,9 @@ const GET_CLIENT_WEBHOOK_URL = `${BASE_URL}/get-client`
 export const getClientId = async (email: string): Promise<string | null> => {
   try {
     // Mostrar la URL base al cargar get-client
-    console.log('🌐 BASE_URL:', BASE_URL)
+    // console.log('🌐 BASE_URL:', BASE_URL)
     // Siempre hacer la petición para obtener datos actualizados (incluyendo permissions)
-    console.log('🔍 Obteniendo datos del usuario desde:', GET_CLIENT_WEBHOOK_URL)
+    // console.log('🔍 Obteniendo datos del usuario desde:', GET_CLIENT_WEBHOOK_URL)
     
     // Hacer petición POST al endpoint correcto
     const response = await fetch(GET_CLIENT_WEBHOOK_URL, {
@@ -52,7 +52,7 @@ export const getClientId = async (email: string): Promise<string | null> => {
       } else if (data && typeof data === 'object') {
         userData = data
       } else {
-        console.warn('Formato de respuesta inesperado:', data)
+        // console.warn('Formato de respuesta inesperado:', data)
         return null
       }
       
@@ -87,14 +87,14 @@ export const getClientId = async (email: string): Promise<string | null> => {
           
           if (allowedClientIds.includes(selectedClientId)) {
             clientIdToUse = selectedClientId
-            console.log('✅ Usando client_id seleccionado por el usuario:', selectedClientId)
+            // console.log('✅ Usando client_id seleccionado por el usuario:', selectedClientId)
           } else {
-            console.log('⚠️ El client_id seleccionado no está en la lista permitida, usando el por defecto')
+            // console.log('⚠️ El client_id seleccionado no está en la lista permitida, usando el por defecto')
             // Limpiar el client_id seleccionado si no es válido
             localStorage.removeItem(selected_client_id)
           }
         } else {
-          console.log('ℹ️ No hay client_id seleccionado o no hay client_test, usando el por defecto:', defaultClientId)
+          // console.log('ℹ️ No hay client_id seleccionado o no hay client_test, usando el por defecto:', defaultClientId)
         }
         
         // Guardar el client_id que vamos a usar (puede ser el seleccionado o el por defecto)
@@ -135,23 +135,23 @@ export const getClientId = async (email: string): Promise<string | null> => {
             if (permissionsKeys.length > 0) {
               // Si tiene al menos una propiedad, guardarlo
               sessionStorage.setItem('permissions', JSON.stringify(userData.permissions))
-              console.log('✅ Permissions guardados:', userData.permissions)
+              // console.log('✅ Permissions guardados:', userData.permissions)
             } else {
               // Si es un objeto vacío, no guardar nada (o guardar null para indicar que no hay permissions)
               sessionStorage.removeItem('permissions')
-              console.log('ℹ️ Permissions vacío del servidor, usuario sin limitaciones')
+              // console.log('ℹ️ Permissions vacío del servidor, usuario sin limitaciones')
             }
           } else if (userData.permissions === null || userData.permissions === undefined) {
             // Si es null o undefined, no guardar nada
             sessionStorage.removeItem('permissions')
-            console.log('ℹ️ No hay permissions definidos, usuario sin limitaciones')
+            // console.log('ℹ️ No hay permissions definidos, usuario sin limitaciones')
           } else {
             // Cualquier otro caso, guardar como está
             sessionStorage.setItem('permissions', JSON.stringify(userData.permissions))
-            console.log('✅ Permissions guardados (formato no estándar):', userData.permissions)
+            // console.log('✅ Permissions guardados (formato no estándar):', userData.permissions)
           }
         } else {
-          console.log('ℹ️ Permissions ya existen en sessionStorage, no se sobrescriben para evitar problemas de seguridad')
+          // console.log('ℹ️ Permissions ya existen en sessionStorage, no se sobrescriben para evitar problemas de seguridad')
         }
         
         // Guardar client_test (JSONB) para el selector de client_id
@@ -160,36 +160,36 @@ export const getClientId = async (email: string): Promise<string | null> => {
           const clientTestJson = JSON.stringify(userData.client_test)
           sessionStorage.setItem('client_test', clientTestJson)
           localStorage.setItem('user_client_test', clientTestJson)
-          console.log('✅ client_test guardado en sessionStorage y localStorage:', userData.client_test)
+          // console.log('✅ client_test guardado en sessionStorage y localStorage:', userData.client_test)
         } else {
           sessionStorage.removeItem('client_test')
           localStorage.removeItem('user_client_test')
         }
         
-        console.log('✅ Datos del usuario guardados en sessionStorage:', {
-          clientId: clientIdToUse,
-          defaultClientId: defaultClientId,
-          selectedClientId: selectedClientId,
-          email: userData.email,
-          fullName: fullName,
-          hasMetadata: !!userData.metadata,
-          hasMetadataLlamadas: !!userData.metadata_llamadas,
-          hasPermissions: !!userData.permissions,
-          permissions: userData.permissions
-        })
+        // console.log('✅ Datos del usuario guardados en sessionStorage:', {
+        //   clientId: clientIdToUse,
+        //   defaultClientId: defaultClientId,
+        //   selectedClientId: selectedClientId,
+        //   email: userData.email,
+        //   fullName: fullName,
+        //   hasMetadata: !!userData.metadata,
+        //   hasMetadataLlamadas: !!userData.metadata_llamadas,
+        //   hasPermissions: !!userData.permissions,
+        //   permissions: userData.permissions
+        // })
         
         return clientIdToUse
       }
     } else {
       const errorText = await response.text()
-      console.error('Error en la respuesta del servidor:', response.status, errorText)
+      // console.error('Error en la respuesta del servidor:', response.status, errorText)
     }
 
     // Si no se puede obtener de la API, devolvemos null
-    console.warn('No se pudo obtener el client_id de get-client')
+    // console.warn('No se pudo obtener el client_id de get-client')
     return null
   } catch (error) {
-    console.error('Error obteniendo client_id:', error)
+    // console.error('Error obteniendo client_id:', error)
     return null
   }
 }
@@ -222,7 +222,7 @@ export const getApiKeyTest = (): string[] | null => {
     try {
       return JSON.parse(apiKeyTest)
     } catch (e) {
-      console.warn('Error parseando apiKeyTest:', e)
+      // console.warn('Error parseando apiKeyTest:', e)
       return null
     }
   }
@@ -249,10 +249,10 @@ export const getFullName = (): string | null => {
 export const getMetadata = () => {
   const metadata = sessionStorage.getItem('metadata')
   const parsedMetadata = metadata ? JSON.parse(metadata) : null
-  console.log('📋 Obteniendo metadatos:', {
-    rawMetadata: metadata,
-    parsedMetadata
-  })
+  // console.log('📋 Obteniendo metadatos:', {
+  //   rawMetadata: metadata,
+  //   parsedMetadata
+  // })
   return parsedMetadata
 }
 
@@ -276,7 +276,7 @@ export const getClientTest = () => {
     if (clientTest) {
       // Restaurar también en sessionStorage para consistencia
       sessionStorage.setItem('client_test', clientTest)
-      console.log('✅ client_test restaurado desde localStorage a sessionStorage')
+      // console.log('✅ client_test restaurado desde localStorage a sessionStorage')
     }
   }
   
@@ -298,6 +298,12 @@ export const hasPermissionsDefined = (): boolean => {
   const keys = Object.keys(permissions)
   return keys.length > 0
 }
+
+// Función para verificar si el usuario tiene acceso a Tickets (desde metadata en sessionStorage)
+export const canAccessTickets = (): boolean => {
+  const metadata = getMetadata();
+  return metadata?.tickets === true;
+};
 
 // Función para verificar si el usuario tiene acceso a una funcionalidad específica
 // Si tiene permissions definidos, usa permissions. Si no, permite todo (sin limitaciones)
@@ -322,10 +328,10 @@ export const hasLaunchPermissions = (): boolean => {
   
   // Si no hay permissions, usar metadata (comportamiento anterior)
   const metadata = getMetadata()
-  console.log('🔍 Verificando permisos de lanzamiento:', {
-    metadata,
-    hasLaunch: metadata?.launch === true
-  })
+  // console.log('🔍 Verificando permisos de lanzamiento:', {
+  //   metadata,
+  //   hasLaunch: metadata?.launch === true
+  // })
   return metadata?.launch === true
 }
 
@@ -343,5 +349,5 @@ export const clearSessionData = () => {
   // También limpiar el client_id seleccionado y el client_test del usuario al cerrar sesión
   localStorage.removeItem('selected_client_id')
   localStorage.removeItem('user_client_test')
-  console.log('🧹 Datos del sessionStorage, client_id seleccionado y client_test limpiados')
+  // console.log('🧹 Datos del sessionStorage, client_id seleccionado y client_test limpiados')
 }

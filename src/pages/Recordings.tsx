@@ -281,7 +281,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         setHasFiltroSolar(metadata?.filtro_solar === true);
       }
     } catch (error) {
-      console.error('Error al leer metadata del sessionStorage:', error);
+      // console.error('Error al leer metadata del sessionStorage:', error);
       setHasFiltroSolar(false);
     }
   }, []);
@@ -346,52 +346,43 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   const [metadataFields, setMetadataFields] = React.useState<Record<string, boolean>>({});
   const [availableMetadataFields, setAvailableMetadataFields] = React.useState<string[]>([]);
 
-  // Cargar campos de metadata del session storage
+  // Cargar campos de metadata del session storage. Re-ejecutar cuando cambia clientId para traer siempre el del cliente actual
   React.useEffect(() => {
     try {
       const storedMetadata = sessionStorage.getItem('metadata_llamadas');
-      console.log('🔍 Metadata del session storage:', storedMetadata);
       
       if (storedMetadata) {
         const metadataArray = JSON.parse(storedMetadata);
-        console.log('🔍 Metadata parseada:', metadataArray);
         
         if (Array.isArray(metadataArray) && metadataArray.length > 0) {
-          // Si es un array, obtener las claves del primer objeto
           const fields = Object.keys(metadataArray[0]);
-          console.log('🔍 Campos de metadata encontrados (array):', fields);
-          
           setAvailableMetadataFields(fields);
-          
-          // Inicializar todos los campos como no seleccionados
           const initialFields: Record<string, boolean> = {};
           fields.forEach(field => {
             initialFields[field] = false;
           });
           setMetadataFields(initialFields);
         } else if (typeof metadataArray === 'object' && metadataArray !== null) {
-          // Si es un objeto directo, obtener sus claves
           const fields = Object.keys(metadataArray);
-          console.log('🔍 Campos de metadata encontrados (objeto):', fields);
-          
           setAvailableMetadataFields(fields);
-          
-          // Inicializar todos los campos como no seleccionados
           const initialFields: Record<string, boolean> = {};
           fields.forEach(field => {
             initialFields[field] = false;
           });
           setMetadataFields(initialFields);
         } else {
-          console.log('🔍 No se encontraron campos de metadata válidos');
+          setAvailableMetadataFields([]);
+          setMetadataFields({});
         }
       } else {
-        console.log('🔍 No hay metadata en session storage');
+        setAvailableMetadataFields([]);
+        setMetadataFields({});
       }
     } catch (error) {
-      console.error('Error al cargar metadata del session storage:', error);
+      setAvailableMetadataFields([]);
+      setMetadataFields({});
     }
-  }, []);
+  }, [clientId]);
 
   // Cargar página cuando cambia currentPage
   React.useEffect(() => {
@@ -498,10 +489,10 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       !loadingAllCalls && 
       !isApplyingFilters.current
     ) {
-      console.log('🔄 Iniciando carga de grabaciones con apiKey y clientId disponibles');
+      // console.log('🔄 Iniciando carga de grabaciones con apiKey y clientId disponibles');
       loadAllCalls();
     } else if (!apiKey || !clientId) {
-      console.log('⏳ Esperando apiKey y clientId antes de cargar grabaciones...', { apiKey: !!apiKey, clientId: !!clientId });
+      // console.log('⏳ Esperando apiKey y clientId antes de cargar grabaciones...', { apiKey: !!apiKey, clientId: !!clientId });
     }
     
     // Sincronizamos los estados locales con el contexto
@@ -629,7 +620,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
 
     const callToPlay = allCalls.find(c => c.call_id === callId);
     if (!callToPlay?.recording_url) {
-      console.error('Recording URL not found for callId:', callId);
+      // console.error('Recording URL not found for callId:', callId);
       setPlayingId(null);
       return;
     }
@@ -660,7 +651,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         await audioRef.current.play();
         setPlayingId(callId); // Marcar esta llamada como la que se está reproduciendo.
       } catch (error) {
-        console.error('Error playing audio:', error);
+        // console.error('Error playing audio:', error);
         setPlayingId(null); // Limpiar estado de reproducción en caso de error.
         setAudioError('El navegador bloqueó la reproducción automática o hubo un error de audio. Intenta presionar Play nuevamente.');
       }
@@ -887,41 +878,51 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         
         // Debug: Log para verificar la estructura de metadata
         if (selectedMetadataFields.length > 0 && call.call_id) {
-          console.log(`🔍 Procesando metadata para call ${call.call_id}:`, {
-            metadata: call.metadata,
-            field: field,
-            isArray: Array.isArray(call.metadata),
-            length: call.metadata?.length,
-            fullCall: call // Ver toda la estructura de la llamada
-          });
+          // console.log(`🔍 Procesando metadata para call ${call.call_id}:`, {
+            // metadata: call.metadata,
+            // field: field,
+            // isArray: Array.isArray(call.metadata),
+            // length: call.metadata?.length,
+            // fullCall: call // Ver toda la estructura de la llamada
+          // });
         }
         
         // Buscar el campo en la metadata de la llamada
-        let metadataSource = null;
+        let metadataSource: any = null;
         
         // Intentar diferentes ubicaciones posibles para la metadata
-        if (call.metadata) {
-          metadataSource = call.metadata;
-        } else if (call.metadata_llamadas) {
-          metadataSource = call.metadata_llamadas;
-        } else if (call.data && call.data.metadata) {
-          metadataSource = call.data.metadata;
-        } else if (call.data && call.data.metadata_llamadas) {
-          metadataSource = call.data.metadata_llamadas;
+        let rawSource = call.metadata ?? call.metadata_llamadas ?? call.data?.metadata ?? call.data?.metadata_llamadas;
+        if (rawSource) {
+          // Si viene como string JSON (ej: '{"datos":{...},"analisis":{...}}'), parsear
+          if (typeof rawSource === 'string') {
+            try {
+              metadataSource = JSON.parse(rawSource);
+            } catch {
+              metadataSource = rawSource;
+            }
+          } else {
+            metadataSource = rawSource;
+          }
         }
+        
+        // Helper: serializar valor para exportación (objetos como JSON legible)
+        const serializeValue = (val: any): string => {
+          if (val === null || val === undefined) return '';
+          if (typeof val === 'string') return val;
+          if (typeof val === 'object') return JSON.stringify(val);
+          return String(val);
+        };
         
         if (metadataSource && Array.isArray(metadataSource) && metadataSource.length > 0) {
           // Si metadata es un array, buscar en el primer elemento
           const metadataObj = metadataSource[0];
           if (metadataObj && metadataObj[field] !== undefined) {
-            fieldValue = String(metadataObj[field]);
-            console.log(`🔍 Valor encontrado para ${field}:`, fieldValue);
+            fieldValue = serializeValue(metadataObj[field]);
           }
         } else if (metadataSource && typeof metadataSource === 'object' && !Array.isArray(metadataSource)) {
           // Si metadata es un objeto directo (no array)
           if (metadataSource[field] !== undefined) {
-            fieldValue = String(metadataSource[field]);
-            console.log(`🔍 Valor encontrado para ${field}:`, fieldValue);
+            fieldValue = serializeValue(metadataSource[field]);
           }
         }
         
@@ -936,9 +937,10 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     
     rows.forEach(row => {
       const values = allColumns.map(column => {
-        // Escapar comillas y valores que contengan comas
+        // Escapar comillas y envolver en comillas si hay comas, saltos de línea o comillas (para JSON legible)
         const value = String(row[column] || '').replace(/"/g, '""');
-        return value.includes(',') ? `"${value}"` : value;
+        const needsQuotes = value.includes(',') || value.includes('\n') || value.includes('\r') || value.includes('"');
+        return needsQuotes ? `"${value}"` : value;
       });
       csvContent += values.join(',') + '\n';
     });
@@ -979,16 +981,16 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     // Validar y cargar metadata del session storage al abrir el modal
     try {
       const storedMetadata = sessionStorage.getItem('metadata_llamadas');
-      console.log('🔍 [openExportModal] Metadata del session storage:', storedMetadata);
+      // console.log('🔍 [openExportModal] Metadata del session storage:', storedMetadata);
       
       if (storedMetadata) {
         const metadataArray = JSON.parse(storedMetadata);
-        console.log('🔍 [openExportModal] Metadata parseada:', metadataArray);
+        // console.log('🔍 [openExportModal] Metadata parseada:', metadataArray);
         
         if (Array.isArray(metadataArray) && metadataArray.length > 0) {
           // Si es un array, obtener las claves del primer objeto
           const fields = Object.keys(metadataArray[0]);
-          console.log('🔍 [openExportModal] Campos de metadata encontrados (array):', fields);
+          // console.log('🔍 [openExportModal] Campos de metadata encontrados (array):', fields);
           
           setAvailableMetadataFields(fields);
           
@@ -1000,7 +1002,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         } else if (typeof metadataArray === 'object' && metadataArray !== null) {
           // Si es un objeto directo, obtener sus claves
           const fields = Object.keys(metadataArray);
-          console.log('🔍 [openExportModal] Campos de metadata encontrados (objeto):', fields);
+          // console.log('🔍 [openExportModal] Campos de metadata encontrados (objeto):', fields);
           
           setAvailableMetadataFields(fields);
           
@@ -1012,7 +1014,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         }
       }
     } catch (error) {
-      console.error('Error al cargar metadata del session storage en openExportModal:', error);
+      // console.error('Error al cargar metadata del session storage en openExportModal:', error);
     }
     
     setShowExportModal(true);
@@ -1064,8 +1066,8 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       const finalSelectedColumns = [...selectedColumns];
       if (selectedMetadataFields.length > 0 && !finalSelectedColumns.includes('metadata')) {
         finalSelectedColumns.push('metadata');
-        console.log('🔍 Agregando metadata a las columnas solicitadas:', finalSelectedColumns);
-        console.log('🔍 Campos de metadata seleccionados:', selectedMetadataFields);
+        // console.log('🔍 Agregando metadata a las columnas solicitadas:', finalSelectedColumns);
+        // console.log('🔍 Campos de metadata seleccionados:', selectedMetadataFields);
       }
 
       // Construir filtros para exportación con columnas seleccionadas
@@ -1079,8 +1081,8 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       // Agregar filtro de número de teléfono (normalizar el número)
       if (phoneNumberFilter) {
         const normalizedPhone = normalizePhoneNumber(phoneNumberFilter);
-        console.log('Exportación - Número original:', phoneNumberFilter);
-        console.log('Exportación - Número normalizado:', normalizedPhone);
+        // console.log('Exportación - Número original:', phoneNumberFilter);
+        // console.log('Exportación - Número normalizado:', normalizedPhone);
         params.to_number_norm = normalizedPhone;
       }
       
@@ -1245,9 +1247,9 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       // Usar el client_id del contexto
       if (clientId) {
         params.client_id = clientId;
-        console.log('Usando client_id para filtros:', clientId);
+        // console.log('Usando client_id para filtros:', clientId);
       } else {
-        console.warn('No se encontró client_id en el contexto');
+        // console.warn('No se encontró client_id en el contexto');
         setError('Error: No se pudo identificar el cliente');
         return;
       }
@@ -1260,8 +1262,8 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       // Agregar filtro de número de teléfono (normalizar el número)
       if (phoneNumberFilter) {
         const normalizedPhone = normalizePhoneNumber(phoneNumberFilter);
-        console.log('Número original:', phoneNumberFilter);
-        console.log('Número normalizado:', normalizedPhone);
+        // console.log('Número original:', phoneNumberFilter);
+        // console.log('Número normalizado:', normalizedPhone);
         params.to_number_norm = normalizedPhone;
       }
       
@@ -1286,34 +1288,34 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       // Agregar filtro de agent_id
       if (agentIdFilter) {
         params.agent_id = agentIdFilter;
-        console.log('🔍 Filtro de agente aplicado:', agentIdFilter);
+        // console.log('🔍 Filtro de agente aplicado:', agentIdFilter);
       }
       
       // Agregar filtro de motivo de desconexión (end_reason en la base de datos)
       if (disconnectionReasonFilter) {
         params.end_reason = disconnectionReasonFilter;
-        console.log('🔍 Filtro de motivo de desconexión aplicado:', disconnectionReasonFilter);
+        // console.log('🔍 Filtro de motivo de desconexión aplicado:', disconnectionReasonFilter);
       }
       
       // Agregar filtro de base de datos (bdd)
       if (appliedDatabaseFilter && appliedDatabaseFilter.trim()) {
         params.bdd = appliedDatabaseFilter.trim();
-        console.log('🔍 Filtro de base de datos aplicado:', appliedDatabaseFilter.trim());
+        // console.log('🔍 Filtro de base de datos aplicado:', appliedDatabaseFilter.trim());
       }
       
       // Agregar filtros de número (si se implementan en el futuro)
       // if (fromNumber) params.from_number = fromNumber;
       // if (toNumber) params.to_number = toNumber;
       
-      console.log('Aplicando filtros con parámetros:', params);
+      // console.log('Aplicando filtros con parámetros:', params);
       
       // Hacer la petición a la API
       const response = await listCalls(apiKey, params);
       
-      console.log('Respuesta de list-calls:', response);
-      console.log('🔍 Llamadas recibidas con filtro de agente:', response.calls.length);
+      // console.log('Respuesta de list-calls:', response);
+      // console.log('🔍 Llamadas recibidas con filtro de agente:', response.calls.length);
       if (agentIdFilter && response.calls.length > 0) {
-        console.log('🔍 Primeras llamadas filtradas por agente:', response.calls.slice(0, 3).map(c => ({ call_id: c.call_id, agent_id: c.agent_id })));
+        // console.log('🔍 Primeras llamadas filtradas por agente:', response.calls.slice(0, 3).map(c => ({ call_id: c.call_id, agent_id: c.agent_id })));
       }
       
       // Actualizar estados con los resultados
@@ -1337,7 +1339,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       }
       
     } catch (error) {
-      console.error('Error al aplicar filtros:', error);
+      // console.error('Error al aplicar filtros:', error);
       setError(error instanceof Error ? error.message : 'Error al aplicar filtros');
       setFilteredCallsData([]);
       setTotalFilteredCalls(0);
@@ -1429,7 +1431,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
             setFilteredCallsData(allCalls);
           }
         } catch (error) {
-          console.error('Error al cargar páginas filtradas:', error);
+          // console.error('Error al cargar páginas filtradas:', error);
           setError(error instanceof Error ? error.message : 'Error al cargar datos filtrados');
         } finally {
           setLoadingFilters(false);
@@ -2864,54 +2866,54 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                         // Recargar metadata del session storage
                         try {
                           const storedMetadata = sessionStorage.getItem('metadata_llamadas');
-                          console.log('🔍 [Recargar] Metadata del session storage:', storedMetadata);
-                          console.log('🔍 [Recargar] Tipo de datos:', typeof storedMetadata);
-                          console.log('🔍 [Recargar] Longitud:', storedMetadata?.length);
+                          // console.log('🔍 [Recargar] Metadata del session storage:', storedMetadata);
+                          // console.log('🔍 [Recargar] Tipo de datos:', typeof storedMetadata);
+                          // console.log('🔍 [Recargar] Longitud:', storedMetadata?.length);
                           
                           if (storedMetadata) {
                             const metadataArray = JSON.parse(storedMetadata);
-                            console.log('🔍 [Recargar] Metadata parseada:', metadataArray);
-                            console.log('🔍 [Recargar] Es array?', Array.isArray(metadataArray));
-                            console.log('🔍 [Recargar] Longitud del array:', metadataArray?.length);
+                            // console.log('🔍 [Recargar] Metadata parseada:', metadataArray);
+                            // console.log('🔍 [Recargar] Es array?', Array.isArray(metadataArray));
+                            // console.log('🔍 [Recargar] Longitud del array:', metadataArray?.length);
                             
                             if (Array.isArray(metadataArray) && metadataArray.length > 0) {
                               // Si es un array, obtener las claves del primer objeto
                               const fields = Object.keys(metadataArray[0]);
-                              console.log('🔍 [Recargar] Campos de metadata encontrados (array):', fields);
-                              console.log('🔍 [Recargar] Primer objeto:', metadataArray[0]);
+                              // console.log('🔍 [Recargar] Campos de metadata encontrados (array):', fields);
+                              // console.log('🔍 [Recargar] Primer objeto:', metadataArray[0]);
                               
                               setAvailableMetadataFields(fields);
-                              console.log('🔍 [Recargar] Estado actualizado - availableMetadataFields:', fields);
+                              // console.log('🔍 [Recargar] Estado actualizado - availableMetadataFields:', fields);
                               
                               const initialFields: Record<string, boolean> = {};
                               fields.forEach(field => {
                                 initialFields[field] = false;
                               });
                               setMetadataFields(initialFields);
-                              console.log('🔍 [Recargar] Estado actualizado - metadataFields:', initialFields);
+                              // console.log('🔍 [Recargar] Estado actualizado - metadataFields:', initialFields);
                             } else if (typeof metadataArray === 'object' && metadataArray !== null) {
                               // Si es un objeto directo, obtener sus claves
                               const fields = Object.keys(metadataArray);
-                              console.log('🔍 [Recargar] Campos de metadata encontrados (objeto):', fields);
-                              console.log('🔍 [Recargar] Objeto completo:', metadataArray);
+                              // console.log('🔍 [Recargar] Campos de metadata encontrados (objeto):', fields);
+                              // console.log('🔍 [Recargar] Objeto completo:', metadataArray);
                               
                               setAvailableMetadataFields(fields);
-                              console.log('🔍 [Recargar] Estado actualizado - availableMetadataFields:', fields);
+                              // console.log('🔍 [Recargar] Estado actualizado - availableMetadataFields:', fields);
                               
                               const initialFields: Record<string, boolean> = {};
                               fields.forEach(field => {
                                 initialFields[field] = false;
                               });
                               setMetadataFields(initialFields);
-                              console.log('🔍 [Recargar] Estado actualizado - metadataFields:', initialFields);
+                              // console.log('🔍 [Recargar] Estado actualizado - metadataFields:', initialFields);
                             } else {
-                              console.log('🔍 [Recargar] No es un array válido o está vacío');
+                              // console.log('🔍 [Recargar] No es un array válido o está vacío');
                             }
                           } else {
-                            console.log('🔍 [Recargar] No hay metadata en session storage');
+                            // console.log('🔍 [Recargar] No hay metadata en session storage');
                           }
                         } catch (error) {
-                          console.error('Error al recargar metadata:', error);
+                          // console.error('Error al recargar metadata:', error);
                         }
                       }}
                       className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"

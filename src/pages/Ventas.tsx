@@ -201,7 +201,7 @@ export function Ventas({ }: VentasProps) {
       setLoading(true);
       setError(null);
       
-      console.log('Cargando datos de ventas para período:', timePeriod);
+      // console.log('Cargando datos de ventas para período:', timePeriod);
       
       let response;
       let facturacionResponse: any[] = [];
@@ -265,7 +265,7 @@ export function Ventas({ }: VentasProps) {
         facturacionResponse = facturacionData;
         roiResponse = roiData;
       } catch (chartError) {
-        console.warn('Error cargando datos de gráficos:', chartError);
+        // console.warn('Error cargando datos de gráficos:', chartError);
         // Si falla la carga de gráficos, usar datos simulados como fallback
         if (response) {
           facturacionResponse = generateFacturacionData(response);
@@ -288,7 +288,7 @@ export function Ventas({ }: VentasProps) {
       setROIData(roiResponse);
     } catch (err) {
       setError('Error al cargar los datos de ventas');
-      console.error('Error loading sales data:', err);
+      // console.error('Error loading sales data:', err);
     } finally {
       setLoading(false);
     }
