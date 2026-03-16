@@ -13,6 +13,7 @@ import NoLlamar from './pages/NoLlamar';
 import { Campaign } from './pages/Campaign';
 import { Tickets } from './pages/Tickets';
 import { useCallsContext } from './context/CallsContext';
+import { canAccessTickets } from './lib/supabase';
 import { X, Upload, Phone, Info, Check, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 
 function DashboardApp() {
@@ -98,6 +99,20 @@ function DashboardApp() {
       setCurrentPage('dashboard');
     }
   }, [currentPage, campaignEnabled]);
+
+  // Tickets: visible solo si metadata.tickets === true (sessionStorage)
+  const [ticketsEnabled, setTicketsEnabled] = React.useState(() => canAccessTickets());
+  React.useEffect(() => {
+    const update = () => setTicketsEnabled(canAccessTickets());
+    update();
+    window.addEventListener('metadataUpdated', update);
+    return () => window.removeEventListener('metadataUpdated', update);
+  }, []);
+  React.useEffect(() => {
+    if (currentPage === 'tickets' && !ticketsEnabled) {
+      setCurrentPage('dashboard');
+    }
+  }, [currentPage, ticketsEnabled]);
   
   // Calculamos si la caché está activa
   const cacheStatus = lastUpdated 
@@ -1312,7 +1327,7 @@ function DashboardApp() {
         {currentPage === 'no-llamar' && (
           <NoLlamar />
         )}
-        {currentPage === 'tickets' && (
+        {currentPage === 'tickets' && ticketsEnabled && (
           <Tickets onNavigate={setCurrentPage as (page: string) => void} />
         )}
         {currentPage === 'campaign' && campaignEnabled && (

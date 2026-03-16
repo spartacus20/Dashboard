@@ -328,7 +328,7 @@ export function Tickets({ onNavigate: _onNavigate }: TicketsProps) {
 
             <form onSubmit={handleCreate} className="grid grid-cols-1 gap-6">
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-semibold text-slate-700">TÃ­tulo *</label>
+                <label className="text-sm font-semibold text-slate-700">Titulo *</label>
                 <input
                   value={form.title}
                   onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
@@ -337,7 +337,7 @@ export function Tickets({ onNavigate: _onNavigate }: TicketsProps) {
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-semibold text-slate-700">DescripciÃ³n *</label>
+                <label className="text-sm font-semibold text-slate-700">Descripción *</label>
                 <textarea
                   value={form.description}
                   onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
@@ -430,7 +430,7 @@ export function Tickets({ onNavigate: _onNavigate }: TicketsProps) {
             </div>
             <form onSubmit={handleEditSave} className="flex flex-col gap-4">
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">TÃ­tulo *</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Titulo *</label>
                 <input
                   value={editForm.title}
                   onChange={(e) => setEditForm((prev) => ({ ...prev, title: e.target.value }))}
@@ -439,7 +439,7 @@ export function Tickets({ onNavigate: _onNavigate }: TicketsProps) {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">DescripciÃ³n *</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Descripción *</label>
                 <textarea
                   value={editForm.description}
                   onChange={(e) => setEditForm((prev) => ({ ...prev, description: e.target.value }))}

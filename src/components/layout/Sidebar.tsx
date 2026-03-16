@@ -21,6 +21,7 @@ import { useAuth } from "../../context/AuthContext";
 import {
   hasLaunchPermissions,
   canAccess,
+  canAccessTickets,
   hasPermissionsDefined,
   getClientTest,
   getClientIdFromSession,
@@ -96,6 +97,15 @@ export function Sidebar({
   const canAccessCampaign = hasPermissions
     ? canAccess("campaign")
     : campaignEnabled;
+  const [ticketsEnabled, setTicketsEnabled] = React.useState(() => canAccessTickets());
+
+  // Revisar metadata.tickets cuando cambie (ej. al cambiar de cliente)
+  React.useEffect(() => {
+    const update = () => setTicketsEnabled(canAccessTickets());
+    update();
+    window.addEventListener("metadataUpdated", update);
+    return () => window.removeEventListener("metadataUpdated", update);
+  }, []);
 
   // Debug: Log para verificar el estado
   // console.log('🔧 Sidebar - Estado de permisos:', {
@@ -618,19 +628,21 @@ export function Sidebar({
               No Llamar
             </button>
           )}
-          <button
-            onClick={() => {
-              navigateWithParams("tickets");
-            }}
-            className={`flex w-full items-center gap-2 px-4 py-2 ${
-              currentPage === "tickets"
-                ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
-                : "text-gray-300 hover:bg-[#0a2a5a]"
-            } rounded-lg`}
-          >
-            <ClipboardList className="w-5 h-5" />
-            Tickets
-          </button>
+          {ticketsEnabled && (
+            <button
+              onClick={() => {
+                navigateWithParams("tickets");
+              }}
+              className={`flex w-full items-center gap-2 px-4 py-2 ${
+                currentPage === "tickets"
+                  ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
+                  : "text-gray-300 hover:bg-[#0a2a5a]"
+              } rounded-lg`}
+            >
+              <ClipboardList className="w-5 h-5" />
+              Tickets
+            </button>
+          )}
         </nav>
 
         {/* Información del usuario y botón de logout */}
