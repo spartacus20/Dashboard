@@ -499,6 +499,21 @@ export function Sidebar({
             <BarChart3 className="w-5 h-5" />
             Dashboard
           </button>
+          {recoveriesEnabled && (
+            <button
+              onClick={() => {
+                navigateWithParams("recoveries");
+              }}
+              className={`flex w-full items-center gap-2 px-4 py-2 ${
+                currentPage === "recoveries"
+                  ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
+                  : "text-gray-300 hover:bg-[#0a2a5a]"
+              } rounded-lg`}
+            >
+              <RotateCcw className="w-5 h-5" />
+              Recobros
+            </button>
+          )}
           {canAccessAgenda && (
             <button
               onClick={() => {
@@ -647,21 +662,6 @@ export function Sidebar({
             >
               <ClipboardList className="w-5 h-5" />
               Tickets
-            </button>
-          )}
-          {recoveriesEnabled && (
-            <button
-              onClick={() => {
-                navigateWithParams("recoveries");
-              }}
-              className={`flex w-full items-center gap-2 px-4 py-2 ${
-                currentPage === "recoveries"
-                  ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
-                  : "text-gray-300 hover:bg-[#0a2a5a]"
-              } rounded-lg`}
-            >
-              <RotateCcw className="w-5 h-5" />
-              Recobros
             </button>
           )}
         </nav>

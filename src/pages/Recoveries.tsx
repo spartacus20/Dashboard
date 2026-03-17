@@ -63,6 +63,10 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
   const [selectedCodeInfo, setSelectedCodeInfo] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [playingId, setPlayingId] = useState<string | number | null>(null);
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+  const [audioCurrentTime, setAudioCurrentTime] = useState(0);
+  const [audioDuration, setAudioDuration] = useState(0);
+  const [playbackRate, setPlaybackRate] = useState(1);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recordsPerPage = 50;
 
@@ -131,15 +135,34 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
     audioRef.current = new Audio();
     audioRef.current.preload = 'metadata';
     try { (audioRef.current as any).crossOrigin = 'anonymous'; } catch {}
-    const handleEnded = () => setPlayingId(null);
-    const handleError = () => setPlayingId(null);
+    const handleTimeUpdate = () => {
+      if (audioRef.current) setAudioCurrentTime(audioRef.current.currentTime);
+    };
+    const handleDurationChange = () => {
+      if (audioRef.current) {
+        const d = audioRef.current.duration;
+        setAudioDuration(d && isFinite(d) && d > 0 ? d : 0);
+      }
+    };
+    const handleEnded = () => {
+      setPlayingId(null);
+      setIsAudioPlaying(false);
+    };
+    const handleError = () => {
+      setPlayingId(null);
+      setIsAudioPlaying(false);
+    };
     if (audioRef.current) {
+      audioRef.current.addEventListener('timeupdate', handleTimeUpdate);
+      audioRef.current.addEventListener('durationchange', handleDurationChange);
       audioRef.current.addEventListener('ended', handleEnded);
       audioRef.current.addEventListener('error', handleError);
     }
     return () => {
       if (audioRef.current) {
         audioRef.current.pause();
+        audioRef.current.removeEventListener('timeupdate', handleTimeUpdate);
+        audioRef.current.removeEventListener('durationchange', handleDurationChange);
         audioRef.current.removeEventListener('ended', handleEnded);
         audioRef.current.removeEventListener('error', handleError);
         audioRef.current.src = '';
@@ -148,29 +171,69 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
     };
   }, []);
 
+  const formatTime = (sec: number) => {
+    if (isNaN(sec)) return '00:00';
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
+
+  const handleProgressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const t = parseFloat(e.target.value);
+    if (audioRef.current) {
+      audioRef.current.currentTime = t;
+      setAudioCurrentTime(t);
+    }
+  };
+
+  const setSpeed = (rate: number) => {
+    setPlaybackRate(rate);
+    if (audioRef.current) audioRef.current.playbackRate = rate;
+  };
+
   const togglePlayPause = (rowId: string | number, recordingUrl: string) => {
     if (!audioRef.current) return;
     if (playingId === rowId && !audioRef.current.paused) {
       audioRef.current.pause();
-      setPlayingId(null);
+      setIsAudioPlaying(false);
       return;
     }
     if (audioRef.current.src !== recordingUrl) {
       audioRef.current.pause();
       audioRef.current.src = recordingUrl;
       audioRef.current.currentTime = 0;
-      audioRef.current.play().catch(() => setPlayingId(null));
+      setAudioCurrentTime(0);
+      setAudioDuration(0);
+      setPlaybackRate(1);
+      audioRef.current.playbackRate = 1;
+      audioRef.current.play().catch(() => {
+        setPlayingId(null);
+        setIsAudioPlaying(false);
+      });
       setPlayingId(rowId);
+      setIsAudioPlaying(true);
       return;
     }
     if (playingId === rowId) {
-      audioRef.current.play().catch(() => setPlayingId(null));
+      audioRef.current.play().catch(() => {
+        setPlayingId(null);
+        setIsAudioPlaying(false);
+      });
+      setIsAudioPlaying(true);
     } else {
       audioRef.current.pause();
       audioRef.current.src = recordingUrl;
       audioRef.current.currentTime = 0;
-      audioRef.current.play().catch(() => setPlayingId(null));
+      setAudioCurrentTime(0);
+      setAudioDuration(0);
+      setPlaybackRate(1);
+      audioRef.current.playbackRate = 1;
+      audioRef.current.play().catch(() => {
+        setPlayingId(null);
+        setIsAudioPlaying(false);
+      });
       setPlayingId(rowId);
+      setIsAudioPlaying(true);
     }
   };
 
@@ -643,27 +706,69 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
                             </div>
                           )}
                           {recordings && (
-                            <div className={`flex items-center gap-2 ${(row.status || '').toLowerCase() === 'efectiva' ? 'justify-end' : ''}`}>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  togglePlayPause(row.id, recordings);
-                                }}
-                                className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 hover:bg-emerald-100 text-sm font-medium transition-colors"
-                              >
-                                {playingId === row.id ? (
+                            <div className={`flex flex-col gap-3 ${(row.status || '').toLowerCase() === 'efectiva' ? 'justify-end' : ''}`}>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    togglePlayPause(row.id, recordings);
+                                  }}
+                                  className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 hover:bg-emerald-100 text-sm font-medium transition-colors shrink-0"
+                                >
+                                  {playingId === row.id && isAudioPlaying ? (
+                                    <>
+                                      <Pause className="w-4 h-4" />
+                                      Pausar
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Play className="w-4 h-4" />
+                                      {playingId === row.id ? 'Reproducir' : 'Escuchar grabación'}
+                                    </>
+                                  )}
+                                </button>
+                                {playingId === row.id && (
                                   <>
-                                    <Pause className="w-4 h-4" />
-                                    Pausar
-                                  </>
-                                ) : (
-                                  <>
-                                    <Play className="w-4 h-4" />
-                                    Escuchar grabación
+                                    <div className="flex-1 min-w-[120px] flex items-center gap-2">
+                                      <input
+                                        type="range"
+                                        min={0}
+                                        max={audioDuration || 100}
+                                        value={audioCurrentTime}
+                                        onChange={handleProgressChange}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="flex-1 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                                        style={{
+                                          background: `linear-gradient(to right, #059669 0%, #059669 ${(audioDuration ? (audioCurrentTime / audioDuration) * 100 : 0)}%, #e2e8f0 ${(audioDuration ? (audioCurrentTime / audioDuration) * 100 : 0)}%, #e2e8f0 100%)`,
+                                        }}
+                                      />
+                                    </div>
+                                    <span className="text-xs text-slate-500 font-mono shrink-0">
+                                      {formatTime(audioCurrentTime)} / {formatTime(audioDuration)}
+                                    </span>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      {[1, 2, 3].map((r) => (
+                                        <button
+                                          key={r}
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSpeed(r);
+                                          }}
+                                          className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                                            playbackRate === r
+                                              ? 'bg-emerald-600 text-white'
+                                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                          }`}
+                                        >
+                                          {r}x
+                                        </button>
+                                      ))}
+                                    </div>
                                   </>
                                 )}
-                              </button>
+                              </div>
                             </div>
                           )}
                         </div>
