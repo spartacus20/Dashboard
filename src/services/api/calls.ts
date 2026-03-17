@@ -1,6 +1,19 @@
 import { RetellCall, FilterCriteria, CallStats } from '../../types';
 import { getClientId, BASE_URL, WEBHOOK_URL, API_URL } from './config';
 
+// Códigos de análisis para Recoveries (definición del negocio)
+export const RECOVERY_CODIGOS: Record<string, string> = {
+  TON: 'Teléfono ocupado o no contestó',
+  CSP1: 'Cliente responde pero no hay negociación efectiva',
+  CSP2: 'Cliente renuente de pago',
+  MCT: 'Mensaje con tercero',
+  TDP: 'Trámite de préstamo',
+  PRO: 'Promesa',
+  ADP: 'Acuerdo de pago',
+  CEC: 'Convenio',
+  CFA: 'Cliente fallecido',
+};
+
 import { fetchCalls } from '../api';
 
 
@@ -511,6 +524,76 @@ export async function getDisconnectionReasons(
     // console.error('❌ Error al obtener motivos de desconexión:', error);
     throw error;
   }
+}
+
+// Conteos por analisis_codigo para página Recoveries (gráfico donut)
+export async function getRecoveryCountsByAnalisisCodigo(
+  apiKey: string,
+  params: { client_id: string; fecha_inicio?: string; fecha_fin?: string; analisis_codigo?: string }
+): Promise<{ analisis_codigo: string; total: number }[]> {
+  const url = `${BASE_URL}/api/calls/recovery-counts-by-analisis-codigo`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(params),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Error en recovery-counts: ${response.status} - ${text}`);
+  }
+  const data = await response.json();
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.data)) return data.data;
+  if (Array.isArray(data?.rows)) return data.rows;
+  if (Array.isArray(data?.counts)) return data.counts;
+  return [];
+}
+
+// Listar llamadas de recovery (con analisis_codigo) - tabla paginada
+export async function listRecoveryCalls(
+  apiKey: string,
+  params: {
+    client_id: string;
+    page?: number;
+    per_page?: number;
+    fecha_inicio?: string;
+    fecha_fin?: string;
+    analisis_codigo?: string;
+    sort_order?: 'ASC' | 'DESC';
+  }
+): Promise<{
+  llamadas: any[];
+  pagina_actual: number;
+  total_paginas: number;
+  total_llamadas: number;
+  limit: number;
+  conteos_por_codigo?: { analisis_codigo: string; total: number }[];
+}> {
+  const url = `${BASE_URL}/api/calls/recovery-list-calls`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(params),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Error en recovery-list-calls: ${response.status} - ${text}`);
+  }
+  const data = await response.json();
+  return {
+    llamadas: data.llamadas || [],
+    pagina_actual: data.pagina_actual ?? 1,
+    total_paginas: data.total_paginas ?? 0,
+    total_llamadas: data.total_llamadas ?? 0,
+    limit: data.limit ?? params.per_page ?? 50,
+    conteos_por_codigo: Array.isArray(data.conteos_por_codigo) ? data.conteos_por_codigo : undefined,
+  };
 }
 
 export async function getCallCountsByFromNumber(clientId: string): Promise<CallCountByFromNumber[]> {

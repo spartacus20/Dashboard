@@ -305,6 +305,12 @@ export const canAccessTickets = (): boolean => {
   return metadata?.tickets === true;
 };
 
+// Función para verificar si el usuario tiene acceso a Recoveries (desde metadata en sessionStorage)
+export const canAccessRecoveries = (): boolean => {
+  const metadata = getMetadata();
+  return metadata?.recoveries === true;
+};
+
 // Función para verificar si el usuario tiene acceso a una funcionalidad específica
 // Si tiene permissions definidos, usa permissions. Si no, permite todo (sin limitaciones)
 export const canAccess = (feature: 'agenda' | 'records' | 'num_tel' | 'callbacks' | 'sales' | 'launch' | 'dont_call' | 'campaign'): boolean => {
