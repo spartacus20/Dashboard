@@ -289,6 +289,7 @@ export interface Agenda {
   aprobada?: boolean | null;
   revisada?: boolean | null;
   detalles?: string | null;
+  estado?: 'pendiente' | 'aceptado' | 'rechazado' | null;
 }
 
 export interface AgendaSlot {
