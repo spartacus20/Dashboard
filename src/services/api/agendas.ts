@@ -348,7 +348,7 @@ export async function deleteAgenda(agendaId: number, clientId: string): Promise<
 
 
 
-// Actualizar estado de una agenda (aprobada / revisada / detalles)
+// Actualizar estado de una agenda (aprobada / revisada / detalles / estado)
 export async function updateAgendaStatus(
   params: { id: number; aprobada?: boolean; revisada?: boolean; detalles?: string }
 ): Promise<Agenda> {
