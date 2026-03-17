@@ -113,11 +113,10 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
     field: 'aprobada' | 'revisada',
     value: 'true' | 'false'
   ) => {
-    const newValue = value === 'true';
     if (field === 'aprobada') {
-      setLocalApproved(newValue);
+      setLocalApproved(value === 'true');
     } else {
-      setLocalReviewed(newValue);
+      setLocalReviewed(value === 'true');
     }
   };
 

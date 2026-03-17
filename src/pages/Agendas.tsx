@@ -90,6 +90,12 @@ export function Agendas({ onNavigate }: AgendasProps) {
   const [hasFiltroSolar, setHasFiltroSolar] = useState(false);
   const itemsPerPage = 10;
 
+  // Helpers para normalizar aprobada/revisada (API puede devolver boolean, string "true", o 1)
+  const isApproved = (v: unknown): boolean =>
+    v === true || v === "true" || v === 1 || (typeof v === "string" && v.toLowerCase() === "true");
+  const isReviewed = (v: unknown): boolean =>
+    v === true || v === "true" || v === 1 || (typeof v === "string" && v.toLowerCase() === "true");
+
   // Mostrar contenido de cards con fade-in cuando termina la carga; ocultar al cargar de nuevo
   useEffect(() => {
     if (loading) {
@@ -247,20 +253,20 @@ export function Agendas({ onNavigate }: AgendasProps) {
       filtered = filtered.filter((agenda) => agenda.tipo_agenda === filterType);
     }
 
-    // Filtrar por estado \"aprobada\" (null/undefined se tratan como false)
+    // Filtrar por estado "aprobada"
     if (filterApproved !== "all") {
       filtered = filtered.filter((agenda) => {
-        const val = agenda.aprobada === true;
+        const val = isApproved(agenda.aprobada);
         if (filterApproved === "true") return val;
         if (filterApproved === "false") return !val;
         return true;
       });
     }
 
-    // Filtrar por estado \"revisada\" (null/undefined se tratan como false)
+    // Filtrar por estado "revisada"
     if (filterReviewed !== "all") {
       filtered = filtered.filter((agenda) => {
-        const val = agenda.revisada === true;
+        const val = isReviewed(agenda.revisada);
         if (filterReviewed === "true") return val;
         if (filterReviewed === "false") return !val;
         return true;
@@ -543,10 +549,10 @@ export function Agendas({ onNavigate }: AgendasProps) {
         agenda.tipo_agenda.toLowerCase().includes("batería")),
   ).length;
 
-  // Aprobadas por tipo
+  // Aprobadas por tipo (usa isApproved para normalizar formato API)
   const aprobadasPanelesCount = agendas.filter(
     (agenda) =>
-      agenda.aprobada === true &&
+      isApproved(agenda.aprobada) &&
       (!agenda.tipo_agenda ||
         agenda.tipo_agenda?.toLowerCase().includes("paneles solares") ||
         agenda.tipo_agenda?.toLowerCase().includes("placas solares")),
@@ -554,7 +560,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
 
   const aprobadasBateriasCount = agendas.filter(
     (agenda) =>
-      agenda.aprobada === true &&
+      isApproved(agenda.aprobada) &&
       agenda.tipo_agenda &&
       (agenda.tipo_agenda.toLowerCase().includes("baterías") ||
         agenda.tipo_agenda.toLowerCase().includes("baterias") ||
@@ -879,17 +885,17 @@ export function Agendas({ onNavigate }: AgendasProps) {
                     <div className="text-right">
                       <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-violet-700">
                         {agendas
-                          .filter((a) => a.revisada === true)
+                          .filter((a) => isReviewed(a.revisada))
                           .length.toLocaleString("es-ES")}
                       </div>
                       <div className="text-xs text-slate-500">
-                        {agendas.filter((a) => a.revisada === true).length === 1
+                        {agendas.filter((a) => isReviewed(a.revisada)).length === 1
                           ? "agenda"
                           : "agendas"}
                       </div>
                       <div className="text-xs font-semibold text-violet-600 mt-1">
                         {agendas.length
-                          ? `${Math.round((agendas.filter((a) => a.revisada === true).length / agendas.length) * 100)}% del total`
+                          ? `${Math.round((agendas.filter((a) => isReviewed(a.revisada)).length / agendas.length) * 100)}% del total`
                           : "0% del total"}
                       </div>
                     </div>
@@ -1352,12 +1358,12 @@ export function Agendas({ onNavigate }: AgendasProps) {
                           </div>
                         </div>
 
-                        {/* Barra inferior con estados Aprobada / Revisada (se mantiene estilo actual) */}
+                        {/* Barra inferior con estados Aprobada / Revisada */}
                         <div className="bg-slate-50 border-t border-slate-100 px-6 py-3 flex flex-wrap items-center gap-3">
                           {/* Aprobada (solo display) */}
                           <div
                             className={`px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 cursor-default ${
-                              agenda.aprobada === true
+                              isApproved(agenda.aprobada)
                                 ? "bg-emerald-100 text-emerald-800 border-emerald-300"
                                 : "bg-red-100 text-red-800 border-red-300"
                             }`}
@@ -1365,13 +1371,13 @@ export function Agendas({ onNavigate }: AgendasProps) {
                           >
                             <span
                               className={`w-2 h-2 rounded-full ${
-                                agenda.aprobada === true
+                                isApproved(agenda.aprobada)
                                   ? "bg-emerald-500"
                                   : "bg-red-500"
                               }`}
                             />
                             <span>
-                              {agenda.aprobada === true
+                              {isApproved(agenda.aprobada)
                                 ? "Aprobada"
                                 : "No aprobada"}
                             </span>
@@ -1380,7 +1386,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
                           {/* Revisada (solo display) */}
                           <div
                             className={`px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 cursor-default ${
-                              agenda.revisada === true
+                              isReviewed(agenda.revisada)
                                 ? "bg-emerald-100 text-emerald-800 border-emerald-300"
                                 : "bg-red-100 text-red-800 border-red-300"
                             }`}
@@ -1388,13 +1394,13 @@ export function Agendas({ onNavigate }: AgendasProps) {
                           >
                             <span
                               className={`w-2 h-2 rounded-full ${
-                                agenda.revisada === true
+                                isReviewed(agenda.revisada)
                                   ? "bg-emerald-500"
                                   : "bg-red-500"
                               }`}
                             />
                             <span>
-                              {agenda.revisada === true
+                              {isReviewed(agenda.revisada)
                                 ? "Revisada"
                                 : "No revisada"}
                             </span>
