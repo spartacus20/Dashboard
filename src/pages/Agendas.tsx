@@ -253,7 +253,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
         .map(([phone]) => phone),
     );
 
-    // Filtrar por búsqueda (teléfono: solo coincidencia exacta del número)
+    // Filtrar por búsqueda (teléfono: coincidencia 100% exacta, sin similares)
     if (searchTerm) {
       const term = searchTerm.toLowerCase().trim();
       const termDigits = term.replace(/[^0-9]/g, "");
@@ -266,17 +266,15 @@ export function Agendas({ onNavigate }: AgendasProps) {
         const ciudad = (agenda.ciudad || "").toLowerCase();
         const region = (agenda.region || "").toLowerCase();
 
-        const matchesPhone =
-          termDigits.length > 0
-            ? phoneDigits === termDigits ||
-              (termDigits.length >= 6 &&
-                (phoneDigits.endsWith(termDigits) ||
-                  termDigits.endsWith(phoneDigits)))
-            : phone.toLowerCase().includes(term);
-
         if (isPhoneSearch) {
-          return matchesPhone;
+          if (phoneDigits === termDigits) return true;
+          if (termDigits.length === 9 && phoneDigits === "34" + termDigits) return true;
+          if (phoneDigits.length === 9 && termDigits === "34" + phoneDigits) return true;
+          return false;
         }
+        const matchesPhone = termDigits.length > 0
+          ? phoneDigits === termDigits
+          : phone.toLowerCase().includes(term);
         return (
           matchesPhone ||
           nombre.includes(term) ||
