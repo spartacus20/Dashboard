@@ -60,6 +60,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
   const [filterReviewed, setFilterReviewed] = useState<
     "all" | "true" | "false"
   >("all");
+  const [onlyDuplicatedPhones, setOnlyDuplicatedPhones] = useState(false);
   const todayStr = () => new Date().toISOString().slice(0, 10);
   const [dateFrom, setDateFrom] = useState(todayStr);
   const [dateTo, setDateTo] = useState(todayStr);
@@ -236,16 +237,38 @@ export function Agendas({ onNavigate }: AgendasProps) {
     const validAgendas = Array.isArray(agendas) ? agendas : [];
     let filtered = [...validAgendas];
 
+    // Calcular teléfonos duplicados para el filtro específico
+    const phoneCounts = validAgendas.reduce<Record<string, number>>(
+      (acc, agenda) => {
+        const phone = agenda.phone_number;
+        if (!phone) return acc;
+        acc[phone] = (acc[phone] || 0) + 1;
+        return acc;
+      },
+      {},
+    );
+    const duplicatedPhones = new Set(
+      Object.entries(phoneCounts)
+        .filter(([, count]) => count > 1)
+        .map(([phone]) => phone),
+    );
+
     // Filtrar por búsqueda
     if (searchTerm) {
-      filtered = filtered.filter(
-        (agenda) =>
-          agenda.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          agenda.phone_number?.includes(searchTerm) ||
-          agenda.direccion?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          agenda.ciudad?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          agenda.region?.toLowerCase().includes(searchTerm.toLowerCase()),
-      );
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter((agenda) => {
+        const phone = agenda.phone_number || "";
+        const direccion = agenda.direccion || "";
+        const ciudad = agenda.ciudad || "";
+        const region = agenda.region || "";
+
+        return (
+          phone.includes(searchTerm) ||
+          direccion.toLowerCase().includes(term) ||
+          ciudad.toLowerCase().includes(term) ||
+          region.toLowerCase().includes(term)
+        );
+      });
     }
 
     // Filtrar por tipo de agenda (además del filtro en la API, reforzamos en el cliente)
@@ -273,12 +296,27 @@ export function Agendas({ onNavigate }: AgendasProps) {
       });
     }
 
+    // Filtro opcional: solo teléfonos con más de una agenda (para detectar duplicados)
+    if (onlyDuplicatedPhones) {
+      filtered = filtered.filter(
+        (agenda) =>
+          agenda.phone_number && duplicatedPhones.has(agenda.phone_number),
+      );
+    }
+
     // NOTA: Los filtros de fecha (dateFrom, dateTo) y agente se aplican en la API
     // No se filtran aquí para evitar duplicación
 
     setFilteredAgendas(filtered);
     setCurrentPage(1); // Reset a primera página cuando cambian los filtros
-  }, [agendas, searchTerm, filterType, filterApproved, filterReviewed]);
+  }, [
+    agendas,
+    searchTerm,
+    filterType,
+    filterApproved,
+    filterReviewed,
+    onlyDuplicatedPhones,
+  ]);
 
   // Obtener tipos únicos para el filtro
   const uniqueTypes = [
@@ -1091,6 +1129,36 @@ export function Agendas({ onNavigate }: AgendasProps) {
               </CardContent>
             </Card>
 
+          {/* Filtro rápido para detectar agendas duplicadas por teléfono */}
+          <div className="bg-white rounded-lg p-4 mb-4 shadow border border-amber-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-amber-500" />
+              <div>
+                <p className="text-sm font-semibold text-slate-800">
+                  Detección de agendas duplicadas
+                </p>
+                <p className="text-xs text-slate-500">
+                  Muestra solo las agendas que comparten el mismo número de teléfono.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                id="only-duplicated-phones"
+                type="checkbox"
+                checked={onlyDuplicatedPhones}
+                onChange={(e) => setOnlyDuplicatedPhones(e.target.checked)}
+                className="h-4 w-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+              />
+              <label
+                htmlFor="only-duplicated-phones"
+                className="text-sm text-slate-700 cursor-pointer select-none"
+              >
+                Ver solo teléfonos con agendas duplicadas
+              </label>
+            </div>
+          </div>
+
             {/* Filtros y búsqueda (el rango de fechas se cambia en la card Promedio de llamadas por agenda) */}
             <div className="bg-white rounded-lg p-6 mb-6 shadow-lg border border-slate-200">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
@@ -1099,7 +1167,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
                   <input
                     type="text"
-                    placeholder="Buscar por nombre, teléfono, dirección..."
+                    placeholder="Buscar por teléfono, dirección..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1158,39 +1226,39 @@ export function Agendas({ onNavigate }: AgendasProps) {
                   </select>
                 </div>
 
-                {/* Filtro por revisada */}
-                <div className="relative">
-                  <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
-                  <select
-                    value={filterReviewed}
-                    onChange={(e) =>
-                      setFilterReviewed(
-                        e.target.value as "all" | "true" | "false",
-                      )
-                    }
-                    className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
-                  >
-                    <option value="all">Todas (revisadas)</option>
-                    <option value="true">Solo revisadas</option>
-                    <option value="false">Solo no revisadas</option>
-                  </select>
-                </div>
+                  {/* Filtro por revisada */}
+                  <div className="relative">
+                    <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
+                    <select
+                      value={filterReviewed}
+                      onChange={(e) =>
+                        setFilterReviewed(
+                          e.target.value as "all" | "true" | "false",
+                        )
+                      }
+                      className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
+                    >
+                      <option value="all">Todas (revisadas)</option>
+                      <option value="true">Solo revisadas</option>
+                      <option value="false">Solo no revisadas</option>
+                    </select>
+                  </div>
 
-                {/* Ordenamiento */}
-                <div className="relative">
-                  <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
-                  <select
-                    value={sortOrder}
-                    onChange={(e) =>
-                      setSortOrder(e.target.value as "ASC" | "DESC")
-                    }
-                    className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
-                  >
-                    <option value="DESC">Más recientes primero</option>
-                    <option value="ASC">Más antiguos primero</option>
-                  </select>
+                  {/* Ordenamiento */}
+                  <div className="relative">
+                    <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
+                    <select
+                      value={sortOrder}
+                      onChange={(e) =>
+                        setSortOrder(e.target.value as "ASC" | "DESC")
+                      }
+                      className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
+                    >
+                      <option value="DESC">Más recientes primero</option>
+                      <option value="ASC">Más antiguos primero</option>
+                    </select>
+                  </div>
                 </div>
-              </div>
             </div>
 
             {/* Loading state */}
