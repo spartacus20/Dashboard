@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   fetchAgendas,
   fetchAllAgendas,
@@ -253,20 +253,36 @@ export function Agendas({ onNavigate }: AgendasProps) {
         .map(([phone]) => phone),
     );
 
-    // Filtrar por búsqueda
+    // Filtrar por búsqueda (teléfono: solo coincidencia exacta del número)
     if (searchTerm) {
-      const term = searchTerm.toLowerCase();
+      const term = searchTerm.toLowerCase().trim();
+      const termDigits = term.replace(/[^0-9]/g, "");
+      const isPhoneSearch = termDigits.length >= 6;
       filtered = filtered.filter((agenda) => {
-        const phone = agenda.phone_number || "";
-        const direccion = agenda.direccion || "";
-        const ciudad = agenda.ciudad || "";
-        const region = agenda.region || "";
+        const phone = String(agenda.phone_number || "");
+        const phoneDigits = phone.replace(/[^0-9]/g, "");
+        const nombre = (agenda.nombre || "").toLowerCase();
+        const direccion = (agenda.direccion || "").toLowerCase();
+        const ciudad = (agenda.ciudad || "").toLowerCase();
+        const region = (agenda.region || "").toLowerCase();
 
+        const matchesPhone =
+          termDigits.length > 0
+            ? phoneDigits === termDigits ||
+              (termDigits.length >= 6 &&
+                (phoneDigits.endsWith(termDigits) ||
+                  termDigits.endsWith(phoneDigits)))
+            : phone.toLowerCase().includes(term);
+
+        if (isPhoneSearch) {
+          return matchesPhone;
+        }
         return (
-          phone.includes(searchTerm) ||
-          direccion.toLowerCase().includes(term) ||
-          ciudad.toLowerCase().includes(term) ||
-          region.toLowerCase().includes(term)
+          matchesPhone ||
+          nombre.includes(term) ||
+          direccion.includes(term) ||
+          ciudad.includes(term) ||
+          region.includes(term)
         );
       });
     }
@@ -317,6 +333,29 @@ export function Agendas({ onNavigate }: AgendasProps) {
     filterReviewed,
     onlyDuplicatedPhones,
   ]);
+
+  // Estadísticas de agendas duplicadas por teléfono (2 iguales = 1 repetida, 3 iguales = 2 repetidas...)
+  const duplicateStats = useMemo(() => {
+    const validAgendas = Array.isArray(agendas) ? agendas : [];
+    const phoneCounts = validAgendas.reduce<Record<string, number>>(
+      (acc, agenda) => {
+        const phone = agenda.phone_number;
+        if (!phone) return acc;
+        acc[phone] = (acc[phone] || 0) + 1;
+        return acc;
+      },
+      {},
+    );
+    let totalRepetidas = 0;
+    let numerosConDuplicados = 0;
+    for (const count of Object.values(phoneCounts)) {
+      if (count > 1) {
+        totalRepetidas += count - 1; // 2 iguales → 1 repetida, 3 iguales → 2 repetidas
+        numerosConDuplicados += 1;
+      }
+    }
+    return { totalRepetidas, numerosConDuplicados };
+  }, [agendas]);
 
   // Obtener tipos únicos para el filtro
   const uniqueTypes = [
@@ -1132,7 +1171,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
           {/* Filtro rápido para detectar agendas duplicadas por teléfono */}
           <div className="bg-white rounded-lg p-4 mb-4 shadow border border-amber-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 text-amber-500" />
+              <AlertCircle className="w-5 h-5 text-amber-500 shrink-0" />
               <div>
                 <p className="text-sm font-semibold text-slate-800">
                   Detección de agendas duplicadas
@@ -1142,8 +1181,14 @@ export function Agendas({ onNavigate }: AgendasProps) {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <input
+            <div className="flex items-center gap-4 sm:gap-6">
+              {onlyDuplicatedPhones && (
+                <span className={`text-lg font-semibold shrink-0 ${duplicateStats.totalRepetidas > 0 ? 'text-amber-600' : 'text-slate-500'}`}>
+                  {duplicateStats.totalRepetidas} agenda{duplicateStats.totalRepetidas !== 1 ? 's' : ''} repetida{duplicateStats.totalRepetidas !== 1 ? 's' : ''}
+                </span>
+              )}
+              <div className="flex items-center gap-2">
+                <input
                 id="only-duplicated-phones"
                 type="checkbox"
                 checked={onlyDuplicatedPhones}
@@ -1156,6 +1201,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
               >
                 Ver solo teléfonos con agendas duplicadas
               </label>
+              </div>
             </div>
           </div>
 
