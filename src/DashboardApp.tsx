@@ -12,8 +12,9 @@ import Lanzamiento from './pages/Lanzamiento';
 import NoLlamar from './pages/NoLlamar';
 import { Campaign } from './pages/Campaign';
 import { Tickets } from './pages/Tickets';
+import { Recoveries } from './pages/Recoveries';
 import { useCallsContext } from './context/CallsContext';
-import { canAccessTickets } from './lib/supabase';
+import { canAccessTickets, canAccessRecoveries } from './lib/supabase';
 import { X, Upload, Phone, Info, Check, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 
 function DashboardApp() {
@@ -102,8 +103,12 @@ function DashboardApp() {
 
   // Tickets: visible solo si metadata.tickets === true (sessionStorage)
   const [ticketsEnabled, setTicketsEnabled] = React.useState(() => canAccessTickets());
+  const [recoveriesEnabled, setRecoveriesEnabled] = React.useState(() => canAccessRecoveries());
   React.useEffect(() => {
-    const update = () => setTicketsEnabled(canAccessTickets());
+    const update = () => {
+      setTicketsEnabled(canAccessTickets());
+      setRecoveriesEnabled(canAccessRecoveries());
+    };
     update();
     window.addEventListener('metadataUpdated', update);
     return () => window.removeEventListener('metadataUpdated', update);
@@ -113,6 +118,11 @@ function DashboardApp() {
       setCurrentPage('dashboard');
     }
   }, [currentPage, ticketsEnabled]);
+  React.useEffect(() => {
+    if (currentPage === 'recoveries' && !recoveriesEnabled) {
+      setCurrentPage('dashboard');
+    }
+  }, [currentPage, recoveriesEnabled]);
   
   // Calculamos si la caché está activa
   const cacheStatus = lastUpdated 
@@ -1329,6 +1339,9 @@ function DashboardApp() {
         )}
         {currentPage === 'tickets' && ticketsEnabled && (
           <Tickets onNavigate={setCurrentPage as (page: string) => void} />
+        )}
+        {currentPage === 'recoveries' && recoveriesEnabled && (
+          <Recoveries onNavigate={setCurrentPage as (page: string) => void} />
         )}
         {currentPage === 'campaign' && campaignEnabled && (
           <Campaign onNavigate={setCurrentPage as (page: string) => void} />
