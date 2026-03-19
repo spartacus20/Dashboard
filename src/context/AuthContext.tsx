@@ -215,20 +215,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-
-    // Limpiar el client_id del localStorage al cerrar sesión
-    if (!error) {
-      localStorage.removeItem(get_client_id);
-      localStorage.removeItem("selected_client_id"); // También limpiar el client_id seleccionado
-      // Limpiar todos los datos del sessionStorage
-      clearSessionData();
-      // console.log(
-      //   "Client ID eliminado del localStorage y sessionStorage al cerrar sesión",
-      // );
+    try {
+      await supabase.auth.signOut({ scope: "local" });
+    } catch {
+      // Ignorar: sesión inválida/expirada, limpiamos local de todos modos
     }
-
-    return { error };
+    setSession(null);
+    setUser(null);
+    localStorage.removeItem(get_client_id);
+    localStorage.removeItem("selected_client_id");
+    clearSessionData();
+    return { error: null };
   };
 
   const resetPassword = async (email: string) => {
