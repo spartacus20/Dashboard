@@ -53,6 +53,7 @@ export function Sidebar({
     loadingProgress,
     totalCalls,
     loadingAllCalls,
+    loadingDashboardData,
     apiKey,
     apiKeyTest,
     agendaEnabled,
@@ -385,7 +386,7 @@ export function Sidebar({
             <Select
               value={currentClientId || ""}
               onValueChange={handleClientIdChange}
-              disabled={isChangingClient}
+              disabled={isChangingClient || loadingAllCalls || loadingDashboardData}
             >
               <SelectTrigger className="w-full bg-[#0a2a5a] border border-[#1e4a8a] text-white text-xs">
                 <SelectValue placeholder="Seleccionar Client ID" />
