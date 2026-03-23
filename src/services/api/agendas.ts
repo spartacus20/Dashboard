@@ -490,6 +490,7 @@ export async function releaseAgendaSlotOccupancy(agenda: Agenda): Promise<boolea
 export async function fetchAgendaSlots(filters?: {
   provincia?: string;
   fecha?: string;
+  tipo?: 'placas_solares' | 'bateria';
 }): Promise<AgendaSlot[]> {
   try {
     let query = supabase
@@ -504,6 +505,10 @@ export async function fetchAgendaSlots(filters?: {
 
     if (filters?.fecha) {
       query = query.eq('fecha', filters.fecha);
+    }
+
+    if (filters?.tipo) {
+      query = query.eq('tipo', filters.tipo);
     }
 
     const { data, error } = await query;
@@ -521,13 +526,19 @@ export async function fetchAgendaSlots(filters?: {
 
 
 
-// Obtener provincias disponibles desde la base de datos
-export async function fetchSlotProvinces(): Promise<string[]> {
+// Obtener provincias disponibles desde la base de datos (opcionalmente filtradas por tipo)
+export async function fetchSlotProvinces(tipo?: 'placas_solares' | 'bateria'): Promise<string[]> {
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('slots')
       .select('provincia')
       .not('provincia', 'is', null);
+
+    if (tipo) {
+      query = query.eq('tipo', tipo);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       throw new Error(error.message);
@@ -556,17 +567,23 @@ export async function createAgendaSlot(payload: {
   provincia: string;
   max_citas: number;
   ocupadas?: number;
+  tipo?: 'placas_solares' | 'bateria';
 }): Promise<AgendaSlot> {
   try {
+    const insertPayload: Record<string, unknown> = {
+      fecha: payload.fecha,
+      hora: payload.hora,
+      provincia: payload.provincia,
+      max_citas: payload.max_citas,
+      ocupadas: payload.ocupadas ?? 0,
+    };
+    if (payload.tipo) {
+      insertPayload.tipo = payload.tipo;
+    }
+
     const { data, error } = await supabase
       .from('slots')
-      .insert({
-        fecha: payload.fecha,
-        hora: payload.hora,
-        provincia: payload.provincia,
-        max_citas: payload.max_citas,
-        ocupadas: payload.ocupadas ?? 0,
-      })
+      .insert(insertPayload)
       .select()
       .single();
 

@@ -54,6 +54,8 @@ const getDotStyle = (ocupadas: number, maxCitas: number): string => {
   return 'bg-emerald-400';
 };
 
+export type AgendaLimitsTipo = 'placas_solares' | 'bateria';
+
 export function AgendaLimitsManager() {
   const [slots, setSlots] = useState<AgendaSlot[]>([]);
   const [provincias, setProvincias] = useState<string[]>([]);
@@ -63,7 +65,9 @@ export function AgendaLimitsManager() {
   const [error, setError] = useState<string | null>(null);
   const [filterProvincia, setFilterProvincia] = useState('all');
   const [filterFecha, setFilterFecha] = useState('');
+  const [filterTipo, setFilterTipo] = useState<'all' | AgendaLimitsTipo>('all');
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [createTipo, setCreateTipo] = useState<AgendaLimitsTipo>('placas_solares');
   const [createFecha, setCreateFecha] = useState(new Date().toISOString().slice(0, 10));
   const [createHora, setCreateHora] = useState('00:00');
   const [createProvincia, setCreateProvincia] = useState('');
@@ -81,12 +85,14 @@ export function AgendaLimitsManager() {
     setLoading(true);
     setError(null);
     try {
+      const tipoFilter = filterTipo === 'all' ? undefined : filterTipo;
       const [slotRows, provinciasRows] = await Promise.all([
         fetchAgendaSlots({
           provincia: filterProvincia !== 'all' ? filterProvincia : undefined,
           fecha: filterFecha || undefined,
+          tipo: tipoFilter,
         }),
-        fetchSlotProvinces(),
+        fetchSlotProvinces(tipoFilter),
       ]);
       setSlots(slotRows);
       setProvincias(provinciasRows);
@@ -96,7 +102,7 @@ export function AgendaLimitsManager() {
     } finally {
       setLoading(false);
     }
-  }, [filterFecha, filterProvincia]);
+  }, [filterFecha, filterProvincia, filterTipo]);
 
   useEffect(() => {
     loadSlots();
@@ -160,6 +166,7 @@ export function AgendaLimitsManager() {
         hora: toDbTimeValue(createHora),
         max_citas: maxCitas,
         ocupadas,
+        tipo: createTipo,
       });
       setCreateProvincia('');
       setCreateHora('00:00');
@@ -245,10 +252,11 @@ export function AgendaLimitsManager() {
   }, [slots.length]);
 
   const groupedSlots = useMemo(() => {
-    const groups = new Map<string, { fecha: string; provincia: string; slots: AgendaSlot[]; maxTotal: number; ocupadasTotal: number }>();
+    const groups = new Map<string, { fecha: string; provincia: string; tipo: string; slots: AgendaSlot[]; maxTotal: number; ocupadasTotal: number }>();
 
     for (const slot of slots) {
-      const key = `${slot.fecha}__${slot.provincia}`;
+      const slotTipo = slot.tipo || 'placas_solares';
+      const key = `${slot.fecha}__${slot.provincia}__${slotTipo}`;
       const existing = groups.get(key);
       if (existing) {
         existing.slots.push(slot);
@@ -258,6 +266,7 @@ export function AgendaLimitsManager() {
         groups.set(key, {
           fecha: slot.fecha,
           provincia: slot.provincia,
+          tipo: slotTipo,
           slots: [slot],
           maxTotal: slot.max_citas,
           ocupadasTotal: slot.ocupadas,
@@ -273,7 +282,9 @@ export function AgendaLimitsManager() {
       .sort((a, b) => {
         const byDate = a.fecha.localeCompare(b.fecha);
         if (byDate !== 0) return byDate;
-        return a.provincia.localeCompare(b.provincia, 'es');
+        const byProv = a.provincia.localeCompare(b.provincia, 'es');
+        if (byProv !== 0) return byProv;
+        return (a.tipo || '').localeCompare(b.tipo || '');
       });
   }, [slots]);
 
@@ -282,9 +293,11 @@ export function AgendaLimitsManager() {
       <div className="max-w-6xl mx-auto p-4 md:p-6 lg:p-8 space-y-6">
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 mb-1">Limitar Agendas</h1>
+            <h1 className="text-2xl font-bold text-slate-900 mb-1">
+              Límites de citas
+            </h1>
             <p className="text-slate-500 text-sm">
-              Crea, edita y elimina límites de citas por provincia, fecha y hora.
+              Crea, edita y elimina límites de citas por provincia, fecha y hora (Paneles o Baterías).
             </p>
           </div>
           <button
@@ -301,7 +314,18 @@ export function AgendaLimitsManager() {
         {showCreateForm && (
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
             <form onSubmit={onCreate} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+                <div>
+                  <label className="block text-sm text-slate-600 mb-1">Tipo</label>
+                  <select
+                    value={createTipo}
+                    onChange={(e) => setCreateTipo(e.target.value as AgendaLimitsTipo)}
+                    className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+                  >
+                    <option value="placas_solares">Paneles</option>
+                    <option value="bateria">Baterías</option>
+                  </select>
+                </div>
                 <div>
                   <label className="block text-sm text-slate-600 mb-1">Fecha</label>
                   <input
@@ -371,7 +395,19 @@ export function AgendaLimitsManager() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="relative">
+            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+            <select
+              value={filterTipo}
+              onChange={(e) => setFilterTipo(e.target.value as 'all' | AgendaLimitsTipo)}
+              className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-transparent appearance-none transition-all"
+            >
+              <option value="all">Todos (Paneles y Baterías)</option>
+              <option value="placas_solares">Solo Paneles</option>
+              <option value="bateria">Solo Baterías</option>
+            </select>
+          </div>
           <div className="relative">
             <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
             <select
@@ -401,6 +437,7 @@ export function AgendaLimitsManager() {
             onClick={() => {
               setFilterProvincia('all');
               setFilterFecha('');
+              setFilterTipo('all');
             }}
             className="px-4 py-3 text-slate-600 hover:bg-slate-100 rounded-xl font-medium transition-colors flex items-center justify-center gap-2 border border-slate-200 bg-white"
           >
@@ -445,7 +482,7 @@ export function AgendaLimitsManager() {
 
             {groupedSlots.map((group) => (
               <div
-                key={`${group.fecha}-${group.provincia}`}
+                key={`${group.fecha}-${group.provincia}-${group.tipo || 'placas_solares'}`}
                 className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow"
               >
                 <div className="p-5 border-b border-slate-100 flex flex-wrap items-center gap-4 bg-slate-50/70">
@@ -457,6 +494,13 @@ export function AgendaLimitsManager() {
                     <MapPin className="w-4 h-4 text-slate-400" />
                     <span className="font-medium">{group.provincia}</span>
                   </div>
+                  {filterTipo === 'all' && (
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                      group.tipo === 'bateria' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                    }`}>
+                      {group.tipo === 'bateria' ? 'Baterías' : 'Paneles'}
+                    </span>
+                  )}
                   <div className="ml-auto flex items-center gap-2">
                     <span className={`px-3 py-1 rounded-full text-xs font-bold ${getOccupancyStyle(group.ocupadasTotal, group.maxTotal)}`}>
                       {group.ocupadasTotal} / {group.maxTotal} ocupadas
