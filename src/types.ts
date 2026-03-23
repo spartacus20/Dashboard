@@ -300,6 +300,7 @@ export interface AgendaSlot {
   max_citas: number;
   ocupadas: number;
   created_at: string;
+  tipo?: string; // "placas_solares" | "bateria"
 }
 
 export interface Callback {

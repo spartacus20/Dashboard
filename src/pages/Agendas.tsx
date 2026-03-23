@@ -1026,7 +1026,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
               }`}
             >
               <Filter className="w-5 h-5" />
-              Limitar Agendas
+              Límites (Paneles y Baterías)
             </button>
           )}
         </div>
