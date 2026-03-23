@@ -690,7 +690,7 @@ const Lanzamiento: React.FC = () => {
                 </div>
                 <div className="text-center p-4 bg-blue-50 rounded-lg">
                   <div className="text-2xl font-bold text-blue-600">
-                    {calculatePercentage(funnel?.totals?.total_links_unique ?? metrics.total_enlaces_enviados, metrics.total_llamadas)}%
+                    {calculatePercentage(funnel?.totals?.total_links_unique ?? metrics.total_enlaces_enviados, metrics.llamadas_contestadas)}%
                   </div>
                   <div className="text-sm text-gray-600">Enlaces Enviados (únicos)</div>
                 </div>
