@@ -570,16 +570,15 @@ export async function createAgendaSlot(payload: {
   tipo?: 'placas_solares' | 'bateria';
 }): Promise<AgendaSlot> {
   try {
+    const tipo = payload.tipo ?? 'placas_solares';
     const insertPayload: Record<string, unknown> = {
       fecha: payload.fecha,
       hora: payload.hora,
       provincia: payload.provincia,
       max_citas: payload.max_citas,
       ocupadas: payload.ocupadas ?? 0,
+      tipo,
     };
-    if (payload.tipo) {
-      insertPayload.tipo = payload.tipo;
-    }
 
     const { data, error } = await supabase
       .from('slots')
