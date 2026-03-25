@@ -68,7 +68,9 @@ export function AgendaLimitsManager() {
   const [filterTipo, setFilterTipo] = useState<'all' | AgendaLimitsTipo>('all');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createTipo, setCreateTipo] = useState<AgendaLimitsTipo>('placas_solares');
-  const [createFecha, setCreateFecha] = useState(new Date().toISOString().slice(0, 10));
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [createFechaInput, setCreateFechaInput] = useState(todayStr);
+  const [createFechas, setCreateFechas] = useState<string[]>([todayStr]);
   const [createHora, setCreateHora] = useState('00:00');
   const [createProvincia, setCreateProvincia] = useState('');
   const [createMaxCitas, setCreateMaxCitas] = useState('1');
@@ -132,14 +134,17 @@ export function AgendaLimitsManager() {
   const onCreate = async (event: React.FormEvent) => {
     event.preventDefault();
 
-    if (!createFecha || !createHora || !createProvincia.trim()) {
-      setError('Completá fecha, hora y provincia');
+    if (!createFechas?.length || !createHora || !createProvincia.trim()) {
+      setError('Completá al menos 1 fecha, hora y provincia');
       return;
     }
 
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(createFecha)) {
-      setError('Formato de fecha inválido. Usá YYYY-MM-DD');
-      return;
+    const fechas = Array.from(new Set(createFechas)).sort();
+    for (const fecha of fechas) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+        setError('Formato de fecha inválido. Usá YYYY-MM-DD');
+        return;
+      }
     }
 
     const maxCitas = Number(createMaxCitas);
@@ -160,18 +165,23 @@ export function AgendaLimitsManager() {
     setSaving(true);
     setError(null);
     try {
-      await createAgendaSlot({
-        fecha: createFecha,
-        provincia: createProvincia.trim(),
-        hora: toDbTimeValue(createHora),
-        max_citas: maxCitas,
-        ocupadas,
-        tipo: createTipo,
-      });
+      // Guardar el mismo límite para todas las fechas seleccionadas
+      for (const fecha of fechas) {
+        await createAgendaSlot({
+          fecha,
+          provincia: createProvincia.trim(),
+          hora: toDbTimeValue(createHora),
+          max_citas: maxCitas,
+          ocupadas,
+          tipo: createTipo,
+        });
+      }
       setCreateProvincia('');
       setCreateHora('00:00');
       setCreateMaxCitas('1');
       setCreateOcupadas('0');
+      setCreateFechaInput(todayStr);
+      setCreateFechas([todayStr]);
       setShowCreateForm(false);
       await loadSlots();
     } catch (err) {
@@ -179,6 +189,24 @@ export function AgendaLimitsManager() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const addCreateFecha = () => {
+    const fecha = createFechaInput;
+    if (!fecha) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      setError('Formato de fecha inválido. Usá YYYY-MM-DD');
+      return;
+    }
+    setError(null);
+    setCreateFechas((prev) => {
+      if (prev.includes(fecha)) return prev;
+      return [...prev, fecha].sort();
+    });
+  };
+
+  const removeCreateFecha = (fecha: string) => {
+    setCreateFechas((prev) => prev.filter((f) => f !== fecha));
   };
 
   const startEdit = (slot: AgendaSlot) => {
@@ -314,70 +342,157 @@ export function AgendaLimitsManager() {
         {showCreateForm && (
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
             <form onSubmit={onCreate} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-                <div>
-                  <label className="block text-sm text-slate-600 mb-1">Tipo</label>
-                  <select
-                    value={createTipo}
-                    onChange={(e) => setCreateTipo(e.target.value as AgendaLimitsTipo)}
-                    className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-transparent"
-                  >
-                    <option value="placas_solares">Paneles</option>
-                    <option value="bateria">Baterías</option>
-                  </select>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-slate-600 mb-1">Tipo</label>
+                    <select
+                      value={createTipo}
+                      onChange={(e) =>
+                        setCreateTipo(e.target.value as AgendaLimitsTipo)
+                      }
+                      className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+                    >
+                      <option value="placas_solares">Paneles</option>
+                      <option value="bateria">Baterías</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-slate-600 mb-1">Fechas</label>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="date"
+                          value={createFechaInput}
+                          onChange={(e) => setCreateFechaInput(e.target.value)}
+                          className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={addCreateFecha}
+                          disabled={
+                            !createFechaInput ||
+                            createFechas.includes(createFechaInput) ||
+                            saving
+                          }
+                          className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-2.5 rounded-xl font-semibold transition-all disabled:opacity-60"
+                          title="Agregar día"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                        <div className="flex items-center justify-between mb-2 gap-3">
+                          <div>
+                            <p className="text-xs font-semibold text-slate-600">
+                              Días seleccionados
+                            </p>
+                            <p className="text-[11px] text-slate-500">
+                              Se aplicará el mismo límite en cada día.
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-700">
+                              {createFechas.length}
+                            </span>
+                            {createFechas.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setCreateFechas([])}
+                                disabled={saving}
+                                className="text-xs text-slate-600 hover:text-slate-800 hover:bg-slate-200/60 px-2 py-1 rounded-lg transition-colors"
+                              >
+                                Limpiar
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {createFechas.length === 0 ? (
+                          <p className="text-xs text-slate-500">
+                            Agregá al menos un día para guardar el límite.
+                          </p>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            {createFechas.map((fecha) => (
+                              <div
+                                key={fecha}
+                                className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2 py-1"
+                              >
+                                <span className="text-[11px] font-mono text-slate-700 whitespace-nowrap">
+                                  {formatDate(fecha)}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => removeCreateFecha(fecha)}
+                                  disabled={saving}
+                                  className="p-1 rounded hover:bg-slate-200 transition-colors"
+                                  title="Quitar fecha"
+                                >
+                                  <X className="w-3.5 h-3.5 text-slate-500" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm text-slate-600 mb-1">Fecha</label>
-                  <input
-                    type="date"
-                    value={createFecha}
-                    onChange={(e) => setCreateFecha(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-transparent"
-                    required
-                  />
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-slate-600 mb-1">Hora</label>
+                    <input
+                      type="time"
+                      value={createHora}
+                      onChange={(e) => setCreateHora(e.target.value)}
+                      className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-slate-600 mb-1">Provincia</label>
+                    <input
+                      type="text"
+                      placeholder="Ej: Sevilla"
+                      value={createProvincia}
+                      onChange={(e) => setCreateProvincia(e.target.value)}
+                      className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+                      required
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm text-slate-600 mb-1">Hora</label>
-                  <input
-                    type="time"
-                    value={createHora}
-                    onChange={(e) => setCreateHora(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-transparent"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-slate-600 mb-1">Provincia</label>
-                  <input
-                    type="text"
-                    placeholder="Ej: Sevilla"
-                    value={createProvincia}
-                    onChange={(e) => setCreateProvincia(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-transparent"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-slate-600 mb-1">Máx. citas</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={createMaxCitas}
-                    onChange={(e) => setCreateMaxCitas(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-transparent"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-slate-600 mb-1">Ocupadas</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={createOcupadas}
-                    onChange={(e) => setCreateOcupadas(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-transparent"
-                    required
-                  />
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-slate-600 mb-1">Máx. citas</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={createMaxCitas}
+                      onChange={(e) => setCreateMaxCitas(e.target.value)}
+                      className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-slate-600 mb-1">Ocupadas</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={createOcupadas}
+                      onChange={(e) => setCreateOcupadas(e.target.value)}
+                      className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+                      required
+                    />
+                  </div>
                 </div>
               </div>
 
