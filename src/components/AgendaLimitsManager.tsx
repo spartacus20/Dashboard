@@ -24,6 +24,11 @@ const toDbTimeValue = (value: string): string => {
   return value.length === 5 ? `${value}:00` : value;
 };
 
+const normalizeTime = (value: string): string => {
+  if (!value) return '';
+  return toTimeInputValue(value);
+};
+
 const formatDate = (value: string): string => {
   if (!value) return '-';
   const date = new Date(`${value}T00:00:00`);
@@ -71,7 +76,8 @@ export function AgendaLimitsManager() {
   const todayStr = new Date().toISOString().slice(0, 10);
   const [createFechaInput, setCreateFechaInput] = useState(todayStr);
   const [createFechas, setCreateFechas] = useState<string[]>([todayStr]);
-  const [createHora, setCreateHora] = useState('00:00');
+  const [createHoraInput, setCreateHoraInput] = useState('00:00');
+  const [createHoras, setCreateHoras] = useState<string[]>(['00:00']);
   const [createProvincia, setCreateProvincia] = useState('');
   const [createMaxCitas, setCreateMaxCitas] = useState('1');
   const [createOcupadas, setCreateOcupadas] = useState('0');
@@ -134,15 +140,22 @@ export function AgendaLimitsManager() {
   const onCreate = async (event: React.FormEvent) => {
     event.preventDefault();
 
-    if (!createFechas?.length || !createHora || !createProvincia.trim()) {
-      setError('Completá al menos 1 fecha, hora y provincia');
+    if (!createFechas?.length || !createHoras?.length || !createProvincia.trim()) {
+      setError('Completá al menos 1 fecha, 1 hora y provincia');
       return;
     }
 
     const fechas = Array.from(new Set(createFechas)).sort();
+    const horas = Array.from(new Set(createHoras.map(normalizeTime))).sort();
     for (const fecha of fechas) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
         setError('Formato de fecha inválido. Usá YYYY-MM-DD');
+        return;
+      }
+    }
+    for (const hora of horas) {
+      if (!/^\d{2}:\d{2}$/.test(hora)) {
+        setError('Formato de hora inválido. Usá HH:MM');
         return;
       }
     }
@@ -165,19 +178,22 @@ export function AgendaLimitsManager() {
     setSaving(true);
     setError(null);
     try {
-      // Guardar el mismo límite para todas las fechas seleccionadas
+      // Guardar el mismo límite para cada combinación de fecha y hora seleccionada
       for (const fecha of fechas) {
-        await createAgendaSlot({
-          fecha,
-          provincia: createProvincia.trim(),
-          hora: toDbTimeValue(createHora),
-          max_citas: maxCitas,
-          ocupadas,
-          tipo: createTipo,
-        });
+        for (const hora of horas) {
+          await createAgendaSlot({
+            fecha,
+            provincia: createProvincia.trim(),
+            hora: toDbTimeValue(hora),
+            max_citas: maxCitas,
+            ocupadas,
+            tipo: createTipo,
+          });
+        }
       }
       setCreateProvincia('');
-      setCreateHora('00:00');
+      setCreateHoraInput('00:00');
+      setCreateHoras(['00:00']);
       setCreateMaxCitas('1');
       setCreateOcupadas('0');
       setCreateFechaInput(todayStr);
@@ -207,6 +223,24 @@ export function AgendaLimitsManager() {
 
   const removeCreateFecha = (fecha: string) => {
     setCreateFechas((prev) => prev.filter((f) => f !== fecha));
+  };
+
+  const addCreateHora = () => {
+    const hora = normalizeTime(createHoraInput);
+    if (!hora) return;
+    if (!/^\d{2}:\d{2}$/.test(hora)) {
+      setError('Formato de hora inválido. Usá HH:MM');
+      return;
+    }
+    setError(null);
+    setCreateHoras((prev) => {
+      if (prev.includes(hora)) return prev;
+      return [...prev, hora].sort();
+    });
+  };
+
+  const removeCreateHora = (hora: string) => {
+    setCreateHoras((prev) => prev.filter((h) => h !== hora));
   };
 
   const startEdit = (slot: AgendaSlot) => {
@@ -446,17 +480,6 @@ export function AgendaLimitsManager() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm text-slate-600 mb-1">Hora</label>
-                    <input
-                      type="time"
-                      value={createHora}
-                      onChange={(e) => setCreateHora(e.target.value)}
-                      className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-transparent"
-                      required
-                    />
-                  </div>
-
-                  <div>
                     <label className="block text-sm text-slate-600 mb-1">Provincia</label>
                     <input
                       type="text"
@@ -467,29 +490,114 @@ export function AgendaLimitsManager() {
                       required
                     />
                   </div>
+
+                  <div>
+                    <label className="block text-sm text-slate-600 mb-1">Horas</label>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="time"
+                          value={createHoraInput}
+                          onChange={(e) => setCreateHoraInput(e.target.value)}
+                          className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={addCreateHora}
+                          disabled={
+                            !createHoraInput ||
+                            createHoras.includes(normalizeTime(createHoraInput)) ||
+                            saving
+                          }
+                          className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-2.5 rounded-xl font-semibold transition-all disabled:opacity-60"
+                          title="Agregar hora"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                        <div className="flex items-center justify-between mb-2 gap-3">
+                          <div>
+                            <p className="text-xs font-semibold text-slate-600">
+                              Horas seleccionadas
+                            </p>
+                            <p className="text-[11px] text-slate-500">
+                              Se aplicará el mismo límite en cada hora.
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-700">
+                              {createHoras.length}
+                            </span>
+                            {createHoras.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setCreateHoras([])}
+                                disabled={saving}
+                                className="text-xs text-slate-600 hover:text-slate-800 hover:bg-slate-200/60 px-2 py-1 rounded-lg transition-colors"
+                              >
+                                Limpiar
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {createHoras.length === 0 ? (
+                          <p className="text-xs text-slate-500">
+                            Agregá al menos una hora para guardar el límite.
+                          </p>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            {createHoras.map((hora) => (
+                              <div
+                                key={hora}
+                                className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2 py-1"
+                              >
+                                <span className="text-[11px] font-mono text-slate-700 whitespace-nowrap">
+                                  {hora}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => removeCreateHora(hora)}
+                                  disabled={saving}
+                                  className="p-1 rounded hover:bg-slate-200 transition-colors"
+                                  title="Quitar hora"
+                                >
+                                  <X className="w-3.5 h-3.5 text-slate-500" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="w-28">
                     <label className="block text-sm text-slate-600 mb-1">Máx. citas</label>
                     <input
                       type="number"
                       min={0}
                       value={createMaxCitas}
                       onChange={(e) => setCreateMaxCitas(e.target.value)}
-                      className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+                      className="w-full px-2.5 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-transparent"
                       required
                     />
                   </div>
 
-                  <div>
+                  <div className="w-28">
                     <label className="block text-sm text-slate-600 mb-1">Ocupadas</label>
                     <input
                       type="number"
                       min={0}
                       value={createOcupadas}
                       onChange={(e) => setCreateOcupadas(e.target.value)}
-                      className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+                      className="w-full px-2.5 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-transparent"
                       required
                     />
                   </div>
