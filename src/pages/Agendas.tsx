@@ -60,6 +60,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
   const [filterReviewed, setFilterReviewed] = useState<
     "all" | "true" | "false"
   >("all");
+  const [scheduledDateFilter, setScheduledDateFilter] = useState("");
   const [onlyDuplicatedPhones, setOnlyDuplicatedPhones] = useState(false);
   const todayStr = () => new Date().toISOString().slice(0, 10);
   const [dateFrom, setDateFrom] = useState(todayStr);
@@ -90,6 +91,13 @@ export function Agendas({ onNavigate }: AgendasProps) {
   // Permiso para ver estadísticas de Paneles Solares / Baterías según metadata.filtro_solar
   const [hasFiltroSolar, setHasFiltroSolar] = useState(false);
   const itemsPerPage = 10;
+
+  const getDateOnly = (value?: string | null) => {
+    if (!value) return "";
+    if (value.includes("T")) return value.split("T")[0];
+    if (value.includes(" ")) return value.split(" ")[0];
+    return value.slice(0, 10);
+  };
 
   // Helpers para normalizar aprobada/revisada (API puede devolver boolean, string "true", o 1)
   const isApproved = (v: unknown): boolean =>
@@ -318,6 +326,14 @@ export function Agendas({ onNavigate }: AgendasProps) {
       );
     }
 
+    // Filtrar por día agendado (fecha de visita)
+    if (scheduledDateFilter) {
+      filtered = filtered.filter(
+        (agenda) =>
+          getDateOnly(agenda.fecha_agendamiento) === scheduledDateFilter,
+      );
+    }
+
     // NOTA: Los filtros de fecha (dateFrom, dateTo) y agente se aplican en la API
     // No se filtran aquí para evitar duplicación
 
@@ -330,6 +346,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
     filterApproved,
     filterReviewed,
     onlyDuplicatedPhones,
+    scheduledDateFilter,
   ]);
 
   // Estadísticas de agendas duplicadas por teléfono (2 iguales = 1 repetida, 3 iguales = 2 repetidas...)
@@ -1205,7 +1222,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
 
             {/* Filtros y búsqueda (el rango de fechas se cambia en la card Promedio de llamadas por agenda) */}
             <div className="bg-white rounded-lg p-6 mb-6 shadow-lg border border-slate-200">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
                 {/* Búsqueda */}
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
@@ -1301,6 +1318,28 @@ export function Agendas({ onNavigate }: AgendasProps) {
                       <option value="DESC">Más recientes primero</option>
                       <option value="ASC">Más antiguos primero</option>
                     </select>
+                  </div>
+
+                  {/* Filtro por día agendado */}
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
+                    <input
+                      type="date"
+                      value={scheduledDateFilter}
+                      onChange={(e) => setScheduledDateFilter(e.target.value)}
+                      className="w-full pl-10 pr-10 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      title="Filtrar por día agendado"
+                    />
+                    {scheduledDateFilter && (
+                      <button
+                        type="button"
+                        onClick={() => setScheduledDateFilter("")}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-slate-700"
+                        title="Limpiar día agendado"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
             </div>
