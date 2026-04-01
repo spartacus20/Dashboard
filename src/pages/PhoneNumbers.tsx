@@ -359,7 +359,8 @@ function AddPhoneModal({ onClose, onSuccess, workspaceNameByApiKey }: AddPhoneMo
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [agents, setAgents] = useState<RetellAgent[]>([]);
-  const [selectedAgent, setSelectedAgent] = useState<RetellAgent | null>(null);
+  const [selectedInboundAgent, setSelectedInboundAgent] = useState<RetellAgent | null>(null);
+  const [selectedOutboundAgent, setSelectedOutboundAgent] = useState<RetellAgent | null>(null);
   const [loadingAgents, setLoadingAgents] = useState(false);
   const [agentsError, setAgentsError] = useState<string | null>(null);
 
@@ -451,7 +452,8 @@ function AddPhoneModal({ onClose, onSuccess, workspaceNameByApiKey }: AddPhoneMo
       try {
         const agentsData = await fetchAgents(selectedWorkspaceApiKey);
         setAgents(agentsData);
-        setSelectedAgent(null);
+        setSelectedInboundAgent(null);
+        setSelectedOutboundAgent(null);
       } catch (err) {
         // console.error('Error cargando agentes para workspace:', err);
         setAgentsError(err instanceof Error ? err.message : 'Error al cargar los agentes');
@@ -482,8 +484,13 @@ function AddPhoneModal({ onClose, onSuccess, workspaceNameByApiKey }: AddPhoneMo
       return;
     }
 
-    if (!selectedAgent) {
-      setError('Debes seleccionar un agente para el número');
+    if (!selectedInboundAgent) {
+      setError('Debes seleccionar un agente de entrada (inbound)');
+      return;
+    }
+
+    if (!selectedOutboundAgent) {
+      setError('Debes seleccionar un agente de salida (outbound)');
       return;
     }
 
@@ -494,8 +501,8 @@ function AddPhoneModal({ onClose, onSuccess, workspaceNameByApiKey }: AddPhoneMo
     try {
       const phoneData: any = {
         phone_number: phoneNumber.trim(),
-        inbound_agent_id: selectedAgent.agent_id,
-        outbound_agent_id: selectedAgent.agent_id,
+        inbound_agent_id: selectedInboundAgent.agent_id,
+        outbound_agent_id: selectedOutboundAgent.agent_id,
       };
 
       // Añadir campos opcionales solo si tienen valor
@@ -606,7 +613,7 @@ function AddPhoneModal({ onClose, onSuccess, workspaceNameByApiKey }: AddPhoneMo
           </div>
 
           <div>
-            <label className="block text-slate-600 mb-1">Agente (workspace seleccionado) *</label>
+            <label className="block text-slate-600 mb-1">Agente de entrada (Inbound) *</label>
             {loadingAgents ? (
               <div className="flex items-center bg-slate-50 p-3 rounded-lg border border-slate-200 text-slate-600">
                 <svg className="animate-spin mr-2 h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -625,10 +632,47 @@ function AddPhoneModal({ onClose, onSuccess, workspaceNameByApiKey }: AddPhoneMo
               </div>
             ) : (
               <select
-                value={selectedAgent?.agent_id || ''}
+                value={selectedInboundAgent?.agent_id || ''}
                 onChange={(e) => {
                   const agent = agents.find(a => a.agent_id === e.target.value) || null;
-                  setSelectedAgent(agent);
+                  setSelectedInboundAgent(agent);
+                }}
+                className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Selecciona un agente</option>
+                {agents.map((agent) => (
+                  <option key={agent.agent_id} value={agent.agent_id}>
+                    {agent.agent_name || agent.agent_id}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-slate-600 mb-1">Agente de salida (Outbound) *</label>
+            {loadingAgents ? (
+              <div className="flex items-center bg-slate-50 p-3 rounded-lg border border-slate-200 text-slate-600">
+                <svg className="animate-spin mr-2 h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Cargando agentes...
+              </div>
+            ) : agentsError ? (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                {agentsError}
+              </div>
+            ) : agents.length === 0 ? (
+              <div className="flex items-center bg-slate-50 p-3 rounded-lg border border-slate-200 text-slate-600">
+                No se encontraron agentes para este workspace
+              </div>
+            ) : (
+              <select
+                value={selectedOutboundAgent?.agent_id || ''}
+                onChange={(e) => {
+                  const agent = agents.find(a => a.agent_id === e.target.value) || null;
+                  setSelectedOutboundAgent(agent);
                 }}
                 className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
