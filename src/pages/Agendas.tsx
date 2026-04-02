@@ -60,7 +60,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
   const [filterReviewed, setFilterReviewed] = useState<
     "all" | "true" | "false"
   >("all");
-  const [scheduledDateFilter, setScheduledDateFilter] = useState("");
+  const [scheduledDateFilter, setScheduledDateFilter] = useState<string[]>([]);
   const [onlyDuplicatedPhones, setOnlyDuplicatedPhones] = useState(false);
   const todayStr = () => new Date().toISOString().slice(0, 10);
   const [dateFrom, setDateFrom] = useState(todayStr);
@@ -326,11 +326,10 @@ export function Agendas({ onNavigate }: AgendasProps) {
       );
     }
 
-    // Filtrar por día agendado (fecha de visita)
-    if (scheduledDateFilter) {
-      filtered = filtered.filter(
-        (agenda) =>
-          getDateOnly(agenda.fecha_agendamiento) === scheduledDateFilter,
+    // Filtrar por días agendados (fecha de visita) — puede ser uno o varios
+    if (scheduledDateFilter.length > 0) {
+      filtered = filtered.filter((agenda) =>
+        scheduledDateFilter.includes(getDateOnly(agenda.fecha_agendamiento)),
       );
     }
 
@@ -1320,29 +1319,57 @@ export function Agendas({ onNavigate }: AgendasProps) {
                     </select>
                   </div>
 
-                  {/* Filtro por día agendado */}
+                  {/* Filtro por días agendados (múltiples) */}
                   <div className="relative">
                     <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
                     <input
                       type="date"
-                      value={scheduledDateFilter}
-                      onChange={(e) => setScheduledDateFilter(e.target.value)}
-                      className="w-full pl-10 pr-10 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      title="Filtrar por día agendado"
+                      value=""
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val && !scheduledDateFilter.includes(val)) {
+                          setScheduledDateFilter([...scheduledDateFilter, val]);
+                        }
+                        e.target.value = "";
+                      }}
+                      className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      title="Agregar día agendado al filtro"
                     />
-                    {scheduledDateFilter && (
-                      <button
-                        type="button"
-                        onClick={() => setScheduledDateFilter("")}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-slate-700"
-                        title="Limpiar día agendado"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
                   </div>
                 </div>
             </div>
+
+            {/* Chips de días agendados seleccionados */}
+            {scheduledDateFilter.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1 mt-2 mb-2">
+                <span className="text-xs text-slate-500 mr-1">Días agendados:</span>
+                {scheduledDateFilter.map((d) => (
+                  <span
+                    key={d}
+                    className="flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs"
+                  >
+                    {d}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setScheduledDateFilter(scheduledDateFilter.filter((x) => x !== d))
+                      }
+                      className="hover:text-blue-600"
+                      title={`Quitar ${d}`}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setScheduledDateFilter([])}
+                  className="text-xs text-slate-500 hover:text-slate-700 underline ml-1"
+                >
+                  Limpiar todo
+                </button>
+              </div>
+            )}
 
             {/* Loading state */}
             {loading && (
