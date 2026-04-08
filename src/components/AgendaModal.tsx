@@ -17,6 +17,7 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
   const [localApproved, setLocalApproved] = useState<boolean>(false);
   const [localReviewed, setLocalReviewed] = useState<boolean>(false);
   const [localDetails, setLocalDetails] = useState<string>('');
+  const [localMotivoRechazo, setLocalMotivoRechazo] = useState<'Edad' | 'Pago mensual bajo' | 'Otros' | null>(null);
 
   // Sincronizar estados locales cuando cambia la agenda (null/undefined = false)
   useEffect(() => {
@@ -24,10 +25,12 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
       setLocalApproved(agenda.aprobada === true);
       setLocalReviewed(agenda.revisada === true);
       setLocalDetails(agenda.detalles ?? '');
+      setLocalMotivoRechazo((agenda.motivo_rechazo as 'Edad' | 'Pago mensual bajo' | 'Otros' | null) ?? null);
     } else {
       setLocalApproved(false);
       setLocalReviewed(false);
       setLocalDetails('');
+      setLocalMotivoRechazo(null);
     }
   }, [agenda]);
 
@@ -127,8 +130,9 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
     const originalApproved = agenda.aprobada === true;
     const originalReviewed = agenda.revisada === true;
     const originalDetails = agenda.detalles ?? '';
+    const originalMotivoRechazo = (agenda.motivo_rechazo as 'Edad' | 'Pago mensual bajo' | 'Otros' | null) ?? null;
 
-    const payload: { id: string; aprobada?: boolean; revisada?: boolean; detalles?: string } = {
+    const payload: { id: string; aprobada?: boolean; revisada?: boolean; detalles?: string; motivo_rechazo?: string | null } = {
       id: String(agenda.id),
     };
 
@@ -144,11 +148,16 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
       payload.detalles = localDetails;
     }
 
+    if (localMotivoRechazo !== originalMotivoRechazo) {
+      payload.motivo_rechazo = localMotivoRechazo;
+    }
+
     // Si no hay cambios, no llamamos a la API
     if (
       typeof payload.aprobada === 'undefined' &&
       typeof payload.revisada === 'undefined' &&
-      typeof payload.detalles === 'undefined'
+      typeof payload.detalles === 'undefined' &&
+      typeof payload.motivo_rechazo === 'undefined'
     ) {
       return;
     }
@@ -359,6 +368,28 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
                   >
                     <option value="true">Revisada</option>
                     <option value="false">No revisada</option>
+                  </select>
+                  <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-400 text-xs">
+                    ▼
+                  </span>
+                </div>
+
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">
+                  Motivo de rechazo
+                </label>
+                <div className="relative">
+                  <select
+                    value={localMotivoRechazo ?? ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setLocalMotivoRechazo(val === '' ? null : val as 'Edad' | 'Pago mensual bajo' | 'Otros');
+                    }}
+                    className="w-full appearance-none px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 pr-9 text-slate-600"
+                  >
+                    <option value="">— Sin motivo —</option>
+                    <option value="Edad">Edad</option>
+                    <option value="Pago mensual bajo">Pago mensual bajo</option>
+                    <option value="Otros">Otros</option>
                   </select>
                   <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-400 text-xs">
                     ▼

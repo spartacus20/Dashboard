@@ -1,5 +1,5 @@
 import { Agenda, AgendaSlot } from '../../types';
-import { getClientId, GET_AGENDAS_WEBHOOK_URL, DELETE_AGENDA_WEBHOOK_URL, AVERAGE_CALLS_PER_AGENDA_URL } from './config';
+import { getClientId, GET_AGENDAS_WEBHOOK_URL, DELETE_AGENDA_WEBHOOK_URL, AVERAGE_CALLS_PER_AGENDA_URL, MOTIVOS_RECHAZO_URL } from './config';
 import { supabase } from '../../lib/supabase';
 
 
@@ -350,7 +350,7 @@ export async function deleteAgenda(agendaId: number, clientId: string): Promise<
 
 // Actualizar estado de una agenda (aprobada / revisada / detalles / estado)
 export async function updateAgendaStatus(
-  params: { id: number; aprobada?: boolean; revisada?: boolean; detalles?: string }
+  params: { id: number; aprobada?: boolean; revisada?: boolean; detalles?: string; motivo_rechazo?: string | null }
 ): Promise<Agenda> {
   try {
     const clientId = getClientId();
@@ -371,6 +371,9 @@ export async function updateAgendaStatus(
     }
     if ('detalles' in params) {
       body.detalles = params.detalles ?? '';
+    }
+    if ('motivo_rechazo' in params) {
+      body.motivo_rechazo = params.motivo_rechazo ?? null;
     }
 
     const baseAgendaUrl = GET_AGENDAS_WEBHOOK_URL.replace('/get-agenda', '');
@@ -647,5 +650,34 @@ export async function deleteAgendaSlot(id: string): Promise<void> {
     // console.error('Error al eliminar slot:', error);
     throw error;
   }
+}
+
+export interface MotivoRechazoStat {
+  motivo: string;
+  total: number;
+  porcentaje: number;
+}
+
+export async function fetchMotivosRechazo(
+  clientId: string,
+  fechaInicio?: string,
+  fechaFin?: string,
+): Promise<MotivoRechazoStat[]> {
+  const body: Record<string, string> = { client_id: clientId };
+  if (fechaInicio) body.fecha_inicio = fechaInicio;
+  if (fechaFin) body.fecha_fin = fechaFin;
+
+  const response = await fetch(MOTIVOS_RECHAZO_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Error al obtener motivos de rechazo: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return (data.motivos ?? []) as MotivoRechazoStat[];
 }
 

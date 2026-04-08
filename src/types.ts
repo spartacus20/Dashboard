@@ -290,6 +290,8 @@ export interface Agenda {
   revisada?: boolean | null;
   detalles?: string | null;
   estado?: 'pendiente' | 'aceptado' | 'rechazado' | null;
+  motivo_rechazo?: 'Edad' | 'Pago mensual bajo' | 'Otros' | null;
+  initial_address?: string | null;
 }
 
 export interface AgendaSlot {

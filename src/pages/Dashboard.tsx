@@ -44,7 +44,9 @@ import {
   fetchLanzamientoMetricsToday,
   fetchLanzamientoMetricsCustom,
   fetchAsistenciaClicksByHour,
+  fetchMotivosRechazo,
 } from "../api";
+import type { MotivoRechazoStat } from "../services/api/agendas";
 import {
   translateDisconnectionReason,
   translateHousingType,
@@ -263,6 +265,10 @@ export function Dashboard({
   // Verificar si el usuario tiene permiso para ver filtro de base de datos
   const [hasFiltroSolar, setHasFiltroSolar] = React.useState(false);
 
+  // Motivos de rechazo (solo para clientes con filtro_solar)
+  const [motivosRechazo, setMotivosRechazo] = React.useState<MotivoRechazoStat[]>([]);
+  const [motivosRechazoLoading, setMotivosRechazoLoading] = React.useState(false);
+
   // Helpers para métricas de lanzamiento por región
   const normalizeLaunchRegionFromMetrics = React.useCallback((metrics: any) => {
     const porRegion = metrics?.porRegion || {};
@@ -384,6 +390,55 @@ export function Dashboard({
       window.removeEventListener("metadataUpdated", handleMetadataUpdate);
     };
   }, [checkMetadata]);
+
+  // Cargar motivos de rechazo cuando el cliente tiene filtro_solar
+  React.useEffect(() => {
+    const clientId = localStorage.getItem('get_client_id');
+    if (!clientId) return;
+
+    // Obtener filtro_solar directamente del sessionStorage para evitar problemas de timing
+    let isSolar = hasFiltroSolar;
+    if (!isSolar) {
+      try {
+        const meta = sessionStorage.getItem('metadata');
+        isSolar = meta ? JSON.parse(meta)?.filtro_solar === true : false;
+      } catch { /* noop */ }
+    }
+
+    if (!isSolar) {
+      setMotivosRechazo([]);
+      return;
+    }
+
+    let fechaInicio: string | undefined;
+    let fechaFin: string | undefined;
+
+    if (timePeriod === 'today') {
+      const today = new Date().toISOString().slice(0, 10);
+      fechaInicio = today;
+      fechaFin = today;
+    } else if (timePeriod === 'week') {
+      const now = new Date();
+      const day = now.getDay() || 7;
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - (day - 1));
+      fechaInicio = monday.toISOString().slice(0, 10);
+      fechaFin = now.toISOString().slice(0, 10);
+    } else if (timePeriod === 'month') {
+      const now = new Date();
+      fechaInicio = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+      fechaFin = now.toISOString().slice(0, 10);
+    } else if (timePeriod === 'custom' && customStartDate && customEndDate) {
+      fechaInicio = customStartDate;
+      fechaFin = customEndDate;
+    }
+
+    setMotivosRechazoLoading(true);
+    fetchMotivosRechazo(clientId, fechaInicio, fechaFin)
+      .then((data) => setMotivosRechazo(data))
+      .catch(() => setMotivosRechazo([]))
+      .finally(() => setMotivosRechazoLoading(false));
+  }, [hasFiltroSolar, timePeriod, customStartDate, customEndDate]);
 
   // Función para validar y actualizar el rango de horas (agendamientos)
   const handleHourRangeChange = (type: "start" | "end", value: string) => {
@@ -2849,6 +2904,78 @@ export function Dashboard({
                 )}
             </div>
           ) : null}
+
+          {/* Card de Motivos de Rechazo (solo clientes con filtro_solar) */}
+          {hasFiltroSolar && (motivosRechazoLoading || motivosRechazo.length > 0) && (
+            <Card className="mb-8 shadow-lg border border-slate-200">
+              <CardHeader>
+                <CardTitle className="text-base font-semibold text-slate-800">
+                  Motivos de Rechazo
+                </CardTitle>
+                <CardDescription className="text-slate-500">
+                  Distribución de agendas rechazadas según el motivo registrado
+                  {!motivosRechazoLoading && motivosRechazo.length > 0 && (
+                    <> · <span className="font-semibold">
+                      {motivosRechazo.reduce((s, m) => s + m.total, 0)} rechazadas
+                    </span></>
+                  )}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-0 md:p-6">
+                {motivosRechazoLoading ? (
+                  <div className="h-[300px] flex items-center justify-center text-slate-500 text-sm">
+                    Cargando motivos de rechazo...
+                  </div>
+                ) : (
+                  <div className="flex flex-col md:flex-row items-center gap-6 p-4 md:p-0">
+                    {/* Pie chart */}
+                    <div className="w-full md:w-1/2">
+                      <SimplePieChart
+                        data={motivosRechazo.map((m) => ({
+                          name: m.motivo,
+                          value: m.total,
+                          color:
+                            m.motivo === 'Edad'
+                              ? '#f97316'
+                              : m.motivo === 'Pago mensual bajo'
+                              ? '#ef4444'
+                              : '#6366f1',
+                        }))}
+                        dataKey="value"
+                        nameKey="name"
+                      />
+                    </div>
+                    {/* Tabla de detalle */}
+                    <div className="w-full md:w-1/2 space-y-3">
+                      {motivosRechazo.map((m) => {
+                        const color =
+                          m.motivo === 'Edad'
+                            ? { bar: 'bg-orange-500', text: 'text-orange-700', bg: 'bg-orange-50 border-orange-200' }
+                            : m.motivo === 'Pago mensual bajo'
+                            ? { bar: 'bg-red-500', text: 'text-red-700', bg: 'bg-red-50 border-red-200' }
+                            : { bar: 'bg-indigo-500', text: 'text-indigo-700', bg: 'bg-indigo-50 border-indigo-200' };
+                        return (
+                          <div key={m.motivo} className={`rounded-xl border p-4 ${color.bg}`}>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className={`text-sm font-semibold ${color.text}`}>{m.motivo}</span>
+                              <span className={`text-lg font-bold ${color.text}`}>{m.total}</span>
+                            </div>
+                            <div className="w-full bg-white/60 rounded-full h-2">
+                              <div
+                                className={`${color.bar} h-2 rounded-full transition-all duration-500`}
+                                style={{ width: `${m.porcentaje}%` }}
+                              />
+                            </div>
+                            <p className={`text-xs mt-1 ${color.text} opacity-80`}>{m.porcentaje}% del total</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Resumen detallado de llamadas efectivas por hora */}
           {dashboardData?.dashboard_data?.llamadas_efectivas_por_hora && (
