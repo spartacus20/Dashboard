@@ -1,10 +1,10 @@
 import React from 'react';
-import { Play, Pause, Download, Clock, ChevronDown, ChevronUp, Search, X, Phone, ChevronLeft, ChevronRight, ListFilter, PhoneOff, RefreshCw } from 'lucide-react';
-import type { DetailedRetellCall, FilterCriteria } from '../types';
+import { Play, Pause, Download, Clock, ChevronDown, ChevronUp, Search, X, Phone, ChevronLeft, ChevronRight, ListFilter, PhoneOff, RefreshCw, PhoneCall, Plus, User, Send } from 'lucide-react';
+import type { DetailedRetellCall, FilterCriteria, RetellAgent, RetellPhoneNumber } from '../types';
 import { useCallsContext } from '../context/CallsContext';
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { listCalls, exportCallsWithColumns } from '../api';
+import { listCalls, exportCallsWithColumns, fetchAgents, createPhoneCall } from '../api';
 
 // Componentes UI simplificados
 const Input = ({ className = "", ...props }: { className?: string; [key: string]: any }) => (
@@ -183,9 +183,375 @@ const RecordingsSkeleton = () => {
   );
 };
 
+// Modal para rellamar usando los datos de una llamada existente
+interface RecallModalProps {
+  call: DetailedRetellCall;
+  onClose: () => void;
+  apiKey: string | null;
+  apiKeyTest: string[] | null;
+  phoneNumbers: RetellPhoneNumber[];
+}
+
+function normalizeE164(num: string): string {
+  const trimmed = num.trim();
+  if (!trimmed) return trimmed;
+  return trimmed.startsWith('+') ? trimmed : `+${trimmed}`;
+}
+
+function RecallModal({ call, onClose, apiKey, apiKeyTest, phoneNumbers }: RecallModalProps) {
+  const [fromNumber, setFromNumber] = React.useState(normalizeE164(call.from_number || ''));
+  const [toNumber, setToNumber] = React.useState(normalizeE164(call.to_number || ''));
+  const [overrideAgentId, setOverrideAgentId] = React.useState(call.agent_id || '');
+  const [loading, setLoading] = React.useState(false);
+  const [loadingAgents, setLoadingAgents] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [agentsError, setAgentsError] = React.useState<string | null>(null);
+  const [success, setSuccess] = React.useState<string | null>(null);
+  const [agents, setAgents] = React.useState<RetellAgent[]>([]);
+  const [selectedAgent, setSelectedAgent] = React.useState<RetellAgent | null>(null);
+  const [showAgentsDropdown, setShowAgentsDropdown] = React.useState(false);
+
+  // Construir variables dinámicas a partir de la metadata de la llamada
+  const buildInitialVars = (): { key: string; value: string }[] => {
+    const meta = call.metadata;
+    if (!meta || typeof meta !== 'object') return [{ key: '', value: '' }];
+    const entries = Object.entries(meta)
+      .filter(([, v]) => v === null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean')
+      .map(([k, v]) => ({ key: k, value: v === null ? '' : String(v) }));
+    return entries.length > 0 ? entries : [{ key: '', value: '' }];
+  };
+
+  const [dynamicVariables, setDynamicVariables] = React.useState<{ key: string; value: string }[]>(buildInitialVars);
+
+  // Cargar agentes al montar — usando el apiKey del workspace correcto
+  React.useEffect(() => {
+    const loadAgents = async () => {
+      // Determinar el apiKey correcto según el from_number
+      const normalized = normalizeE164(call.from_number || '');
+      const phoneMatch = phoneNumbers.find(p => normalizeE164(p.phone_number || '') === normalized);
+      const keysToTry: string[] = [];
+      if (phoneMatch?.workspace_api_key) keysToTry.push(phoneMatch.workspace_api_key);
+      if (apiKeyTest && apiKeyTest.length > 0) keysToTry.push(...apiKeyTest);
+      if (apiKey) keysToTry.push(apiKey);
+      const uniqueKeys = Array.from(new Set(keysToTry));
+
+      if (uniqueKeys.length === 0) {
+        setAgentsError('API key no configurada');
+        return;
+      }
+
+      setLoadingAgents(true);
+      setAgentsError(null);
+
+      // Intentar con cada key hasta encontrar agentes
+      let allAgents: RetellAgent[] = [];
+      for (const key of uniqueKeys) {
+        try {
+          const data = await fetchAgents(key);
+          allAgents = [...allAgents, ...data.filter(a => !allAgents.find(x => x.agent_id === a.agent_id))];
+        } catch {
+          // continuar con la siguiente key
+        }
+      }
+
+      try {
+        setAgents(allAgents);
+        if (call.agent_id) {
+          // call.agent_id puede contener el nombre del agente (guardado así en el backend)
+          // o el ID real de Retell, por eso comparamos contra ambos campos
+          const match = allAgents.find(
+            a => a.agent_id === call.agent_id || a.agent_name === call.agent_id
+          );
+          if (match) {
+            setSelectedAgent(match);
+            setOverrideAgentId(match.agent_id);
+          }
+        }
+        if (allAgents.length === 0) {
+          setAgentsError('No se encontraron agentes');
+        }
+      } catch (err) {
+        setAgentsError(err instanceof Error ? err.message : 'Error al cargar los agentes');
+      } finally {
+        setLoadingAgents(false);
+      }
+    };
+    loadAgents();
+  }, [apiKey, apiKeyTest, call.agent_id, call.from_number, phoneNumbers]);
+
+  // Cerrar dropdown al hacer clic fuera
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.recall-agent-dropdown')) {
+        setShowAgentsDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const addDynamicVariable = () => {
+    setDynamicVariables([...dynamicVariables, { key: '', value: '' }]);
+  };
+
+  const updateDynamicVariable = (index: number, field: 'key' | 'value', value: string) => {
+    const updated = [...dynamicVariables];
+    updated[index][field] = value;
+    setDynamicVariables(updated);
+  };
+
+  const removeDynamicVariable = (index: number) => {
+    setDynamicVariables(dynamicVariables.filter((_, i) => i !== index));
+  };
+
+  const handleSelectAgent = (agent: RetellAgent) => {
+    setSelectedAgent(agent);
+    setOverrideAgentId(agent.agent_id);
+    setShowAgentsDropdown(false);
+  };
+
+  // Resolver el apiKey correcto: buscar el workspace_api_key del número de origen
+  const resolveApiKey = (num: string): string | null => {
+    const normalized = normalizeE164(num);
+    const match = phoneNumbers.find(p =>
+      normalizeE164(p.phone_number || '') === normalized
+    );
+    if (match?.workspace_api_key) return match.workspace_api_key;
+    // Si hay múltiples API keys, probar la que sea
+    if (apiKeyTest && apiKeyTest.length > 0) return apiKeyTest[0];
+    return apiKey;
+  };
+
+  const handleCreateCall = async () => {
+    if (!fromNumber) { setError('El número de origen es obligatorio'); return; }
+    if (!toNumber) { setError('El número de destino es obligatorio'); return; }
+    if (!selectedAgent) { setError('Selecciona un agente'); return; }
+
+    const effectiveApiKey = resolveApiKey(fromNumber);
+    if (!effectiveApiKey) { setError('API key no configurada'); return; }
+
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    const dynamicVars: Record<string, any> = {};
+    dynamicVariables.forEach(({ key, value }) => {
+      if (key.trim()) dynamicVars[key] = value;
+    });
+
+    try {
+      const params: any = {
+        from_number: normalizeE164(fromNumber),
+        to_number: normalizeE164(toNumber),
+        override_agent_id: overrideAgentId,
+        ...(Object.keys(dynamicVars).length > 0 && { retell_llm_dynamic_variables: dynamicVars }),
+      };
+      const result = await createPhoneCall(effectiveApiKey, params);
+      setSuccess(`Llamada iniciada con éxito. ID: ${result.call_id || 'N/A'}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al iniciar la llamada');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-lg max-h-[90vh] flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex justify-between items-center border-b border-slate-200 p-4 bg-gradient-to-r from-slate-50 to-blue-50 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <PhoneCall className="w-5 h-5 text-blue-600" />
+            <h3 className="text-lg font-medium text-slate-800">Rellamar</h3>
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-slate-200 rounded-full transition-colors">
+            <X className="w-5 h-5 text-slate-500 hover:text-slate-700" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4 bg-white overflow-y-auto flex-1">
+          {/* Número de origen (editable) */}
+          <div>
+            <label className="block text-slate-600 mb-1 text-sm">Número de Origen *</label>
+            <div className="relative">
+              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-600 pointer-events-none" />
+              <input
+                type="text"
+                value={fromNumber}
+                onChange={e => setFromNumber(e.target.value)}
+                placeholder="+34600000000"
+                className="w-full pl-9 pr-3 py-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+              />
+            </div>
+            <p className="text-xs text-slate-400 mt-1">Debe ser el número registrado en Retell (formato E.164, ej: +34600000000)</p>
+          </div>
+
+          {/* Número de destino (editable, pre-rellenado) */}
+          <div>
+            <label className="block text-slate-600 mb-1 text-sm">Número de Destino *</label>
+            <input
+              type="text"
+              value={toNumber}
+              onChange={e => setToNumber(e.target.value)}
+              placeholder="+34600000000"
+              className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+              required
+            />
+          </div>
+
+          {/* Selector de agente (pre-seleccionado) */}
+          <div className="relative recall-agent-dropdown">
+            <label className="block text-slate-600 mb-1 text-sm">Agente *</label>
+            {loadingAgents ? (
+              <div className="flex items-center bg-slate-50 p-3 rounded-lg border border-slate-200 text-slate-600 text-sm">
+                <svg className="animate-spin mr-2 h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Cargando agentes...
+              </div>
+            ) : agentsError ? (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{agentsError}</div>
+            ) : agents.length === 0 ? (
+              <div className="flex items-center bg-slate-50 p-3 rounded-lg border border-slate-200 text-slate-600 text-sm">
+                No se encontraron agentes disponibles
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={() => setShowAgentsDropdown(!showAgentsDropdown)}
+                  className="w-full flex items-center justify-between p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                >
+                  <div className="flex items-center">
+                    <User className="w-4 h-4 text-blue-600 mr-2" />
+                    <span>{selectedAgent ? selectedAgent.agent_name : 'Seleccionar agente'}</span>
+                  </div>
+                  <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${showAgentsDropdown ? 'rotate-180' : ''}`} />
+                </button>
+                {showAgentsDropdown && (
+                  <div className="absolute mt-1 w-full bg-white rounded-lg shadow-lg z-10 border border-slate-200 max-h-52 overflow-y-auto">
+                    <ul className="py-1">
+                      {agents.map(agent => (
+                        <li key={agent.agent_id}>
+                          <button
+                            onClick={() => handleSelectAgent(agent)}
+                            className={`w-full text-left px-4 py-2 flex items-center text-sm ${
+                              selectedAgent?.agent_id === agent.agent_id
+                                ? 'bg-blue-600 text-white'
+                                : 'text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            <User className="w-3.5 h-3.5 mr-2 shrink-0" />
+                            <div>
+                              <p>{agent.agent_name}</p>
+                              <p className={`text-xs truncate ${selectedAgent?.agent_id === agent.agent_id ? 'text-blue-200' : 'text-slate-400'}`}>{agent.agent_id}</p>
+                            </div>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Variables dinámicas (pre-rellenadas desde metadata) */}
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <label className="text-slate-600 text-sm">Variables de la llamada</label>
+              <button
+                onClick={addDynamicVariable}
+                className="text-blue-600 hover:text-blue-700 flex items-center text-xs"
+              >
+                <Plus className="w-3.5 h-3.5 mr-1" /> Añadir variable
+              </button>
+            </div>
+            <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+              {dynamicVariables.map((variable, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={variable.key}
+                    onChange={e => updateDynamicVariable(index, 'key', e.target.value)}
+                    placeholder="Nombre"
+                    className="flex-1 p-2 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  />
+                  <input
+                    type="text"
+                    value={variable.value}
+                    onChange={e => updateDynamicVariable(index, 'value', e.target.value)}
+                    placeholder="Valor"
+                    className="flex-1 p-2 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  />
+                  <button
+                    onClick={() => removeDynamicVariable(index)}
+                    className="p-1 hover:bg-slate-200 rounded-full transition-colors shrink-0"
+                  >
+                    <X className="w-4 h-4 text-slate-400 hover:text-slate-600" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>
+          )}
+          {success && (
+            <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">{success}</div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-2 p-4 border-t border-slate-200 bg-slate-50 flex-shrink-0">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors text-sm"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleCreateCall}
+            disabled={loading || !fromNumber || !toNumber || !selectedAgent}
+            className={`px-4 py-2 rounded-lg text-white flex items-center text-sm ${
+              loading || !fromNumber || !toNumber || !selectedAgent
+                ? 'bg-blue-400 cursor-not-allowed'
+                : 'bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800'
+            }`}
+          >
+            {loading ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Procesando...
+              </>
+            ) : (
+              <>
+                <Send className="h-4 w-4 mr-1" />
+                Iniciar llamada
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Recordings({ onNavigate }: RecordingsProps) {
 
   const [selectedCallModal, setSelectedCallModal] = React.useState<DetailedRetellCall | null>(null);
+  const [recallCall, setRecallCall] = React.useState<DetailedRetellCall | null>(null);
   const [selectedCall, setSelectedCall] = React.useState<string | null>(null);
   const [playingId, setPlayingId] = React.useState<string | null>(null);
   const [isModalVisible, setIsModalVisible] = React.useState(false);
@@ -209,13 +575,15 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     disconnectionReasons: contextDisconnectionReasons,
     allCallsLoaded,
     apiKey,
-    clientId, // Agregar clientId del contexto
+    apiKeyTest,
+    clientId,
+    phoneNumbers: contextPhoneNumbers,
     currentPage: contextCurrentPage,
     totalPages: contextTotalPages,
     hasMorePages,
     setFilterCriteria: contextSetFilterCriteria,
     dashboardData,
-    totalCallsFiltered // Agregar totalCallsFiltered del contexto
+    totalCallsFiltered
   } = useCallsContext();
   
   let totalCallsDisplay: number | undefined = undefined;
@@ -2217,6 +2585,18 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                           >
                             Ver detalles
                           </Button>
+
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRecallCall(call);
+                            }}
+                            title="Rellamar"
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white border border-emerald-200 hover:border-emerald-600 text-xs font-medium transition-all"
+                          >
+                            <PhoneCall className="w-3.5 h-3.5" />
+                            Rellamar
+                          </button>
                         </div>
                       </div>
                     </CardContent>
@@ -2595,6 +2975,17 @@ export function Recordings({ onNavigate }: RecordingsProps) {
             </div>
           </div>
         </>
+      )}
+
+      {/* Modal de rellamar */}
+      {recallCall && (
+        <RecallModal
+          call={recallCall}
+          onClose={() => setRecallCall(null)}
+          apiKey={apiKey}
+          apiKeyTest={apiKeyTest}
+          phoneNumbers={contextPhoneNumbers}
+        />
       )}
 
       {/* Modal de filtros de fechas */}

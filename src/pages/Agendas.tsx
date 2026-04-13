@@ -27,6 +27,10 @@ import {
   BarChart3,
   CheckCircle,
   Eye,
+  ChevronDown,
+  ChevronUp,
+  LayoutList,
+  Rows3,
 } from "lucide-react";
 import {
   Card,
@@ -91,6 +95,8 @@ export function Agendas({ onNavigate }: AgendasProps) {
   // Permiso para ver estadísticas de Paneles Solares / Baterías según metadata.filtro_solar
   const [hasFiltroSolar, setHasFiltroSolar] = useState(false);
   const itemsPerPage = 10;
+  const [listViewMode, setListViewMode] = useState<"list" | "grouped">("list");
+  const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
 
   const getDateOnly = (value?: string | null) => {
     if (!value) return "";
@@ -370,6 +376,50 @@ export function Agendas({ onNavigate }: AgendasProps) {
     }
     return { totalRepetidas, numerosConDuplicados };
   }, [agendas]);
+
+  // Agrupar agendas filtradas por día de agendamiento
+  const groupedByDay = useMemo(() => {
+    const map = new Map<string, { agendas: typeof filteredAgendas; dateLabel: string }>();
+    for (const agenda of filteredAgendas) {
+      const dateKey = getDateOnly(agenda.fecha_agendamiento) || "sin-fecha";
+      if (!map.has(dateKey)) {
+        let label = "Sin fecha";
+        if (dateKey !== "sin-fecha") {
+          try {
+            const d = new Date(`${dateKey}T00:00:00`);
+            label = d.toLocaleDateString("es-ES", {
+              weekday: "long",
+              day: "2-digit",
+              month: "long",
+              year: "numeric",
+            });
+            label = label.charAt(0).toUpperCase() + label.slice(1);
+          } catch {
+            label = dateKey;
+          }
+        }
+        map.set(dateKey, { agendas: [], dateLabel: label });
+      }
+      map.get(dateKey)!.agendas.push(agenda);
+    }
+    // Ordenar días: sin-fecha al final, resto por fecha ASC
+    return Array.from(map.entries())
+      .sort(([a], [b]) => {
+        if (a === "sin-fecha") return 1;
+        if (b === "sin-fecha") return -1;
+        return a.localeCompare(b);
+      })
+      .map(([dateKey, value]) => ({ dateKey, ...value }));
+  }, [filteredAgendas]);
+
+  const toggleDay = (dateKey: string) => {
+    setExpandedDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(dateKey)) next.delete(dateKey);
+      else next.add(dateKey);
+      return next;
+    });
+  };
 
   // Obtener tipos únicos para el filtro
   const uniqueTypes = [
@@ -1219,6 +1269,39 @@ export function Agendas({ onNavigate }: AgendasProps) {
             </div>
           </div>
 
+            {/* Toggle de modo de vista */}
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm text-slate-500">
+                {filteredAgendas.length} agenda{filteredAgendas.length !== 1 ? "s" : ""} encontrada{filteredAgendas.length !== 1 ? "s" : ""}
+              </p>
+              <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+                <button
+                  onClick={() => setListViewMode("list")}
+                  title="Vista en lista"
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                    listViewMode === "list"
+                      ? "bg-white shadow text-blue-600"
+                      : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  <LayoutList className="w-4 h-4" />
+                  Lista
+                </button>
+                <button
+                  onClick={() => setListViewMode("grouped")}
+                  title="Agrupar por día agendado"
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                    listViewMode === "grouped"
+                      ? "bg-white shadow text-blue-600"
+                      : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  <Rows3 className="w-4 h-4" />
+                  Por día
+                </button>
+              </div>
+            </div>
+
             {/* Filtros y búsqueda (el rango de fechas se cambia en la card Promedio de llamadas por agenda) */}
             <div className="bg-white rounded-lg p-6 mb-6 shadow-lg border border-slate-200">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
@@ -1389,8 +1472,208 @@ export function Agendas({ onNavigate }: AgendasProps) {
               </div>
             )}
 
+            {/* Vista agrupada por día */}
+            {!loading && !error && listViewMode === "grouped" && (
+              <div className="space-y-3">
+                {groupedByDay.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Calendar className="w-16 h-16 text-slate-400 mx-auto mb-4" />
+                    <h3 className="text-xl font-semibold text-slate-600 mb-2">No se encontraron agendas</h3>
+                    <p className="text-slate-500">Intenta ajustar los filtros de búsqueda.</p>
+                  </div>
+                ) : (
+                  groupedByDay.map(({ dateKey, dateLabel, agendas: dayAgendas }) => {
+                    const isExpanded = expandedDays.has(dateKey);
+                    const aprobadas = dayAgendas.filter((a) => isApproved(a.aprobada)).length;
+                    const noAprobadas = dayAgendas.length - aprobadas;
+                    const revisadas = dayAgendas.filter((a) => isReviewed(a.revisada)).length;
+                    // Horas únicas agendadas, ordenadas
+                    const horas = [...new Set(
+                      dayAgendas
+                        .map((a) => {
+                          if (!a.fecha_agendamiento) return null;
+                          try {
+                            const d = new Date(a.fecha_agendamiento);
+                            return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+                          } catch { return null; }
+                        })
+                        .filter(Boolean)
+                    )].sort() as string[];
+
+                    return (
+                      <div key={dateKey} className="bg-white border border-slate-200 rounded-2xl shadow-md overflow-hidden">
+                        {/* Header del día — clickable */}
+                        <button
+                          onClick={() => toggleDay(dateKey)}
+                          className="w-full flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition-colors text-left gap-4"
+                        >
+                          <div className="flex items-center gap-4 min-w-0">
+                            {/* Icono de calendario con número de día */}
+                            <div className="shrink-0 w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex flex-col items-center justify-center text-white shadow-sm">
+                              {dateKey !== "sin-fecha" ? (
+                                <>
+                                  <span className="text-[10px] font-medium uppercase tracking-wide opacity-80">
+                                    {new Date(`${dateKey}T00:00:00`).toLocaleDateString("es-ES", { month: "short" })}
+                                  </span>
+                                  <span className="text-lg font-bold tabular-nums">
+                                    {new Date(`${dateKey}T00:00:00`).getDate()}
+                                  </span>
+                                </>
+                              ) : (
+                                <Calendar className="w-5 h-5" />
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              {/* Fecha con jerarquía tipográfica */}
+                              {(() => {
+                                const comma = dateLabel.indexOf(",");
+                                const weekday = comma >= 0 ? dateLabel.slice(0, comma) : dateLabel;
+                                const rest = comma >= 0 ? dateLabel.slice(comma + 2) : "";
+                                return (
+                                  <div>
+                                    <span className="block text-[10px] font-semibold uppercase tracking-widest text-blue-500 mb-0.5">
+                                      {weekday}
+                                    </span>
+                                    <span className="block text-base font-bold text-slate-800 leading-snug truncate">
+                                      {rest || dateLabel}
+                                    </span>
+                                  </div>
+                                );
+                              })()}
+                              {/* Chips de horas */}
+                              {horas.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-1.5">
+                                  {horas.map((h) => (
+                                    <span key={h} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-100 text-xs font-semibold px-2 py-0.5 rounded-full">
+                                      <Clock className="w-3 h-3" />
+                                      {h}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Stats del día */}
+                          <div className="flex items-center gap-3 shrink-0">
+                            <div className="hidden sm:flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-3.5 py-1.5 rounded-full shadow-sm shadow-blue-200">
+                              <span className="text-sm font-bold tabular-nums">{dayAgendas.length}</span>
+                              <span className="text-xs font-medium opacity-90">{dayAgendas.length === 1 ? "agenda" : "agendas"}</span>
+                            </div>
+                            <div className="hidden md:flex items-center gap-2">
+                              <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 text-xs font-semibold px-2.5 py-1 rounded-full border border-emerald-200">
+                                <CheckCircle className="w-3 h-3" />
+                                {aprobadas} aprobada{aprobadas !== 1 ? "s" : ""}
+                              </span>
+                              {noAprobadas > 0 && (
+                                <span className="inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-semibold px-2.5 py-1 rounded-full border border-red-200">
+                                  {noAprobadas} no aprobada{noAprobadas !== 1 ? "s" : ""}
+                                </span>
+                              )}
+                              <span className="inline-flex items-center gap-1 bg-violet-100 text-violet-700 text-xs font-semibold px-2.5 py-1 rounded-full border border-violet-200">
+                                <Eye className="w-3 h-3" />
+                                {revisadas} revisada{revisadas !== 1 ? "s" : ""}
+                              </span>
+                            </div>
+                            <div className="p-1.5 rounded-lg bg-slate-100 text-slate-500">
+                              {isExpanded
+                                ? <ChevronUp className="w-4 h-4" />
+                                : <ChevronDown className="w-4 h-4" />}
+                            </div>
+                          </div>
+                        </button>
+
+                        {/* Agendas del día expandidas */}
+                        {isExpanded && (
+                          <div className="border-t border-slate-100 bg-slate-50/50 px-4 pb-4 pt-3 space-y-3">
+                            {dayAgendas
+                              .slice()
+                              .sort((a, b) => {
+                                const ta = a.fecha_agendamiento ?? "";
+                                const tb = b.fecha_agendamiento ?? "";
+                                return ta.localeCompare(tb);
+                              })
+                              .map((agenda) => (
+                                <div
+                                  key={agenda.id}
+                                  onClick={() => openAgendaModal(agenda)}
+                                  className="relative bg-white border border-slate-200 shadow rounded-xl overflow-hidden transition-all duration-150 hover:shadow-md hover:-translate-y-[1px] cursor-pointer"
+                                >
+                                  <div className="p-4">
+                                    <div className="flex items-start justify-between gap-3 mb-3">
+                                      <div className="flex items-center gap-3 min-w-0">
+                                        <div className="shrink-0 p-2 bg-blue-50 rounded-lg text-blue-600">
+                                          <User className="w-4 h-4" />
+                                        </div>
+                                        <div className="min-w-0">
+                                          <p className="font-bold text-slate-800 truncate">{agenda.nombre || "Sin nombre"}</p>
+                                          <div className="flex items-center gap-2 mt-0.5">
+                                            <Phone className="w-3 h-3 text-slate-400 shrink-0" />
+                                            <span className="text-xs text-slate-500 font-medium">{agenda.phone_number || "—"}</span>
+                                            {agenda.fecha_agendamiento && (
+                                              <>
+                                                <span className="text-slate-300">·</span>
+                                                <Clock className="w-3 h-3 text-slate-400 shrink-0" />
+                                                <span className="text-xs font-semibold text-blue-600">
+                                                  {(() => {
+                                                    try {
+                                                      const d = new Date(agenda.fecha_agendamiento);
+                                                      return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+                                                    } catch { return "—"; }
+                                                  })()}
+                                                </span>
+                                              </>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-2 shrink-0">
+                                        {agenda.tipo_agenda && (
+                                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold text-white uppercase tracking-wide ${getAgendaTypeBadgeClass(agenda.tipo_agenda)}`}>
+                                            {agenda.tipo_agenda}
+                                          </span>
+                                        )}
+                                        <button
+                                          onClick={(e) => openDeleteModal(agenda, e)}
+                                          className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                          title="Eliminar agenda"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 mb-2">
+                                      <MapPin className="w-3 h-3 shrink-0" />
+                                      <span className="truncate">
+                                        {agenda.direccion || "Sin dirección"}
+                                        {agenda.ciudad ? ` · ${agenda.ciudad}` : ""}
+                                        {agenda.region ? `, ${agenda.region}` : ""}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  {/* Mini barra de estados */}
+                                  <div className="bg-slate-50 border-t border-slate-100 px-4 py-2 flex gap-2">
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${isApproved(agenda.aprobada) ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-red-100 text-red-700 border-red-200"}`}>
+                                      {isApproved(agenda.aprobada) ? "Aprobada" : "No aprobada"}
+                                    </span>
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${isReviewed(agenda.revisada) ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-red-100 text-red-700 border-red-200"}`}>
+                                      {isReviewed(agenda.revisada) ? "Revisada" : "No revisada"}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+
             {/* Agendas list */}
-            {!loading && !error && (
+            {!loading && !error && listViewMode === "list" && (
               <div>
                 {currentAgendas.length === 0 ? (
                   <div className="text-center py-12">
