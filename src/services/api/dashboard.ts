@@ -8,7 +8,8 @@ export async function getDashboardData(
   clientId?: string, 
   fechaInicio?: string, 
   fechaFin?: string,
-  bdd?: string
+  bdd?: string,
+  cliente?: string
 ): Promise<any> {
   try {
     // Usar el client_id proporcionado o el del localStorage
@@ -39,6 +40,11 @@ export async function getDashboardData(
     // Agregar filtro de base de datos si se proporciona
     if (bdd && bdd.trim()) {
       requestBody.bdd = bdd.trim();
+    }
+
+    // Agregar filtro de cliente (metadata->>'cliente') si se proporciona
+    if (cliente && cliente.trim()) {
+      requestBody.cliente = cliente.trim();
     }
     
     // Usar endpoint custom cuando hay al menos fechaInicio
@@ -75,7 +81,8 @@ export async function getDashboardCustom(
   clientId?: string,
   fechaInicio?: string,
   fechaFin?: string,
-  bdd?: string
+  bdd?: string,
+  cliente?: string
 ): Promise<any> {
   try {
     const actualClientId = clientId || getClientId();
@@ -96,6 +103,11 @@ export async function getDashboardCustom(
     // Agregar filtro de base de datos si se proporciona
     if (bdd && bdd.trim()) {
       requestBody.bdd = bdd.trim();
+    }
+
+    // Agregar filtro de cliente si se proporciona
+    if (cliente && cliente.trim()) {
+      requestBody.cliente = cliente.trim();
     }
 
     const response = await fetch(GET_DASHBOARD_CUSTOM_WEBHOOK_URL, {
@@ -121,7 +133,7 @@ export async function getDashboardCustom(
 
 
 // Función para obtener datos del dashboard de hoy
-export async function getDashboardToday(clientId?: string, bdd?: string): Promise<any> {
+export async function getDashboardToday(clientId?: string, bdd?: string, cliente?: string): Promise<any> {
   try {
     const actualClientId = clientId || getClientId();
     
@@ -134,6 +146,9 @@ export async function getDashboardToday(clientId?: string, bdd?: string): Promis
     const requestBody: any = { client_id: actualClientId };
     if (bdd && bdd.trim()) {
       requestBody.bdd = bdd.trim();
+    }
+    if (cliente && cliente.trim()) {
+      requestBody.cliente = cliente.trim();
     }
     
     const response = await fetch(`${BASE_URL}/api/dashboard/get-dashboard-today`, {
@@ -161,7 +176,7 @@ export async function getDashboardToday(clientId?: string, bdd?: string): Promis
 
 
 // Función para obtener datos del dashboard de la semana
-export async function getDashboardWeek(clientId?: string, bdd?: string): Promise<any> {
+export async function getDashboardWeek(clientId?: string, bdd?: string, cliente?: string): Promise<any> {
   try {
     const actualClientId = clientId || getClientId();
     
@@ -174,6 +189,9 @@ export async function getDashboardWeek(clientId?: string, bdd?: string): Promise
     const requestBody: any = { client_id: actualClientId };
     if (bdd && bdd.trim()) {
       requestBody.bdd = bdd.trim();
+    }
+    if (cliente && cliente.trim()) {
+      requestBody.cliente = cliente.trim();
     }
     
     const response = await fetch(`${BASE_URL}/api/dashboard/get-dashboard-week`, {
@@ -201,7 +219,7 @@ export async function getDashboardWeek(clientId?: string, bdd?: string): Promise
 
 
 // Función para obtener datos del dashboard del mes
-export async function getDashboardMonth(clientId?: string, bdd?: string): Promise<any> {
+export async function getDashboardMonth(clientId?: string, bdd?: string, cliente?: string): Promise<any> {
   try {
     const actualClientId = clientId || getClientId();
     
@@ -214,6 +232,9 @@ export async function getDashboardMonth(clientId?: string, bdd?: string): Promis
     const requestBody: any = { client_id: actualClientId };
     if (bdd && bdd.trim()) {
       requestBody.bdd = bdd.trim();
+    }
+    if (cliente && cliente.trim()) {
+      requestBody.cliente = cliente.trim();
     }
     
     const response = await fetch(`${BASE_URL}/api/dashboard/get-dashboard-month`, {
@@ -239,6 +260,22 @@ export async function getDashboardMonth(clientId?: string, bdd?: string): Promis
 }
 
 
+
+// Función para obtener los valores únicos de metadata->>'cliente' para el filtro de clientes
+export async function getAvailableClientes(clientId: string): Promise<string[]> {
+  try {
+    const response = await fetch(`${BASE_URL}/api/dashboard/available-clientes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: clientId }),
+    });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return Array.isArray(data?.clientes) ? data.clientes : [];
+  } catch {
+    return [];
+  }
+}
 
 // Estructura vacía segura para evitar pantalla en blanco si falla la transformación
 const EMPTY_DASHBOARD = {
