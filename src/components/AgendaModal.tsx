@@ -17,7 +17,7 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
   const [localApproved, setLocalApproved] = useState<boolean>(false);
   const [localReviewed, setLocalReviewed] = useState<boolean>(false);
   const [localDetails, setLocalDetails] = useState<string>('');
-  const [localMotivoRechazo, setLocalMotivoRechazo] = useState<'Edad' | 'Pago mensual bajo' | 'Otros' | 'Ubicacion fuera alcance' | 'Casco historico' | 'No interesado' | 'Detecta IA' | null>(null);
+  const [localMotivoRechazo, setLocalMotivoRechazo] = useState<'Edad' | 'Pago mensual bajo' | 'Otros' | 'Ubicacion fuera alcance' | 'Casco historico' | 'No interesado' | 'Detecta IA' | 'Tiene bateria' | 'Incidencia' | null>(null);
 
   // Sincronizar estados locales cuando cambia la agenda (null/undefined = false)
   useEffect(() => {
@@ -25,7 +25,7 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
       setLocalApproved(agenda.aprobada === true);
       setLocalReviewed(agenda.revisada === true);
       setLocalDetails(agenda.detalles ?? '');
-      setLocalMotivoRechazo((agenda.motivo_rechazo as 'Edad' | 'Pago mensual bajo' | 'Otros' | 'Ubicacion fuera alcance' | 'Casco historico' | 'No interesado' | 'Detecta IA' | null) ?? null);
+      setLocalMotivoRechazo((agenda.motivo_rechazo as 'Edad' | 'Pago mensual bajo' | 'Otros' | 'Ubicacion fuera alcance' | 'Casco historico' | 'No interesado' | 'Detecta IA' | 'Tiene bateria' | 'Incidencia' | null) ?? null);
     } else {
       setLocalApproved(false);
       setLocalReviewed(false);
@@ -130,7 +130,7 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
     const originalApproved = agenda.aprobada === true;
     const originalReviewed = agenda.revisada === true;
     const originalDetails = agenda.detalles ?? '';
-    const originalMotivoRechazo = (agenda.motivo_rechazo as 'Edad' | 'Pago mensual bajo' | 'Otros' | 'Ubicacion fuera alcance' | 'Casco historico' | 'No interesado' | 'Detecta IA' | null) ?? null;
+    const originalMotivoRechazo = (agenda.motivo_rechazo as 'Edad' | 'Pago mensual bajo' | 'Otros' | 'Ubicacion fuera alcance' | 'Casco historico' | 'No interesado' | 'Detecta IA' | 'Tiene bateria' | 'Incidencia' | null) ?? null;
 
     const payload: { id: string; aprobada?: boolean; revisada?: boolean; detalles?: string; motivo_rechazo?: string | null } = {
       id: String(agenda.id),
@@ -382,7 +382,7 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
                     value={localMotivoRechazo ?? ''}
                     onChange={(e) => {
                       const val = e.target.value;
-                      setLocalMotivoRechazo(val === '' ? null : val as 'Edad' | 'Pago mensual bajo' | 'Otros' | 'Ubicacion fuera alcance' | 'Casco historico' | 'No interesado' | 'Detecta IA');
+                      setLocalMotivoRechazo(val === '' ? null : val as 'Edad' | 'Pago mensual bajo' | 'Otros' | 'Ubicacion fuera alcance' | 'Casco historico' | 'No interesado' | 'Detecta IA' | 'Tiene bateria' | 'Incidencia');
                     }}
                     className="w-full appearance-none px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 pr-9 text-slate-600"
                   >
@@ -393,6 +393,8 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
                     <option value="Casco historico">Casco historico</option>
                     <option value="No interesado">No interesado</option>
                     <option value="Detecta IA">Detecta IA</option>
+                    <option value="Tiene bateria">Tiene bateria</option>
+                    <option value="Incidencia">Incidencia</option>
                     <option value="Otros">Otros</option>
                   </select>
                   <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-400 text-xs">
