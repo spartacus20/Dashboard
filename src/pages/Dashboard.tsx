@@ -45,6 +45,7 @@ import {
   fetchLanzamientoMetricsCustom,
   fetchAsistenciaClicksByHour,
   fetchMotivosRechazo,
+  getAvailableClientes,
 } from "../api";
 import type { MotivoRechazoStat } from "../services/api/agendas";
 import {
@@ -72,6 +73,7 @@ import { EffectiveCallsHourlyChart } from "../components/dashboard/charts/Effect
 import { DailyCallsTrendChart } from "../components/dashboard/charts/DailyCallsTrendChart";
 import { SimplePieChart } from "../components/dashboard/charts/SimplePieChart";
 import { TimePeriodSelector } from "../components/dashboard/TimePeriodSelector";
+import { getMetadata } from "../lib/supabase";
 
 // Helpers de zona horaria (Europa/Madrid)
 // Componente para mostrar esqueletos de carga
@@ -139,6 +141,7 @@ interface DashboardProps {
     fechaFin?: string,
     timePeriod?: string,
     bdd?: string,
+    cliente?: string,
   ) => void;
   agendaEnabled?: boolean;
   launchEnabled?: boolean;
@@ -238,6 +241,12 @@ export function Dashboard({
   const [appliedDatabaseFilter, setAppliedDatabaseFilter] =
     useState<string>("");
 
+  // Estado para filtro de clientes (metadata->>'cliente'), solo visible si recoveries === true
+  const [clienteFilter, setClienteFilter] = useState<string>("");
+  const [appliedClienteFilter, setAppliedClienteFilter] = useState<string>("");
+  const [availableClientes, setAvailableClientes] = useState<string[]>([]);
+  const [showClienteFilter, setShowClienteFilter] = useState<boolean>(() => getMetadata()?.recoveries === true);
+
   // Estado para métricas de lanzamiento por región
   const [launchRegionMetrics, setLaunchRegionMetrics] = useState<{
     europa: {
@@ -334,13 +343,16 @@ export function Dashboard({
         const metadata = JSON.parse(metadataStr);
         const hasFiltro = metadata?.filtro_solar === true;
         setHasFiltroSolar(hasFiltro);
-        // console.log("✅ Metadata verificado, filtro_solar:", hasFiltro);
+        setShowClienteFilter(metadata?.recoveries === true);
         return hasFiltro;
       }
+      // Si no hay metadata, resetear ambos flags
+      setHasFiltroSolar(false);
+      setShowClienteFilter(false);
       return false;
     } catch (error) {
-      // console.error("Error al leer metadata del sessionStorage:", error);
       setHasFiltroSolar(false);
+      setShowClienteFilter(false);
       return false;
     }
   }, []);
@@ -356,13 +368,11 @@ export function Dashboard({
       if (customEvent.detail?.metadata) {
         const hasFiltro = customEvent.detail.metadata.filtro_solar === true;
         setHasFiltroSolar(hasFiltro);
-        // console.log(
-        //   "✅ Metadata actualizado desde evento, filtro_solar:",
-        //   hasFiltro,
-        // );
+        setShowClienteFilter(customEvent.detail.metadata.recoveries === true);
       } else {
         // Si no viene el metadata en el evento, verificar desde sessionStorage
         checkMetadata();
+        setShowClienteFilter(getMetadata()?.recoveries === true);
       }
     };
 
@@ -390,6 +400,19 @@ export function Dashboard({
       window.removeEventListener("metadataUpdated", handleMetadataUpdate);
     };
   }, [checkMetadata]);
+
+  // Cargar clientes disponibles cuando showClienteFilter es true; limpiar cuando es false
+  React.useEffect(() => {
+    if (!showClienteFilter) {
+      setAvailableClientes([]);
+      setClienteFilter("");
+      setAppliedClienteFilter("");
+      return;
+    }
+    const clientId = localStorage.getItem('get_client_id');
+    if (!clientId) return;
+    getAvailableClientes(clientId).then(setAvailableClientes).catch(() => setAvailableClientes([]));
+  }, [showClienteFilter]);
 
   // Cargar motivos de rechazo cuando el cliente tiene filtro_solar
   React.useEffect(() => {
@@ -678,21 +701,26 @@ export function Dashboard({
     setAppliedDatabaseFilter("");
   };
 
-  // Efecto para recargar datos cuando cambia el filtro de período o base de datos aplicada
+  // Funciones para el filtro de clientes
+  const applyClienteFilter = () => {
+    setAppliedClienteFilter(clienteFilter);
+  };
+
+  const clearClienteFilter = () => {
+    setClienteFilter("");
+    setAppliedClienteFilter("");
+  };
+
+  // Efecto para recargar datos cuando cambia el filtro de período, base de datos o cliente aplicado
   React.useEffect(() => {
     if (!loadDashboardData) return;
 
     const bddFilter = appliedDatabaseFilter || undefined;
+    const clienteFilterVal = appliedClienteFilter || undefined;
 
     if (timePeriod === "all") {
-      // Para "all", cargar sin fechas usando el endpoint genérico
-      // console.log(
-      //   "Recargando datos del dashboard sin filtros de fecha",
-      //   bddFilter ? `con base de datos: ${bddFilter}` : "",
-      // );
-      loadDashboardData(undefined, undefined, "all", bddFilter);
+      loadDashboardData(undefined, undefined, "all", bddFilter, clienteFilterVal);
     } else if (timePeriod === "custom" && customStartDate && customEndDate) {
-      // Para período personalizado, usar fechas específicas con horas
       const dates = calculateDatesForPeriod(
         timePeriod,
         customStartDate,
@@ -701,16 +729,12 @@ export function Dashboard({
         customEndTime,
       );
       if (dates) {
-        // console.log(
-        //   "Recargando datos del dashboard con fechas personalizadas:",
-        //   dates,
-        //   bddFilter ? `con base de datos: ${bddFilter}` : "",
-        // );
         loadDashboardData(
           dates.fechaInicio,
           dates.fechaFin,
           "custom",
           bddFilter,
+          clienteFilterVal,
         );
       }
     } else if (
@@ -718,13 +742,7 @@ export function Dashboard({
       timePeriod === "week" ||
       timePeriod === "month"
     ) {
-      // Para otros períodos (today, week, month), usar endpoints específicos
-      // console.log(
-      //   "Recargando datos del dashboard para período:",
-      //   timePeriod,
-      //   bddFilter ? `con base de datos: ${bddFilter}` : "",
-      // );
-      loadDashboardData(undefined, undefined, timePeriod, bddFilter);
+      loadDashboardData(undefined, undefined, timePeriod, bddFilter, clienteFilterVal);
     }
   }, [
     timePeriod,
@@ -733,6 +751,7 @@ export function Dashboard({
     customStartTime,
     customEndTime,
     appliedDatabaseFilter,
+    appliedClienteFilter,
     loadDashboardData,
   ]);
 
@@ -1701,6 +1720,46 @@ export function Dashboard({
             </div>
           )}
 
+          {showClienteFilter && (
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-slate-700">
+                Cliente:
+              </label>
+              <Select
+                value={clienteFilter || "__todos__"}
+                onValueChange={(val) => setClienteFilter(val === "__todos__" ? "" : val)}
+              >
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Todos los clientes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__todos__">Todos los clientes</SelectItem>
+                  {availableClientes.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                onClick={applyClienteFilter}
+                className="text-sm bg-blue-600 hover:bg-blue-700 text-white"
+                disabled={clienteFilter === appliedClienteFilter}
+              >
+                Filtrar
+              </Button>
+              {appliedClienteFilter && (
+                <Button
+                  onClick={clearClienteFilter}
+                  variant="outline"
+                  className="text-sm"
+                >
+                  Limpiar
+                </Button>
+              )}
+            </div>
+          )}
+
           {timePeriod === "custom" && customStartDate && customEndDate && (
             <Button
               onClick={() => {
@@ -1730,6 +1789,8 @@ export function Dashboard({
               "Selecciona un rango de fechas personalizado"}
             {appliedDatabaseFilter &&
               ` | Filtrado por base de datos: ${appliedDatabaseFilter}`}
+            {appliedClienteFilter &&
+              ` | Filtrado por cliente: ${appliedClienteFilter}`}
           </div>
         </div>
       )}
