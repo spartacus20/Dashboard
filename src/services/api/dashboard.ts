@@ -286,7 +286,7 @@ const EMPTY_DASHBOARD = {
     },
     llamadas_por_dia: [], llamadas_por_hora: [], razones_desconexion: [], tipos_vivienda: [],
     tipos_vivienda_agendas: [], interes: [], llamadas_efectivas_por_hora: [], agentes_por_agendas: [],
-    duracion_llamadas_efectivas: null
+    duracion_llamadas_efectivas: null, identidad: []
   }
 };
 
@@ -440,6 +440,11 @@ function transformDashboardData(data: any): any {
         agentes_por_agendas: Array.isArray(data.agentes_por_agendas) ? data.agentes_por_agendas.map((item: any) => ({
           agent_id: item.agent_id,
           cantidad_agendas: item.cantidad_agendas || 0
+        })) : [],
+        // Transformar identidad
+        identidad: Array.isArray(data.identidad) ? data.identidad.map((item: any) => ({
+          identidad: item.identidad,
+          cantidad: item.cantidad || 0
         })) : []
       }
     };

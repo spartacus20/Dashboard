@@ -2369,7 +2369,7 @@ export function Dashboard({
           {/* Gráficos de distribución */}
           <div
             className={`grid gap-4 mb-8 ${
-              agendaEnabled ? "md:grid-cols-2" : "md:grid-cols-1"
+              agendaEnabled || showClienteFilter ? "md:grid-cols-2" : "md:grid-cols-1"
             }`}
           >
             {/* Gráfico de agendamientos por hora */}
@@ -2531,6 +2531,49 @@ export function Dashboard({
                 </CardContent>
               </Card>
             )}
+
+            {/* Gráfico de pastel: Distribución de Identidad (solo recoveries) */}
+            {showClienteFilter && (() => {
+              const identidadData: { identidad: string; cantidad: number }[] =
+                dashboardData?.dashboard_data?.identidad || [];
+              const total = identidadData.reduce((sum, item) => sum + (item.cantidad || 0), 0);
+              const IDENTIDAD_COLORS = ["#10b981","#ef4444","#3b82f6","#f59e0b","#8b5cf6","#ec4899","#14b8a6"];
+              const pieData = identidadData.map((item, i) => ({
+                name: item.identidad,
+                value: item.cantidad,
+                color: IDENTIDAD_COLORS[i % IDENTIDAD_COLORS.length],
+              }));
+              return (
+                <Card className="mb-8 shadow-lg border border-slate-200">
+                  <CardHeader>
+                    <CardTitle className="text-base font-semibold text-slate-800">
+                      Distribución de Identidad
+                    </CardTitle>
+                    <CardDescription className="text-slate-500">
+                      Distribución de identidad de los clientes
+                      {total > 0 && <> · <span className="font-semibold">{total.toLocaleString()} registros</span></>}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0 md:p-6">
+                    {identidadData.length === 0 ? (
+                      <div className="h-[300px] flex items-center justify-center">
+                        <p className="text-slate-500 text-sm text-center px-4">
+                          No hay datos de identidad para este período.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="h-[300px] bg-white rounded-xl p-4 md:p-6">
+                        <SimplePieChart
+                          data={pieData}
+                          dataKey="value"
+                          nameKey="name"
+                        />
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })()}
 
             {/* Gráfico de agentes por agendas */}
             {agendaEnabled &&
