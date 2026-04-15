@@ -10,6 +10,9 @@ interface AgendaModalProps {
   onStatusChange?: () => void;
 }
 
+const normalizeBool = (v: unknown): boolean =>
+  v === true || v === 'true' || v === 1 || (typeof v === 'string' && v.toLowerCase() === 'true');
+
 export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaModalProps) {
   const [callsData, setCallsData] = useState<CallsByPhoneResponse | null>(null);
   const [loadingCalls, setLoadingCalls] = useState(false);
@@ -22,8 +25,8 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
   // Sincronizar estados locales cuando cambia la agenda (null/undefined = false)
   useEffect(() => {
     if (agenda) {
-      setLocalApproved(agenda.aprobada === true);
-      setLocalReviewed(agenda.revisada === true);
+      setLocalApproved(normalizeBool(agenda.aprobada));
+      setLocalReviewed(normalizeBool(agenda.revisada));
       setLocalDetails(agenda.detalles ?? '');
       setLocalMotivoRechazo((agenda.motivo_rechazo as 'Edad' | 'Pago mensual bajo' | 'Otros' | 'Ubicacion fuera alcance' | 'Casco historico' | 'No interesado' | 'Detecta IA' | 'Tiene bateria' | 'Incidencia' | null) ?? null);
     } else {
@@ -127,8 +130,8 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
   const persistStatusChanges = async () => {
     if (!agenda) return;
 
-    const originalApproved = agenda.aprobada === true;
-    const originalReviewed = agenda.revisada === true;
+    const originalApproved = normalizeBool(agenda.aprobada);
+    const originalReviewed = normalizeBool(agenda.revisada);
     const originalDetails = agenda.detalles ?? '';
     const originalMotivoRechazo = (agenda.motivo_rechazo as 'Edad' | 'Pago mensual bajo' | 'Otros' | 'Ubicacion fuera alcance' | 'Casco historico' | 'No interesado' | 'Detecta IA' | 'Tiene bateria' | 'Incidencia' | null) ?? null;
 
@@ -382,7 +385,12 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
                     value={localMotivoRechazo ?? ''}
                     onChange={(e) => {
                       const val = e.target.value;
-                      setLocalMotivoRechazo(val === '' ? null : val as 'Edad' | 'Pago mensual bajo' | 'Otros' | 'Ubicacion fuera alcance' | 'Casco historico' | 'No interesado' | 'Detecta IA' | 'Tiene bateria' | 'Incidencia');
+                      const motivo = val === '' ? null : val as 'Edad' | 'Pago mensual bajo' | 'Otros' | 'Ubicacion fuera alcance' | 'Casco historico' | 'No interesado' | 'Detecta IA' | 'Tiene bateria' | 'Incidencia';
+                      setLocalMotivoRechazo(motivo);
+                      // Al seleccionar un motivo de rechazo, marcar automáticamente como No aprobada
+                      if (motivo !== null) {
+                        setLocalApproved(false);
+                      }
                     }}
                     className="w-full appearance-none px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 pr-9 text-slate-600"
                   >

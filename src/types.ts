@@ -290,7 +290,7 @@ export interface Agenda {
   revisada?: boolean | null;
   detalles?: string | null;
   estado?: 'pendiente' | 'aceptado' | 'rechazado' | null;
-  motivo_rechazo?: 'Edad' | 'Pago mensual bajo' | 'Otros' | null;
+  motivo_rechazo?: 'Edad' | 'Pago mensual bajo' | 'Otros' | 'Ubicacion fuera alcance' | 'Casco historico' | 'No interesado' | 'Detecta IA' | 'Tiene bateria' | 'Incidencia' | null;
   initial_address?: string | null;
 }
 
