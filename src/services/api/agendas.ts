@@ -350,7 +350,7 @@ export async function deleteAgenda(agendaId: number, clientId: string): Promise<
 
 // Actualizar estado de una agenda (aprobada / revisada / detalles / estado)
 export async function updateAgendaStatus(
-  params: { id: number; aprobada?: boolean; revisada?: boolean; detalles?: string; motivo_rechazo?: string | null }
+  params: { id: number; aprobada?: boolean; revisada?: boolean; detalles?: string; motivo_rechazo?: string | null; url_maps?: string | null }
 ): Promise<Agenda> {
   try {
     const clientId = getClientId();
@@ -374,6 +374,9 @@ export async function updateAgendaStatus(
     }
     if ('motivo_rechazo' in params) {
       body.motivo_rechazo = params.motivo_rechazo ?? null;
+    }
+    if ('url_maps' in params) {
+      body.url_maps = params.url_maps ?? null;
     }
 
     const baseAgendaUrl = GET_AGENDAS_WEBHOOK_URL.replace('/get-agenda', '');

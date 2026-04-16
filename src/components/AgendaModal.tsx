@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Agenda, CallsByPhoneResponse } from '../types';
-import { X, Play, Volume2, Calendar, Phone, MapPin, User, Clock, RefreshCw, AlertCircle } from 'lucide-react';
+import { X, Play, Volume2, Calendar, Phone, MapPin, User, Clock, RefreshCw, AlertCircle, ExternalLink } from 'lucide-react';
 import { getCallsByPhone, updateAgendaStatus } from '../api';
 
 interface AgendaModalProps {
@@ -21,6 +21,7 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
   const [localReviewed, setLocalReviewed] = useState<boolean>(false);
   const [localDetails, setLocalDetails] = useState<string>('');
   const [localMotivoRechazo, setLocalMotivoRechazo] = useState<'Edad' | 'Pago mensual bajo' | 'Otros' | 'Ubicacion fuera alcance' | 'Casco historico' | 'No interesado' | 'Detecta IA' | 'Tiene bateria' | 'Incidencia' | null>(null);
+  const [localUrlMaps, setLocalUrlMaps] = useState<string>('');
 
   // Sincronizar estados locales cuando cambia la agenda (null/undefined = false)
   useEffect(() => {
@@ -29,11 +30,13 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
       setLocalReviewed(normalizeBool(agenda.revisada));
       setLocalDetails(agenda.detalles ?? '');
       setLocalMotivoRechazo((agenda.motivo_rechazo as 'Edad' | 'Pago mensual bajo' | 'Otros' | 'Ubicacion fuera alcance' | 'Casco historico' | 'No interesado' | 'Detecta IA' | 'Tiene bateria' | 'Incidencia' | null) ?? null);
+      setLocalUrlMaps(agenda.url_maps ?? '');
     } else {
       setLocalApproved(false);
       setLocalReviewed(false);
       setLocalDetails('');
       setLocalMotivoRechazo(null);
+      setLocalUrlMaps('');
     }
   }, [agenda]);
 
@@ -134,8 +137,9 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
     const originalReviewed = normalizeBool(agenda.revisada);
     const originalDetails = agenda.detalles ?? '';
     const originalMotivoRechazo = (agenda.motivo_rechazo as 'Edad' | 'Pago mensual bajo' | 'Otros' | 'Ubicacion fuera alcance' | 'Casco historico' | 'No interesado' | 'Detecta IA' | 'Tiene bateria' | 'Incidencia' | null) ?? null;
+    const originalUrlMaps = agenda.url_maps ?? '';
 
-    const payload: { id: string; aprobada?: boolean; revisada?: boolean; detalles?: string; motivo_rechazo?: string | null } = {
+    const payload: { id: string; aprobada?: boolean; revisada?: boolean; detalles?: string; motivo_rechazo?: string | null; url_maps?: string | null } = {
       id: String(agenda.id),
     };
 
@@ -155,12 +159,17 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
       payload.motivo_rechazo = localMotivoRechazo;
     }
 
+    if (localUrlMaps !== originalUrlMaps) {
+      payload.url_maps = localUrlMaps.trim() || null;
+    }
+
     // Si no hay cambios, no llamamos a la API
     if (
       typeof payload.aprobada === 'undefined' &&
       typeof payload.revisada === 'undefined' &&
       typeof payload.detalles === 'undefined' &&
-      typeof payload.motivo_rechazo === 'undefined'
+      typeof payload.motivo_rechazo === 'undefined' &&
+      typeof payload.url_maps === 'undefined'
     ) {
       return;
     }
@@ -250,6 +259,36 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
                         {agenda.codigo_postal && ` - ${agenda.codigo_postal}`}
                       </span>
                     </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 md:col-span-2">
+                  <ExternalLink className="w-4 h-4 mt-0.5 text-slate-400 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                      URL Google Maps
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="url"
+                        value={localUrlMaps}
+                        onChange={(e) => setLocalUrlMaps(e.target.value)}
+                        placeholder="https://maps.google.com/..."
+                        className="flex-1 min-w-0 px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-slate-50 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                      {localUrlMaps.trim() && (
+                        <a
+                          href={localUrlMaps.trim()}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors"
+                          title="Abrir en Google Maps"
+                        >
+                          <MapPin className="w-3.5 h-3.5" />
+                          Abrir
+                        </a>
+                      )}
+                    </div>
                   </div>
                 </div>
 
