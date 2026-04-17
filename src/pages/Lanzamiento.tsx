@@ -165,6 +165,8 @@ const Lanzamiento: React.FC = () => {
   const dropdownPaisesRef = useRef<HTMLDivElement>(null);
   const [showClicksModal, setShowClicksModal] = useState(false);
   const [loadingExport, setLoadingExport] = useState(false);
+  const [showLinksModal, setShowLinksModal] = useState(false);
+  const [loadingExportLinks, setLoadingExportLinks] = useState(false);
 
   const getExportDateRange = (): { fecha_inicio: string; fecha_fin: string } => {
     if (timeRange === 'today' || !startDate || !endDate) {
@@ -221,6 +223,56 @@ const Lanzamiento: React.FC = () => {
       // silencio
     } finally {
       setLoadingExport(false);
+    }
+  };
+
+  const handleExportLinksCSV = async () => {
+    setLoadingExportLinks(true);
+    try {
+      const clientId = getClientId() || '';
+      const { fecha_inicio, fecha_fin } = getExportDateRange();
+
+      const response = await fetch(`${BASE_URL}/api/lanzamiento/links/export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_id: clientId, fecha_inicio: `${fecha_inicio}T00:00:00Z`, fecha_fin: `${fecha_fin}T23:59:59Z` }),
+      });
+
+      if (!response.ok) throw new Error('Error al obtener los datos de enlaces');
+      const json = await response.json();
+      const rows: any[] = json.data || [];
+
+      const headers = ['ID', 'Nombre', 'Teléfono', 'Email', 'Call ID', 'Agent ID', 'Fecha y Hora', 'Campaña', 'Región', 'Client ID'];
+      const fields = ['id', 'name', 'phone_number', 'email', 'call_id', 'agent_id', 'created_at', 'campana', 'region', 'client_id'];
+
+      const escapeCsv = (val: any) => {
+        if (val == null) return '';
+        const str = String(val);
+        return str.includes(',') || str.includes('"') || str.includes('\n')
+          ? `"${str.replace(/"/g, '""')}"` : str;
+      };
+
+      const csvLines = [
+        headers.map(escapeCsv).join(','),
+        ...rows.map(row => fields.map(f => escapeCsv(row[f])).join(',')),
+      ];
+      const csvContent = csvLines.join('\n');
+
+      const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `enlaces_unicos_${fecha_inicio}_${fecha_fin}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      setShowLinksModal(false);
+    } catch (err) {
+      // silencio
+    } finally {
+      setLoadingExportLinks(false);
     }
   };
 
@@ -803,6 +855,7 @@ const Lanzamiento: React.FC = () => {
               icon={Link}
               color="text-blue-600"
               bgColor="bg-blue-100"
+              onClick={() => setShowLinksModal(true)}
             />
             <MetricCard
               title="Clicks Totales"
@@ -1093,6 +1146,68 @@ const Lanzamiento: React.FC = () => {
       ) : (
         <div className="text-center py-12">
           <p className="text-gray-500">No hay datos disponibles</p>
+        </div>
+      )}
+      {/* Modal de descarga de Enlaces Enviados (únicos) */}
+      {showLinksModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowLinksModal(false); }}
+        >
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-full bg-blue-100">
+                  <Link className="h-5 w-5 text-blue-600" />
+                </div>
+                <h2 className="text-lg font-semibold text-gray-900">Exportar Enlaces Enviados (únicos)</h2>
+              </div>
+              <button
+                onClick={() => setShowLinksModal(false)}
+                className="p-1 rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <p className="text-sm text-gray-600 mb-2">
+              Se exportarán <span className="font-semibold text-blue-700">{formatNumber(funnel?.totals?.total_links_unique ?? metrics?.total_enlaces_enviados ?? 0)}</span> registros de enlaces únicos (un registro por teléfono) en formato CSV.
+            </p>
+
+            <div className="bg-gray-50 rounded-lg p-3 mb-5 text-xs text-gray-500 space-y-1">
+              <p className="font-medium text-gray-700 mb-2">Campos incluidos:</p>
+              <div className="grid grid-cols-2 gap-1">
+                {['ID', 'Nombre', 'Teléfono', 'Email', 'Call ID', 'Agent ID', 'Fecha y Hora', 'Campaña', 'Región', 'Client ID'].map(f => (
+                  <span key={f} className="flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 inline-block" />
+                    {f}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setShowLinksModal(false)}
+                disabled={loadingExportLinks}
+              >
+                Cancelar
+              </Button>
+              <Button
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                onClick={handleExportLinksCSV}
+                disabled={loadingExportLinks}
+              >
+                {loadingExportLinks ? (
+                  <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Descargando...</>
+                ) : (
+                  <><Download className="h-4 w-4 mr-2" /> Descargar CSV</>
+                )}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
       {/* Modal de descarga de Clicks Totales */}
