@@ -87,6 +87,12 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
 
   if (!isOpen || !agenda) return null;
 
+  const isValidInitialAddress = (addr: string | null | undefined): boolean => {
+    if (!addr) return false;
+    const alphanumeric = (addr.match(/[a-zA-Z0-9áéíóúÁÉÍÓÚñÑüÜ]/g) || []).length;
+    return alphanumeric >= 5;
+  };
+
   // Misma lógica de color que en la lista: amarillo para placas/paneles solares, azul para el resto
   const getAgendaTypeBadgeClass = (tipo?: string | null) => {
     const t = (tipo || '').toLowerCase();
@@ -259,6 +265,12 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
                         {agenda.codigo_postal && ` - ${agenda.codigo_postal}`}
                       </span>
                     </p>
+                    {isValidInitialAddress(agenda.initial_address) && (
+                      <p className="text-slate-400 text-xs mt-2 pt-2 border-t border-slate-100">
+                        <span className="uppercase tracking-wide font-semibold">Dirección inicial:</span>{' '}
+                        {agenda.initial_address}
+                      </p>
+                    )}
                   </div>
                 </div>
 
