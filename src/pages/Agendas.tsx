@@ -110,6 +110,11 @@ export function Agendas({ onNavigate }: AgendasProps) {
     v === true || v === "true" || v === 1 || (typeof v === "string" && v.toLowerCase() === "true");
   const isReviewed = (v: unknown): boolean =>
     v === true || v === "true" || v === 1 || (typeof v === "string" && v.toLowerCase() === "true");
+  const isValidInitialAddress = (addr: string | null | undefined): boolean => {
+    if (!addr) return false;
+    const alphanumeric = (addr.match(/[a-zA-Z0-9áéíóúÁÉÍÓÚñÑüÜ]/g) || []).length;
+    return alphanumeric >= 5;
+  };
 
   // Mostrar contenido de cards con fade-in cuando termina la carga; ocultar al cargar de nuevo
   useEffect(() => {
@@ -1796,6 +1801,12 @@ export function Agendas({ onNavigate }: AgendasProps) {
                                 {agenda?.codigo_postal && (
                                   <p className="text-slate-400 font-mono text-xs mt-1">
                                     {agenda.codigo_postal}
+                                  </p>
+                                )}
+                                {isValidInitialAddress(agenda?.initial_address) && (
+                                  <p className="text-slate-400 text-xs mt-1.5 border-t border-slate-100 pt-1.5">
+                                    <span className="uppercase tracking-wide font-semibold text-slate-400">Dirección inicial:</span>{" "}
+                                    {agenda.initial_address}
                                   </p>
                                 )}
                               </div>
