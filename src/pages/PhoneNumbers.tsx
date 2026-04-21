@@ -363,6 +363,7 @@ function AddPhoneModal({ onClose, onSuccess, workspaceNameByApiKey }: AddPhoneMo
   const [selectedOutboundAgent, setSelectedOutboundAgent] = useState<RetellAgent | null>(null);
   const [loadingAgents, setLoadingAgents] = useState(false);
   const [agentsError, setAgentsError] = useState<string | null>(null);
+  const [isManualUri, setIsManualUri] = useState(false);
 
   // Cargar lista de URIs de terminación desde sessionStorage (uri_retell)
   const [terminationUriOptions, setTerminationUriOptions] = useState<string[]>([]);
@@ -532,6 +533,7 @@ function AddPhoneModal({ onClose, onSuccess, workspaceNameByApiKey }: AddPhoneMo
       setPhoneNumber('');
       setNickname('');
       setTerminationUri('');
+      setIsManualUri(false);
       setInboundWebhookUrl('');
       setSipUsername('');
       setSipPassword('');
@@ -687,8 +689,22 @@ function AddPhoneModal({ onClose, onSuccess, workspaceNameByApiKey }: AddPhoneMo
           </div>
 
           <div>
-            <label className="block text-slate-600 mb-1">Terminación URI</label>
-            {terminationUriOptions.length > 0 ? (
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-slate-600">Terminación URI</label>
+              {terminationUriOptions.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsManualUri(!isManualUri);
+                    setTerminationUri('');
+                  }}
+                  className="text-xs text-blue-600 hover:text-blue-800 underline"
+                >
+                  {isManualUri ? 'Seleccionar de la lista' : 'Ingresar manualmente'}
+                </button>
+              )}
+            </div>
+            {terminationUriOptions.length > 0 && !isManualUri ? (
               <select
                 value={terminationUri}
                 onChange={(e) => setTerminationUri(e.target.value)}
