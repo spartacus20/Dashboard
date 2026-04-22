@@ -13,8 +13,13 @@ import NoLlamar from './pages/NoLlamar';
 import { Campaign } from './pages/Campaign';
 import { Tickets } from './pages/Tickets';
 import { Recoveries } from './pages/Recoveries';
+import { SoporteIA } from './pages/SoporteIA';
 import { useCallsContext } from './context/CallsContext';
-import { canAccessTickets, canAccessRecoveries } from './lib/supabase';
+import {
+  canAccessTickets,
+  canAccessRecoveries,
+  canAccessAssistantIA,
+} from './lib/supabase';
 import { X, Upload, Phone, Info, Check, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 
 function DashboardApp() {
@@ -104,10 +109,14 @@ function DashboardApp() {
   // Tickets: visible solo si metadata.tickets === true (sessionStorage)
   const [ticketsEnabled, setTicketsEnabled] = React.useState(() => canAccessTickets());
   const [recoveriesEnabled, setRecoveriesEnabled] = React.useState(() => canAccessRecoveries());
+  const [assistantIAEnabled, setAssistantIAEnabled] = React.useState(() =>
+    canAccessAssistantIA(),
+  );
   React.useEffect(() => {
     const update = () => {
       setTicketsEnabled(canAccessTickets());
       setRecoveriesEnabled(canAccessRecoveries());
+      setAssistantIAEnabled(canAccessAssistantIA());
     };
     update();
     window.addEventListener('metadataUpdated', update);
@@ -123,6 +132,11 @@ function DashboardApp() {
       setCurrentPage('dashboard');
     }
   }, [currentPage, recoveriesEnabled]);
+  React.useEffect(() => {
+    if (currentPage === 'soporte-ia' && !assistantIAEnabled) {
+      setCurrentPage('dashboard');
+    }
+  }, [currentPage, assistantIAEnabled]);
   
   // Calculamos si la caché está activa
   const cacheStatus = lastUpdated 
@@ -1345,6 +1359,15 @@ function DashboardApp() {
         )}
         {currentPage === 'campaign' && campaignEnabled && (
           <Campaign onNavigate={setCurrentPage as (page: string) => void} />
+        )}
+        {currentPage === 'soporte-ia' && !assistantIAEnabled && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-6 text-center text-amber-900 text-sm max-w-md">
+            Comprobando acceso a Soporte IA… Si no tienes permiso, volverás al
+            dashboard en un momento.
+          </div>
+        )}
+        {currentPage === 'soporte-ia' && assistantIAEnabled && (
+          <SoporteIA onNavigate={setCurrentPage as (page: string) => void} />
         )}
       </div>
     </div>
