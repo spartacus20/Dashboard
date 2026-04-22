@@ -311,6 +311,12 @@ export const canAccessRecoveries = (): boolean => {
   return metadata?.recoveries === true;
 };
 
+// Función para verificar si el usuario tiene acceso a Soporte IA (desde metadata en sessionStorage)
+export const canAccessAssistantIA = (): boolean => {
+  const metadata = getMetadata();
+  return metadata?.asistant_ia === true;
+};
+
 // Función para verificar si el usuario tiene acceso a una funcionalidad específica
 // Si tiene permissions definidos, usa permissions. Si no, permite todo (sin limitaciones)
 export const canAccess = (feature: 'agenda' | 'records' | 'num_tel' | 'callbacks' | 'sales' | 'launch' | 'dont_call' | 'campaign'): boolean => {
