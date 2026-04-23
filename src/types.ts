@@ -293,6 +293,7 @@ export interface Agenda {
   motivo_rechazo?: 'Edad' | 'Pago mensual bajo' | 'Otros' | 'Ubicacion fuera alcance' | 'Casco historico' | 'No interesado' | 'Detecta IA' | 'Tiene bateria' | 'Incidencia' | null;
   initial_address?: string | null;
   url_maps?: string | null;
+  llamada_enviada?: boolean | null;
 }
 
 export interface AgendaSlot {

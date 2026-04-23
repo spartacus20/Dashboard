@@ -460,6 +460,22 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
                     ▼
                   </span>
                 </div>
+
+                {/* Badge notificación webhook — solo si rechazada */}
+                {normalizeBool(agenda.revisada) && !normalizeBool(agenda.aprobada) && (
+                  <div className={`mt-2 flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold ${
+                    agenda.llamada_enviada === true
+                      ? 'bg-blue-50 border-blue-200 text-blue-700'
+                      : 'bg-amber-50 border-amber-200 text-amber-700'
+                  }`}>
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${agenda.llamada_enviada === true ? 'bg-blue-500' : 'bg-amber-400'}`} />
+                    <span>
+                      {agenda.llamada_enviada === true
+                        ? 'Notificación enviada al sistema externo'
+                        : 'Notificación pendiente de envío'}
+                    </span>
+                  </div>
+                )}
             </div>
           </div>
           </div>

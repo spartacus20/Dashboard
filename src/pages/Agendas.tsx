@@ -1658,13 +1658,18 @@ export function Agendas({ onNavigate }: AgendasProps) {
                                     </div>
                                   </div>
                                   {/* Mini barra de estados */}
-                                  <div className="bg-slate-50 border-t border-slate-100 px-4 py-2 flex gap-2">
+                                  <div className="bg-slate-50 border-t border-slate-100 px-4 py-2 flex flex-wrap gap-2">
                                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${isApproved(agenda.aprobada) ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-red-100 text-red-700 border-red-200"}`}>
                                       {isApproved(agenda.aprobada) ? "Aprobada" : "No aprobada"}
                                     </span>
                                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${isReviewed(agenda.revisada) ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-red-100 text-red-700 border-red-200"}`}>
                                       {isReviewed(agenda.revisada) ? "Revisada" : "No revisada"}
                                     </span>
+                                    {isReviewed(agenda.revisada) && !isApproved(agenda.aprobada) && (
+                                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${agenda.llamada_enviada === true ? "bg-blue-100 text-blue-700 border-blue-200" : "bg-amber-100 text-amber-700 border-amber-200"}`}>
+                                        {agenda.llamada_enviada === true ? "✓ Notif. enviada" : "⏳ Notif. pendiente"}
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                               ))}
@@ -1877,6 +1882,27 @@ export function Agendas({ onNavigate }: AgendasProps) {
                                 : "No revisada"}
                             </span>
                           </div>
+
+                          {/* Notificación webhook — solo visible si rechazada */}
+                          {isReviewed(agenda.revisada) && !isApproved(agenda.aprobada) && (
+                            <div
+                              className={`px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 cursor-default ${
+                                agenda.llamada_enviada === true
+                                  ? "bg-blue-100 text-blue-800 border-blue-300"
+                                  : "bg-amber-100 text-amber-800 border-amber-300"
+                              }`}
+                              title={agenda.llamada_enviada === true ? "Notificación enviada al sistema externo" : "Notificación pendiente de envío"}
+                            >
+                              <span
+                                className={`w-2 h-2 rounded-full ${
+                                  agenda.llamada_enviada === true ? "bg-blue-500" : "bg-amber-500"
+                                }`}
+                              />
+                              <span>
+                                {agenda.llamada_enviada === true ? "Notif. enviada" : "Notif. pendiente"}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
