@@ -16,6 +16,7 @@ import {
   Megaphone,
   ClipboardList,
   RotateCcw,
+  BotMessageSquare,
 } from "lucide-react";
 import { useCallsContext } from "../../context/CallsContext";
 import { useAuth } from "../../context/AuthContext";
@@ -24,6 +25,7 @@ import {
   canAccess,
   canAccessTickets,
   canAccessRecoveries,
+  canAccessAssistantIA,
   hasPermissionsDefined,
   getClientTest,
   getClientIdFromSession,
@@ -102,12 +104,14 @@ export function Sidebar({
     : campaignEnabled;
   const [ticketsEnabled, setTicketsEnabled] = React.useState(() => canAccessTickets());
   const [recoveriesEnabled, setRecoveriesEnabled] = React.useState(() => canAccessRecoveries());
+  const [assistantIAEnabled, setAssistantIAEnabled] = React.useState(() => canAccessAssistantIA());
 
-  // Revisar metadata.tickets y metadata.recoveries cuando cambie (ej. al cambiar de cliente)
+  // Revisar metadata cuando cambie (ej. al cambiar de cliente)
   React.useEffect(() => {
     const update = () => {
       setTicketsEnabled(canAccessTickets());
       setRecoveriesEnabled(canAccessRecoveries());
+      setAssistantIAEnabled(canAccessAssistantIA());
     };
     update();
     window.addEventListener("metadataUpdated", update);
@@ -663,6 +667,21 @@ export function Sidebar({
             >
               <ClipboardList className="w-5 h-5" />
               Tickets
+            </button>
+          )}
+          {assistantIAEnabled && (
+            <button
+              onClick={() => {
+                navigateWithParams("soporte-ia");
+              }}
+              className={`flex w-full items-center gap-2 px-4 py-2 ${
+                currentPage === "soporte-ia"
+                  ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
+                  : "text-gray-300 hover:bg-[#0a2a5a]"
+              } rounded-lg`}
+            >
+              <BotMessageSquare className="w-5 h-5" />
+              Soporte IA
             </button>
           )}
         </nav>

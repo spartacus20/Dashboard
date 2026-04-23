@@ -246,24 +246,28 @@ export const getFullName = (): string | null => {
   return sessionStorage.getItem('fullName')
 }
 
-export const getMetadata = () => {
+function safeJsonParse<T>(raw: string | null): T | null {
+  if (raw == null || raw === '') return null
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    return null
+  }
+}
+
+export const getMetadata = (): Record<string, unknown> | null => {
   const metadata = sessionStorage.getItem('metadata')
-  const parsedMetadata = metadata ? JSON.parse(metadata) : null
-  // console.log('📋 Obteniendo metadatos:', {
-  //   rawMetadata: metadata,
-  //   parsedMetadata
-  // })
-  return parsedMetadata
+  return safeJsonParse<Record<string, unknown>>(metadata)
 }
 
 export const getMetadataLlamadas = () => {
   const metadata_llamadas = sessionStorage.getItem('metadata_llamadas')
-  return metadata_llamadas ? JSON.parse(metadata_llamadas) : null
+  return safeJsonParse(metadata_llamadas)
 }
 
-export const getPermissions = () => {
+export const getPermissions = (): Record<string, boolean | undefined> | null => {
   const permissions = sessionStorage.getItem('permissions')
-  return permissions ? JSON.parse(permissions) : null
+  return safeJsonParse<Record<string, boolean | undefined>>(permissions)
 }
 
 export const getClientTest = () => {
@@ -280,7 +284,7 @@ export const getClientTest = () => {
     }
   }
   
-  return clientTest ? JSON.parse(clientTest) : null
+  return safeJsonParse(clientTest)
 }
 
 // Función para verificar si el usuario tiene permissions definidos (no vacío)
@@ -311,6 +315,12 @@ export const canAccessRecoveries = (): boolean => {
   return metadata?.recoveries === true;
 };
 
+// Función para verificar si el usuario tiene acceso a Soporte IA (desde metadata en sessionStorage)
+export const canAccessAssistantIA = (): boolean => {
+  const metadata = getMetadata();
+  return metadata?.asistant_ia === true;
+};
+
 // Función para verificar si el usuario tiene acceso a una funcionalidad específica
 // Si tiene permissions definidos, usa permissions. Si no, permite todo (sin limitaciones)
 export const canAccess = (feature: 'agenda' | 'records' | 'num_tel' | 'callbacks' | 'sales' | 'launch' | 'dont_call' | 'campaign'): boolean => {
@@ -322,7 +332,7 @@ export const canAccess = (feature: 'agenda' | 'records' | 'num_tel' | 'callbacks
   }
   
   // Si hay permissions definidos, verificar el permiso específico
-  return permissions[feature] === true
+  return permissions != null && permissions[feature] === true
 }
 
 // Función para verificar si el usuario tiene permisos de lanzamiento (compatibilidad hacia atrás)
