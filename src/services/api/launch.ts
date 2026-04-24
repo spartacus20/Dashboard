@@ -260,6 +260,61 @@ export async function fetchLanzamientoMetricsWeek(): Promise<{
   }
 }
 
+// Obtener métricas de lanzamiento por día (para gráfico de área en rango personalizado)
+export interface DailyLanzamientoMetric {
+  fecha: string;
+  total_llamadas: number;
+  llamadas_contestadas: number;
+  total_enlaces_enviados: number;
+  total_clicks_totales: number;
+  tasa_contestacion: number;
+  pct_enlaces: number;
+  tasa_clicks: number;
+}
+
+export async function fetchLanzamientoMetricsDailyRange(
+  fechaInicio: string,
+  fechaFin: string,
+  maxDays = 31
+): Promise<DailyLanzamientoMetric[]> {
+  const dates: string[] = [];
+  const [ys, ms, ds] = fechaInicio.split('-').map(Number);
+  const [ye, me, de] = fechaFin.split('-').map(Number);
+  const start = new Date(Date.UTC(ys, ms - 1, ds));
+  const end = new Date(Date.UTC(ye, me - 1, de));
+
+  for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+    dates.push(d.toISOString().split('T')[0]);
+    if (dates.length >= maxDays) break;
+  }
+
+  const results = await Promise.all(
+    dates.map(async (date) => {
+      try {
+        const data = await fetchLanzamientoMetricsCustom(date, date);
+        const total = data.total_llamadas ?? 0;
+        const contestadas = data.llamadas_contestadas ?? 0;
+        const enlaces = data.total_enlaces_enviados ?? 0;
+        const clicks = data.total_clicks_totales ?? 0;
+        return {
+          fecha: date,
+          total_llamadas: total,
+          llamadas_contestadas: contestadas,
+          total_enlaces_enviados: enlaces,
+          total_clicks_totales: clicks,
+          tasa_contestacion: total > 0 ? Math.round((contestadas / total) * 100) : 0,
+          pct_enlaces: contestadas > 0 ? Math.round((enlaces / contestadas) * 100) : 0,
+          tasa_clicks: enlaces > 0 ? Math.round((clicks / enlaces) * 100) : 0,
+        } as DailyLanzamientoMetric;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return results.filter(Boolean) as DailyLanzamientoMetric[];
+}
+
 // Obtener métricas de lanzamiento del mes
 export async function fetchLanzamientoMetricsMonth(): Promise<{
   totalLlamadas: number;

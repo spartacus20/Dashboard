@@ -2,7 +2,17 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Phone, PhoneCall, PhoneOff, Link, MousePointer, Ban, RefreshCw, Calendar, TrendingUp, Globe, CalendarDays, Lock, Activity, ChevronLeft, ChevronRight, Check, ChevronDown, Download, X } from 'lucide-react';
-import { fetchLanzamientoMetricsToday, fetchLanzamientoMetricsCustom, fetchAsistenciaFunnelMetrics } from '../api';
+import { fetchLanzamientoMetricsToday, fetchLanzamientoMetricsCustom, fetchAsistenciaFunnelMetrics, fetchLanzamientoMetricsDailyRange, type DailyLanzamientoMetric } from '../api';
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts';
 import { useCallsContext } from '../context/CallsContext';
 import { BASE_URL, getClientId } from '../services/api/config';
 
@@ -167,6 +177,8 @@ const Lanzamiento: React.FC = () => {
   const [loadingExport, setLoadingExport] = useState(false);
   const [showLinksModal, setShowLinksModal] = useState(false);
   const [loadingExportLinks, setLoadingExportLinks] = useState(false);
+  const [dailyChartData, setDailyChartData] = useState<DailyLanzamientoMetric[]>([]);
+  const [loadingDaily, setLoadingDaily] = useState(false);
 
   const getExportDateRange = (): { fecha_inicio: string; fecha_fin: string } => {
     if (timeRange === 'today' || !startDate || !endDate) {
@@ -393,7 +405,6 @@ const Lanzamiento: React.FC = () => {
   };
 
   const loadMetrics = async (range: 'today' | 'custom', fechaInicio?: string, fechaFin?: string) => {
-    // Incrementar contador de peticiones
     requestCounterRef.current += 1;
     const currentRequest = requestCounterRef.current;
     
@@ -406,39 +417,43 @@ const Lanzamiento: React.FC = () => {
       
       if (range === 'today') {
         apiData = await fetchLanzamientoMetricsToday();
+        setDailyChartData([]);
       } else if (range === 'custom') {
         if (!fechaInicio || !fechaFin) {
           throw new Error('Fechas de inicio y fin son requeridas para el rango personalizado');
         }
         apiData = await fetchLanzamientoMetricsCustom(fechaInicio, fechaFin);
+
+        // Cargar datos diarios para el gráfico de área (máx 31 días)
+        const daysDiff = calculateDaysDifference(fechaInicio, fechaFin);
+        if (daysDiff <= 31) {
+          setLoadingDaily(true);
+          fetchLanzamientoMetricsDailyRange(fechaInicio, fechaFin).then((daily) => {
+            if (currentRequest === requestCounterRef.current) {
+              setDailyChartData(daily);
+            }
+          }).finally(() => {
+            if (currentRequest === requestCounterRef.current) setLoadingDaily(false);
+          });
+        } else {
+          setDailyChartData([]);
+        }
       } else {
         throw new Error('Rango de tiempo no válido');
       }
       
-      // Verificar si esta es todavía la petición más reciente
-      if (currentRequest !== requestCounterRef.current) {
-        // console.log('Petición obsoleta ignorada');
-        return;
-      }
+      if (currentRequest !== requestCounterRef.current) return;
       
-      // Procesar los datos de la API para asegurar que siempre se muestren las 3 regiones
       const data = processApiData(apiData);
       setMetrics(data);
 
-      // Cargar funnel con los mismos filtros de fechas
       if (currentRequest === requestCounterRef.current) {
         await loadFunnelForRange(range, fechaInicio, fechaFin);
       }
     } catch (err) {
-      // Solo procesar errores si esta es la petición más reciente
-      if (currentRequest !== requestCounterRef.current) {
-        // console.log('Error de petición obsoleta ignorado');
-        return;
-      }
-      // console.error('Error al cargar métricas:', err);
+      if (currentRequest !== requestCounterRef.current) return;
       setError(err instanceof Error ? err.message : 'Error al cargar las métricas');
     } finally {
-      // Solo actualizar loading si esta es la petición más reciente
       if (currentRequest === requestCounterRef.current) {
         setLoading(false);
         setLoadingFunnel(false);
@@ -803,27 +818,128 @@ const Lanzamiento: React.FC = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="text-center p-4 bg-green-50 rounded-lg">
-                  <div className="text-2xl font-bold text-green-600">
-                    {calculatePercentage(metrics.llamadas_contestadas, metrics.total_llamadas)}%
+              {timeRange === 'custom' && (loadingDaily || dailyChartData.length > 0) ? (
+                loadingDaily ? (
+                  <div className="flex items-center justify-center py-10 gap-2 text-muted-foreground">
+                    <RefreshCw className="animate-spin h-4 w-4" />
+                    <span className="text-sm">Cargando tendencia diaria...</span>
                   </div>
-                  <div className="text-sm text-gray-600">Tasa de Contestación</div>
-                </div>
-                <div className="text-center p-4 bg-blue-50 rounded-lg">
-                  <div className="text-2xl font-bold text-blue-600">
-                    {calculatePercentage(funnel?.totals?.total_links_unique ?? metrics.total_enlaces_enviados, metrics.llamadas_contestadas)}%
+                ) : (
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart
+                        data={dailyChartData.map((d) => ({
+                          ...d,
+                          label: (() => {
+                            const [, m, day] = d.fecha.split('-').map(Number);
+                            const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+                            return `${day} ${meses[m - 1]}`;
+                          })(),
+                        }))}
+                        margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+                      >
+                        <defs>
+                          <linearGradient id="colorContest" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#22c55e" stopOpacity={0.35} />
+                            <stop offset="95%" stopColor="#22c55e" stopOpacity={0.05} />
+                          </linearGradient>
+                          <linearGradient id="colorEnlaces" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.35} />
+                            <stop offset="95%" stopColor="#38bdf8" stopOpacity={0.05} />
+                          </linearGradient>
+                          <linearGradient id="colorClicks" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#a78bfa" stopOpacity={0.35} />
+                            <stop offset="95%" stopColor="#a78bfa" stopOpacity={0.05} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                        <XAxis
+                          dataKey="label"
+                          tick={{ fontSize: 12, fill: '#94a3b8' }}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <YAxis
+                          tickFormatter={(v) => `${v}%`}
+                          domain={[0, 'auto']}
+                          tick={{ fontSize: 12, fill: '#94a3b8' }}
+                          axisLine={false}
+                          tickLine={false}
+                          width={42}
+                        />
+                        <Tooltip
+                          formatter={(value: number, name: string) => [`${value}%`, name]}
+                          contentStyle={{
+                            background: '#1e293b',
+                            border: '1px solid #334155',
+                            borderRadius: 8,
+                            color: '#f1f5f9',
+                            fontSize: 13,
+                          }}
+                          itemStyle={{ color: '#f1f5f9' }}
+                          labelStyle={{ color: '#94a3b8', marginBottom: 4 }}
+                        />
+                        <Legend
+                          wrapperStyle={{ fontSize: 13, paddingTop: 8 }}
+                          iconType="circle"
+                          iconSize={10}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="tasa_contestacion"
+                          name="Tasa contestación"
+                          stroke="#22c55e"
+                          strokeWidth={2}
+                          fill="url(#colorContest)"
+                          dot={{ r: 3, fill: '#22c55e', strokeWidth: 0 }}
+                          activeDot={{ r: 5 }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="pct_enlaces"
+                          name="Enlaces enviados"
+                          stroke="#38bdf8"
+                          strokeWidth={2}
+                          fill="url(#colorEnlaces)"
+                          dot={{ r: 3, fill: '#38bdf8', strokeWidth: 0 }}
+                          activeDot={{ r: 5 }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="tasa_clicks"
+                          name="Tasa de clicks"
+                          stroke="#a78bfa"
+                          strokeWidth={2}
+                          fill="url(#colorClicks)"
+                          dot={{ r: 3, fill: '#a78bfa', strokeWidth: 0 }}
+                          activeDot={{ r: 5 }}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
                   </div>
-                  <div className="text-sm text-gray-600">Enlaces Enviados (únicos)</div>
-                </div>
-                <div className="text-center p-4 bg-purple-50 rounded-lg">
-                  <div className="text-2xl font-bold text-purple-600">
-                    {calculatePercentage(metrics.total_clicks_totales, funnel?.totals?.total_links_unique ?? metrics.total_enlaces_enviados)}%
+                )
+              ) : (
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="text-center p-4 bg-green-50 rounded-lg">
+                    <div className="text-2xl font-bold text-green-600">
+                      {calculatePercentage(metrics.llamadas_contestadas, metrics.total_llamadas)}%
+                    </div>
+                    <div className="text-sm text-gray-600">Tasa de Contestación</div>
                   </div>
-                  <div className="text-sm text-gray-600">Tasa de Clicks</div>
+                  <div className="text-center p-4 bg-blue-50 rounded-lg">
+                    <div className="text-2xl font-bold text-blue-600">
+                      {calculatePercentage(funnel?.totals?.total_links_unique ?? metrics.total_enlaces_enviados, metrics.llamadas_contestadas)}%
+                    </div>
+                    <div className="text-sm text-gray-600">Enlaces Enviados (únicos)</div>
+                  </div>
+                  <div className="text-center p-4 bg-purple-50 rounded-lg">
+                    <div className="text-2xl font-bold text-purple-600">
+                      {calculatePercentage(metrics.total_clicks_totales, funnel?.totals?.total_links_unique ?? metrics.total_enlaces_enviados)}%
+                    </div>
+                    <div className="text-sm text-gray-600">Tasa de Clicks</div>
+                  </div>
                 </div>
-                
-              </div>
+              )}
             </CardContent>
           </Card>
 
