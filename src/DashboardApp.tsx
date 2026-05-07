@@ -14,11 +14,13 @@ import { Campaign } from './pages/Campaign';
 import { Tickets } from './pages/Tickets';
 import { Recoveries } from './pages/Recoveries';
 import { SoporteIA } from './pages/SoporteIA';
+import { Interesados } from './pages/Interesados';
 import { useCallsContext } from './context/CallsContext';
 import {
   canAccessTickets,
   canAccessRecoveries,
   canAccessAssistantIA,
+  canAccessHydro,
 } from './lib/supabase';
 import { X, Upload, Phone, Info, Check, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 
@@ -112,11 +114,13 @@ function DashboardApp() {
   const [assistantIAEnabled, setAssistantIAEnabled] = React.useState(() =>
     canAccessAssistantIA(),
   );
+  const [hydroEnabled, setHydroEnabled] = React.useState(() => canAccessHydro());
   React.useEffect(() => {
     const update = () => {
       setTicketsEnabled(canAccessTickets());
       setRecoveriesEnabled(canAccessRecoveries());
       setAssistantIAEnabled(canAccessAssistantIA());
+      setHydroEnabled(canAccessHydro());
     };
     update();
     window.addEventListener('metadataUpdated', update);
@@ -132,6 +136,11 @@ function DashboardApp() {
       setCurrentPage('dashboard');
     }
   }, [currentPage, recoveriesEnabled]);
+  React.useEffect(() => {
+    if (currentPage === 'interesados' && !hydroEnabled) {
+      setCurrentPage('dashboard');
+    }
+  }, [currentPage, hydroEnabled]);
   React.useEffect(() => {
     if (currentPage === 'soporte-ia' && !assistantIAEnabled) {
       setCurrentPage('dashboard');
@@ -1356,6 +1365,9 @@ function DashboardApp() {
         )}
         {currentPage === 'recoveries' && recoveriesEnabled && (
           <Recoveries onNavigate={setCurrentPage as (page: string) => void} />
+        )}
+        {currentPage === 'interesados' && hydroEnabled && (
+          <Interesados onNavigate={setCurrentPage as (page: string) => void} />
         )}
         {currentPage === 'campaign' && campaignEnabled && (
           <Campaign onNavigate={setCurrentPage as (page: string) => void} />

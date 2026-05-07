@@ -321,6 +321,12 @@ export const canAccessAssistantIA = (): boolean => {
   return metadata?.asistant_ia === true;
 };
 
+// Función para verificar si el usuario tiene acceso a Interesados (desde metadata en sessionStorage)
+export const canAccessHydro = (): boolean => {
+  const metadata = getMetadata();
+  return metadata?.hydro === true;
+};
+
 // Función para verificar si el usuario tiene acceso a una funcionalidad específica
 // Si tiene permissions definidos, usa permissions. Si no, permite todo (sin limitaciones)
 export const canAccess = (feature: 'agenda' | 'records' | 'num_tel' | 'callbacks' | 'sales' | 'launch' | 'dont_call' | 'campaign'): boolean => {

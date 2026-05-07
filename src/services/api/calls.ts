@@ -596,6 +596,46 @@ export async function listRecoveryCalls(
   };
 }
 
+// Listar llamadas de interesados (efectivas + sentimiento positivo en metadata)
+export async function listInteresadosCalls(
+  apiKey: string,
+  params: {
+    client_id: string;
+    page?: number;
+    per_page?: number;
+    fecha_inicio?: string;
+    fecha_fin?: string;
+    min_duration_ms?: number;
+    sort_order?: 'ASC' | 'DESC';
+  }
+): Promise<{
+  llamadas: any[];
+  pagina_actual: number;
+  total_paginas: number;
+  total_llamadas: number;
+}> {
+  const url = `${BASE_URL}/api/calls/interesados-list-calls`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(params),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Error en interesados-list-calls: ${response.status} - ${text}`);
+  }
+  const data = await response.json();
+  return {
+    llamadas: data.llamadas || [],
+    pagina_actual: data.pagina_actual ?? 1,
+    total_paginas: data.total_paginas ?? 0,
+    total_llamadas: data.total_llamadas ?? 0,
+  };
+}
+
 export async function getCallCountsByFromNumber(clientId: string): Promise<CallCountByFromNumber[]> {
   try {
     const response = await fetch(`${BASE_URL}/api/calls/call-counts-by-from-number`, {

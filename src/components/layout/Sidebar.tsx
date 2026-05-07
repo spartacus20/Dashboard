@@ -17,6 +17,7 @@ import {
   ClipboardList,
   RotateCcw,
   BotMessageSquare,
+  Users,
 } from "lucide-react";
 import { useCallsContext } from "../../context/CallsContext";
 import { useAuth } from "../../context/AuthContext";
@@ -26,6 +27,7 @@ import {
   canAccessTickets,
   canAccessRecoveries,
   canAccessAssistantIA,
+  canAccessHydro,
   hasPermissionsDefined,
   getClientTest,
   getClientIdFromSession,
@@ -105,6 +107,7 @@ export function Sidebar({
   const [ticketsEnabled, setTicketsEnabled] = React.useState(() => canAccessTickets());
   const [recoveriesEnabled, setRecoveriesEnabled] = React.useState(() => canAccessRecoveries());
   const [assistantIAEnabled, setAssistantIAEnabled] = React.useState(() => canAccessAssistantIA());
+  const [hydroEnabled, setHydroEnabled] = React.useState(() => canAccessHydro());
 
   // Revisar metadata cuando cambie (ej. al cambiar de cliente)
   React.useEffect(() => {
@@ -112,6 +115,7 @@ export function Sidebar({
       setTicketsEnabled(canAccessTickets());
       setRecoveriesEnabled(canAccessRecoveries());
       setAssistantIAEnabled(canAccessAssistantIA());
+      setHydroEnabled(canAccessHydro());
     };
     update();
     window.addEventListener("metadataUpdated", update);
@@ -517,6 +521,21 @@ export function Sidebar({
             >
               <RotateCcw className="w-5 h-5" />
               Recobros
+            </button>
+          )}
+          {hydroEnabled && (
+            <button
+              onClick={() => {
+                navigateWithParams("interesados");
+              }}
+              className={`flex w-full items-center gap-2 px-4 py-2 ${
+                currentPage === "interesados"
+                  ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
+                  : "text-gray-300 hover:bg-[#0a2a5a]"
+              } rounded-lg`}
+            >
+              <Users className="w-5 h-5" />
+              Interesados
             </button>
           )}
           {canAccessAgenda && (
