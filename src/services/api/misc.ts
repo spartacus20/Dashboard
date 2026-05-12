@@ -1,5 +1,5 @@
 import { RetellAgent, CallsByPhoneResponse, RetellFolder } from '../../types';
-import { getClientId, BASE_URL, ASISTENCIA_FUNNEL_URL } from './config';
+import { getClientId, BASE_URL, ASISTENCIA_FUNNEL_URL, GET_CALL_TRANSCRIPT_URL } from './config';
 
 
 
@@ -228,3 +228,22 @@ export async function getCallsByPhone(
   }
 }
 
+export async function getCallTranscript(
+  call_id: string
+): Promise<{ transcript: string | null; recordings: string | null }> {
+  const client_id = getClientId();
+  if (!client_id) throw new Error('client_id no disponible');
+
+  const response = await fetch(GET_CALL_TRANSCRIPT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ call_id, client_id }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Error en get-call-transcript: ${response.status} - ${errorText}`);
+  }
+
+  return response.json();
+}
