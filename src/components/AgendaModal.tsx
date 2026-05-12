@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Agenda, CallsByPhoneResponse } from '../types';
 import { X, Play, Volume2, Calendar, Phone, MapPin, User, Clock, RefreshCw, AlertCircle, ExternalLink } from 'lucide-react';
-import { getCallsByPhone, updateAgendaStatus } from '../api';
+import { getCallsByPhone, updateAgendaStatus, getCallTranscript } from '../api';
 
 interface AgendaModalProps {
   agenda: Agenda | null;
@@ -17,6 +17,9 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
   const [callsData, setCallsData] = useState<CallsByPhoneResponse | null>(null);
   const [loadingCalls, setLoadingCalls] = useState(false);
   const [errorCalls, setErrorCalls] = useState<string | null>(null);
+  const [localTranscript, setLocalTranscript] = useState<string | null>(null);
+  const [localRecordings, setLocalRecordings] = useState<string | null>(null);
+  const [loadingTranscript, setLoadingTranscript] = useState(false);
   const [localApproved, setLocalApproved] = useState<boolean>(false);
   const [localReviewed, setLocalReviewed] = useState<boolean>(false);
   const [localDetails, setLocalDetails] = useState<string>('');
@@ -39,6 +42,31 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
       setLocalUrlMaps('');
     }
   }, [agenda]);
+
+  // Cargar transcript y recordings bajo demanda al abrir el modal
+  useEffect(() => {
+    const fetchTranscript = async () => {
+      if (!isOpen || !agenda?.call_id) {
+        setLocalTranscript(null);
+        setLocalRecordings(null);
+        return;
+      }
+      setLoadingTranscript(true);
+      setLocalTranscript(null);
+      setLocalRecordings(null);
+      try {
+        const data = await getCallTranscript(agenda.call_id);
+        setLocalTranscript(data.transcript);
+        setLocalRecordings(data.recordings);
+      } catch {
+        setLocalTranscript(null);
+        setLocalRecordings(null);
+      } finally {
+        setLoadingTranscript(false);
+      }
+    };
+    fetchTranscript();
+  }, [isOpen, agenda?.call_id]);
 
   useEffect(() => {
     const fetchCalls = async () => {
@@ -82,6 +110,9 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
       setCallsData(null);
       setErrorCalls(null);
       setLoadingCalls(false);
+      setLocalTranscript(null);
+      setLocalRecordings(null);
+      setLoadingTranscript(false);
     }
   }, [isOpen]);
 
@@ -481,7 +512,7 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
           </div>
 
           {/* Grabación de la llamada */}
-          {agenda.recordings && (
+          {(localRecordings || loadingTranscript) && (
             <section className="space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -496,16 +527,23 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
                   </div>
                 )}
               </div>
-              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                <audio
-                  controls
-                  src={agenda.recordings}
-                  className="w-full"
-                  preload="metadata"
-                >
-                  Tu navegador no soporta el elemento de audio.
-                </audio>
-              </div>
+              {loadingTranscript ? (
+                <div className="flex items-center gap-2 py-4 text-slate-500 text-sm">
+                  <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />
+                  Cargando grabación...
+                </div>
+              ) : localRecordings ? (
+                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                  <audio
+                    controls
+                    src={localRecordings}
+                    className="w-full"
+                    preload="metadata"
+                  >
+                    Tu navegador no soporta el elemento de audio.
+                  </audio>
+                </div>
+              ) : null}
             </section>
           )}
 
@@ -520,10 +558,15 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
               </div>
             </div>
 
-            {agenda.transcript ? (
+            {loadingTranscript ? (
+              <div className="flex items-center gap-2 py-6 text-slate-500 text-sm bg-slate-50 rounded-2xl border border-slate-100 px-4">
+                <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />
+                Cargando transcripción...
+              </div>
+            ) : localTranscript ? (
               <div className="bg-slate-50 rounded-2xl p-4 h-64 overflow-y-auto border border-slate-100">
                 <pre className="text-sm text-slate-700 whitespace-pre-wrap font-sans leading-relaxed">
-                  {agenda.transcript}
+                  {localTranscript}
                 </pre>
               </div>
             ) : (

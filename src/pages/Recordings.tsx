@@ -4,7 +4,7 @@ import type { DetailedRetellCall, FilterCriteria, RetellAgent, RetellPhoneNumber
 import { useCallsContext } from '../context/CallsContext';
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { listCalls, exportCallsWithColumns, fetchAgents, createPhoneCall } from '../api';
+import { listCalls, exportCallsWithColumns, fetchAgents, createPhoneCall, getCallTranscript } from '../api';
 
 // Componentes UI simplificados
 const Input = ({ className = "", ...props }: { className?: string; [key: string]: any }) => (
@@ -557,6 +557,8 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   const [isModalVisible, setIsModalVisible] = React.useState(false);
   const [shouldRenderModal, setShouldRenderModal] = React.useState(false);
   const [modalCallForTransition, setModalCallForTransition] = React.useState<DetailedRetellCall | null>(null);
+  const [localModalTranscript, setLocalModalTranscript] = React.useState<string | null>(null);
+  const [loadingModalTranscript, setLoadingModalTranscript] = React.useState(false);
   const [searchTerm, setSearchTerm] = React.useState('');
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const [audioCurrentTime, setAudioCurrentTime] = React.useState(0);
@@ -1025,6 +1027,28 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       }
     }
   };
+
+  // Cargar transcript bajo demanda cuando se abre el modal
+  React.useEffect(() => {
+    if (!selectedCallModal?.call_id) {
+      setLocalModalTranscript(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingModalTranscript(true);
+    setLocalModalTranscript(null);
+    getCallTranscript(selectedCallModal.call_id)
+      .then((data) => {
+        if (!cancelled) setLocalModalTranscript(data.transcript);
+      })
+      .catch(() => {
+        if (!cancelled) setLocalModalTranscript(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingModalTranscript(false);
+      });
+    return () => { cancelled = true; };
+  }, [selectedCallModal?.call_id]);
 
   // Manejar la transición del modal cuando se abre o cierra
   React.useEffect(() => {
@@ -2910,36 +2934,43 @@ export function Recordings({ onNavigate }: RecordingsProps) {
               )}
               
               {/* Sección de la transcripción con formato mejorado */}
-              {modalCallForTransition.transcript && (
+              {(loadingModalTranscript || localModalTranscript) && (
                 <Card className="mb-6 bg-white shadow-sm border-slate-200">
                   <CardHeader className="pb-2">
                     <h3 className="text-lg font-semibold text-slate-800">Transcripción</h3>
                   </CardHeader>
                   <CardContent className="p-4">
-                    <div className="space-y-3">
-                      {modalCallForTransition.transcript.split('\n').map((line, index) => {
-                        const isAssistant = line.toLowerCase().startsWith('asistente:') || 
-                                           line.toLowerCase().startsWith('agente:') || 
-                                           line.toLowerCase().startsWith('ai:') ||
-                                           line.toLowerCase().startsWith('agent:');
-                        const isUser = line.toLowerCase().startsWith('usuario:') || 
-                                      line.toLowerCase().startsWith('cliente:') ||
-                                      line.toLowerCase().startsWith('user:');
-                        
-                        let speakerClass = '';
-                        if (isAssistant) speakerClass = 'bg-slate-100';
-                        else if (isUser) speakerClass = 'bg-slate-200 border border-slate-300';
-                        
-                        return (
-                          <div 
-                            key={index} 
-                            className={`p-3 rounded-lg ${speakerClass || 'bg-slate-50'}`}
-                          >
-                            <p className="text-slate-800">{line}</p>
-                          </div>
-                        );
-                      })}
-                    </div>
+                    {loadingModalTranscript ? (
+                      <div className="flex items-center gap-2 py-6 text-slate-500 text-sm">
+                        <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />
+                        Cargando transcripción...
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {localModalTranscript!.split('\n').map((line, index) => {
+                          const isAssistant = line.toLowerCase().startsWith('asistente:') || 
+                                             line.toLowerCase().startsWith('agente:') || 
+                                             line.toLowerCase().startsWith('ai:') ||
+                                             line.toLowerCase().startsWith('agent:');
+                          const isUser = line.toLowerCase().startsWith('usuario:') || 
+                                        line.toLowerCase().startsWith('cliente:') ||
+                                        line.toLowerCase().startsWith('user:');
+                          
+                          let speakerClass = '';
+                          if (isAssistant) speakerClass = 'bg-slate-100';
+                          else if (isUser) speakerClass = 'bg-slate-200 border border-slate-300';
+                          
+                          return (
+                            <div 
+                              key={index} 
+                              className={`p-3 rounded-lg ${speakerClass || 'bg-slate-50'}`}
+                            >
+                              <p className="text-slate-800">{line}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               )}

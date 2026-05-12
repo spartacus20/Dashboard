@@ -92,8 +92,21 @@ export function CallsProvider({ children }: CallsProviderProps) {
   // Estado para los filtros
   const [filterCriteria, setFilterCriteria] = useState<FilterCriteria>({});
   
-  // Estado para los datos del dashboard
-  const [dashboardData, setDashboardData] = useState<any>(null);
+  // Ref para controlar que el fetch inicial del dashboard solo ocurra una vez por cliente
+  const dashboardInitialFetchDone = useRef(false);
+
+  // Estado para los datos del dashboard — se inicializa con la caché stale del localStorage
+  // para mostrar datos instantáneamente mientras se carga la versión fresca en background
+  const [dashboardData, setDashboardData] = useState<any>(() => {
+    try {
+      const storedClientId = localStorage.getItem(get_client_id);
+      if (storedClientId) {
+        const raw = localStorage.getItem(`dash_stale_${storedClientId}`);
+        return raw ? JSON.parse(raw) : null;
+      }
+    } catch {}
+    return null;
+  });
   const [loadingDashboardData, setLoadingDashboardData] = useState(false);
   
   // Estado para controlar la visibilidad de agenda
@@ -373,9 +386,16 @@ export function CallsProvider({ children }: CallsProviderProps) {
         setCampaignEnabled(config.campaign ?? false);
       }
       
-      // Limpiar datos anteriores
+      // Limpiar datos anteriores y restaurar stale cache del nuevo cliente
       setAllCalls([]);
-      setDashboardData(null);
+      // Restaurar stale data del nuevo cliente para mostrar instantáneamente mientras carga
+      try {
+        const raw = localStorage.getItem(`dash_stale_${newClientId}`);
+        setDashboardData(raw ? JSON.parse(raw) : null);
+      } catch {
+        setDashboardData(null);
+      }
+      dashboardInitialFetchDone.current = false;
       setPhoneNumbers([]);
       setBatchCalls([]);
       setAllCallsLoaded(false);
@@ -744,7 +764,10 @@ export function CallsProvider({ children }: CallsProviderProps) {
       }
       
       setDashboardData(data);
-      // console.log('Datos del dashboard cargados:', data);
+      // Guardar en localStorage para stale-while-revalidate (próxima carga será instantánea)
+      try {
+        localStorage.setItem(`dash_stale_${clientId}`, JSON.stringify(data));
+      } catch {}
       // Limpiar error si la carga fue exitosa
       setError(null);
     } catch (err) {
@@ -805,20 +828,14 @@ export function CallsProvider({ children }: CallsProviderProps) {
   }, [clientId, apiKey, disconnectionReasons.length, loadDisconnectionReasons]);
 
   // Cargar datos del dashboard cuando tenemos clientId y apiKey disponibles
+  // Usa ref en vez de !dashboardData para que el fetch corra aunque haya datos stale pre-cargados
   useEffect(() => {
-    // Solo cargar si tenemos clientId y alguna API key (individual o array), y no hay datos cargados ni se está cargando
     const hasApiKey = apiKey || (apiKeyTest && apiKeyTest.length > 0);
-    if (clientId && hasApiKey && !dashboardData && !loadingDashboardData) {
-      // console.log('🔄 Cargando datos del dashboard con clientId y API key disponibles');
+    if (clientId && hasApiKey && !dashboardInitialFetchDone.current && !loadingDashboardData) {
+      dashboardInitialFetchDone.current = true;
       loadDashboardData(undefined, undefined, 'today');
-    } else if (!clientId || !hasApiKey) {
-      // console.log('⏳ Esperando clientId y API key antes de cargar dashboard...', { 
-        // clientId: !!clientId, 
-        // apiKey: !!apiKey, 
-        // apiKeyTest: apiKeyTest?.length || 0 
-      // });
     }
-  }, [clientId, apiKey, apiKeyTest, dashboardData, loadingDashboardData, loadDashboardData]);
+  }, [clientId, apiKey, apiKeyTest, loadingDashboardData, loadDashboardData]);
 
   // agendaEnabled y callsEnabled ahora vienen desde la configuración del cliente
 
