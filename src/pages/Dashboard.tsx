@@ -359,7 +359,7 @@ export function Dashboard({
 
   // Verificar metadata inmediatamente y escuchar eventos de actualización
   React.useEffect(() => {
-    // Verificar inmediatamente
+    // Verificar una sola vez al montar
     checkMetadata();
 
     // Escuchar evento personalizado cuando se actualiza el metadata
@@ -370,33 +370,14 @@ export function Dashboard({
         setHasFiltroSolar(hasFiltro);
         setShowClienteFilter(customEvent.detail.metadata.recoveries === true);
       } else {
-        // Si no viene el metadata en el evento, verificar desde sessionStorage
         checkMetadata();
         setShowClienteFilter(getMetadata()?.recoveries === true);
       }
     };
 
-    // Verificar periódicamente durante los primeros 5 segundos (cada 500ms)
-    // Esto asegura que si el metadata se guarda después del montaje, se detecte
-    const intervalId = setInterval(() => {
-      const found = checkMetadata();
-      // Si encontramos el metadata, detener el intervalo
-      if (found) {
-        clearInterval(intervalId);
-      }
-    }, 500);
-
-    // Limpiar el intervalo después de 5 segundos
-    const timeoutId = setTimeout(() => {
-      clearInterval(intervalId);
-    }, 5000);
-
-    // Escuchar el evento personalizado de actualización de metadata
     window.addEventListener("metadataUpdated", handleMetadataUpdate);
 
     return () => {
-      clearInterval(intervalId);
-      clearTimeout(timeoutId);
       window.removeEventListener("metadataUpdated", handleMetadataUpdate);
     };
   }, [checkMetadata]);
@@ -536,16 +517,8 @@ export function Dashboard({
     } catch {}
   }, [timePeriod, customStartDate, customEndDate]);
 
-  // Efecto para cargar datos la primera vez con el período seleccionado
-  React.useEffect(() => {
-    if (!loadDashboardData) return;
-    // Solo cargar en el primer render
-    if (timePeriod === "today") {
-      // Para 'today', usar el endpoint específico sin fechas
-      const bddFilter = appliedDatabaseFilter || undefined;
-      loadDashboardData(undefined, undefined, "today", bddFilter);
-    }
-  }, [loadDashboardData]);
+  // El fetch inicial lo maneja CallsContext automáticamente.
+  // Este efecto fue eliminado para evitar el doble fetch al montar el Dashboard.
 
   // Función para calcular las fechas según el período seleccionado (zona horaria Madrid)
   const calculateDatesForPeriod = (
