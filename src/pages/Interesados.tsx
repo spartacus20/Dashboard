@@ -18,7 +18,8 @@ import {
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { useCallsContext } from '../context/CallsContext';
-import { listInteresadosCalls } from '../services/api/calls';
+import { listInteresadosCalls, getInteresadosMotivos, type InteresadosCualificacion } from '../services/api/calls';
+import { getCallTranscript } from '../services/api/misc';
 
 const MIN_DURATION_MS = 60_000;
 const PER_PAGE = 50;
@@ -89,12 +90,23 @@ export function Interesados({ onNavigate: _onNavigate }: InteresadosProps) {
   const [searchPhone, setSearchPhone] = useState('');
   const [soloMayorUnMin, setSoloMayorUnMin] = useState(true);
 
+  const [activeTab, setActiveTab] = useState<InteresadosCualificacion>('todos');
+  const [motivoDescarte, setMotivoDescarte] = useState('');
+  const [motivosOptions, setMotivosOptions] = useState<string[]>([]);
+  const [loadingMotivos, setLoadingMotivos] = useState(false);
+
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPaginas, setTotalPaginas] = useState(0);
   const [totalLlamadas, setTotalLlamadas] = useState(0);
+  const [totalCualificados, setTotalCualificados] = useState(0);
+  const [totalNoCualificados, setTotalNoCualificados] = useState(0);
+  const [totalNoLlamar, setTotalNoLlamar] = useState(0);
+  const [totalTodos, setTotalTodos] = useState(0);
 
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [expandedSummaryId, setExpandedSummaryId] = useState<number | null>(null);
+  const [transcriptCache, setTranscriptCache] = useState<Record<string, string>>({});
+  const [transcriptLoading, setTranscriptLoading] = useState<Record<string, boolean>>({});
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playingId, setPlayingId] = useState<number | null>(null);
@@ -133,32 +145,54 @@ export function Interesados({ onNavigate: _onNavigate }: InteresadosProps) {
     };
   }, []);
 
-  const loadLlamadas = useCallback(async (page = 1) => {
+  const loadMotivos = useCallback(async () => {
+    if (!apiKey || !clientId) return;
+    setLoadingMotivos(true);
+    try {
+      const list = await getInteresadosMotivos(apiKey, clientId);
+      setMotivosOptions(list);
+    } catch {
+      setMotivosOptions([]);
+    } finally {
+      setLoadingMotivos(false);
+    }
+  }, [apiKey, clientId]);
+
+  const loadLlamadas = useCallback(async (page = 1, tabOverride?: InteresadosCualificacion, motivoOverride?: string) => {
     if (!apiKey || !clientId) return;
     setLoading(true);
     setError(null);
     try {
+      const tab = tabOverride ?? activeTab;
+      const mot = motivoOverride !== undefined ? motivoOverride : motivoDescarte;
+
       const params: Parameters<typeof listInteresadosCalls>[1] = {
         client_id: clientId,
         page,
         per_page: PER_PAGE,
         sort_order: 'DESC',
+        cualificacion: tab,
       };
       if (dateFrom) params.fecha_inicio = `${dateFrom}T00:00:00.000Z`;
       if (dateTo) params.fecha_fin = `${dateTo}T23:59:59.999Z`;
       if (soloMayorUnMin) params.min_duration_ms = MIN_DURATION_MS;
+      if (mot && tab === 'no_cualificado') params.motivo = mot;
 
       const res = await listInteresadosCalls(apiKey, params);
       setLlamadas(res.llamadas || []);
       setTotalLlamadas(res.total_llamadas ?? 0);
       setTotalPaginas(res.total_paginas ?? 0);
       setCurrentPage(res.pagina_actual ?? page);
+      setTotalCualificados(res.total_cualificados ?? 0);
+      setTotalNoCualificados(res.total_no_cualificados ?? 0);
+      setTotalNoLlamar(res.total_no_llamar ?? 0);
+      setTotalTodos(res.total_todos ?? 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar interesados');
     } finally {
       setLoading(false);
     }
-  }, [apiKey, clientId, dateFrom, dateTo, soloMayorUnMin]);
+  }, [apiKey, clientId, dateFrom, dateTo, soloMayorUnMin, activeTab, motivoDescarte]);
 
   useEffect(() => {
     if (apiKey && clientId) loadLlamadas(1);
@@ -174,11 +208,20 @@ export function Interesados({ onNavigate: _onNavigate }: InteresadosProps) {
     setDateTo('');
     setSearchPhone('');
     setSoloMayorUnMin(true);
+    setMotivoDescarte('');
     setCurrentPage(1);
-    setTimeout(() => loadLlamadas(1), 0);
+    setTimeout(() => loadLlamadas(1, activeTab, ''), 0);
   };
 
-  const hasActiveFilters = !!(dateFrom || dateTo || searchPhone || !soloMayorUnMin);
+  const handleTabChange = (tab: InteresadosCualificacion) => {
+    setActiveTab(tab);
+    setMotivoDescarte('');
+    setCurrentPage(1);
+    if (tab === 'no_cualificado' && motivosOptions.length === 0) loadMotivos();
+    loadLlamadas(1, tab, '');
+  };
+
+  const hasActiveFilters = !!(dateFrom || dateTo || searchPhone || !soloMayorUnMin || motivoDescarte);
 
   const togglePlay = (row: Llamada) => {
     if (!audioRef.current || !row.recordings) return;
@@ -212,6 +255,24 @@ export function Interesados({ onNavigate: _onNavigate }: InteresadosProps) {
     if (audioRef.current) { audioRef.current.currentTime = t; setAudioCurrentTime(t); }
   };
 
+  const handleToggleTranscript = async (row: Llamada) => {
+    if (expandedId === row.id) {
+      setExpandedId(null);
+      return;
+    }
+    setExpandedId(row.id);
+    if (!row.call_id || transcriptCache[row.call_id] !== undefined) return;
+    setTranscriptLoading((prev) => ({ ...prev, [row.call_id!]: true }));
+    try {
+      const data = await getCallTranscript(row.call_id);
+      setTranscriptCache((prev) => ({ ...prev, [row.call_id!]: data.transcript ?? '' }));
+    } catch {
+      setTranscriptCache((prev) => ({ ...prev, [row.call_id!]: '' }));
+    } finally {
+      setTranscriptLoading((prev) => ({ ...prev, [row.call_id!]: false }));
+    }
+  };
+
   // Filtro local por teléfono (se hace client-side sobre la página cargada)
   const filteredLlamadas = llamadas.filter((r) => {
     if (searchPhone.trim()) {
@@ -225,15 +286,27 @@ export function Interesados({ onNavigate: _onNavigate }: InteresadosProps) {
   return (
     <div className="p-8 bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
       {/* Header */}
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-slate-800 mb-2">Interesados</h2>
-        <div className="flex flex-wrap items-center gap-2 text-slate-600">
-          <p>Llamadas efectivas con sentimiento positivo captadas por el agente</p>
-          {totalLlamadas > 0 && !loading && (
-            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-gradient-to-r from-blue-600 to-indigo-700 text-white">
-              {totalLlamadas.toLocaleString()} {totalLlamadas === 1 ? 'interesado' : 'interesados'}
-            </span>
-          )}
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-slate-800 mb-1">Interesados</h2>
+        <p className="text-slate-500 text-sm">Llamadas efectivas con sentimiento positivo captadas por el agente</p>
+      </div>
+
+      {/* Cards de resumen */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div className="bg-white rounded-2xl border-l-4 border-l-emerald-500 border border-slate-200 shadow-sm p-5">
+          <p className="text-sm font-semibold text-slate-600 mb-2">Cualificados</p>
+          <p className="text-2xl font-bold text-emerald-600">{loading ? '—' : totalCualificados.toLocaleString()}</p>
+          <p className="text-sm text-slate-400 mt-1">Listos para agendar</p>
+        </div>
+        <div className="bg-white rounded-2xl border-l-4 border-l-orange-500 border border-slate-200 shadow-sm p-5">
+          <p className="text-sm font-semibold text-slate-600 mb-2">No cualificados</p>
+          <p className="text-2xl font-bold text-orange-500">{loading ? '—' : totalNoCualificados.toLocaleString()}</p>
+          <p className="text-sm text-slate-400 mt-1">Con motivo de descarte</p>
+        </div>
+        <div className="bg-white rounded-2xl border-l-4 border-l-slate-400 border border-slate-200 shadow-sm p-5">
+          <p className="text-sm font-semibold text-slate-600 mb-2">No llamar</p>
+          <p className="text-2xl font-bold text-slate-500">{loading ? '—' : totalNoLlamar.toLocaleString()}</p>
+          <p className="text-sm text-slate-400 mt-1">Solicitud expresa del contacto</p>
         </div>
       </div>
 
@@ -262,6 +335,29 @@ export function Interesados({ onNavigate: _onNavigate }: InteresadosProps) {
                 </>
               )}
             </Button>
+          </div>
+
+          {/* Tabs de cualificación */}
+          <div className="flex flex-wrap gap-2 mb-4">
+            {([
+              { key: 'todos',          label: 'Todos',           count: totalTodos },
+              { key: 'cualificado',    label: 'Cualificados',    count: totalCualificados },
+              { key: 'no_cualificado', label: 'No cualificados', count: totalNoCualificados },
+              { key: 'no_llamar',      label: 'No llamar',       count: totalNoLlamar },
+            ] as { key: InteresadosCualificacion; label: string; count: number }[]).map(({ key, label, count }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => handleTabChange(key)}
+                className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors ${
+                  activeTab === key
+                    ? 'bg-slate-800 text-white border-slate-800'
+                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                {label}{!loading && count > 0 ? ` · ${count.toLocaleString()}` : ''}
+              </button>
+            ))}
           </div>
 
           {/* Filtros */}
@@ -297,6 +393,31 @@ export function Interesados({ onNavigate: _onNavigate }: InteresadosProps) {
                 />
               </div>
             </div>
+
+            {/* Motivo de descarte — solo en tab no_cualificado */}
+            {activeTab === 'no_cualificado' && (
+              <div className="flex flex-col min-w-[180px]">
+                <label className="text-[10px] uppercase font-bold text-slate-400 mb-1">
+                  Motivo de descarte
+                  {loadingMotivos && (
+                    <RefreshCw className="inline ml-1 w-3 h-3 animate-spin text-slate-400" />
+                  )}
+                </label>
+                <select
+                  value={motivoDescarte}
+                  onChange={(e) => setMotivoDescarte(e.target.value)}
+                  disabled={loadingMotivos}
+                  className="px-3 py-2 text-sm border border-red-200 rounded-lg focus:ring-2 focus:ring-red-300/30 focus:border-red-400 text-slate-700 bg-white cursor-pointer disabled:opacity-60"
+                >
+                  <option value="">Todos los motivos</option>
+                  {motivosOptions.map((m) => (
+                    <option key={m} value={m}>
+                      {m.charAt(0).toUpperCase() + m.slice(1).replace(/_/g, ' ')}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Checkbox mayor 1 min */}
             <label className="flex items-center gap-2 cursor-pointer select-none px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 hover:bg-slate-50 transition-colors">
@@ -359,19 +480,35 @@ export function Interesados({ onNavigate: _onNavigate }: InteresadosProps) {
                 const meta = parseMeta(row.metadata);
                 const nombreMeta = meta?.name || row.name;
                 const puebloCiudad = meta?.pueblo_ciudad;
+                const metaCualificado: string = meta?.cualificado ?? '';
+                const metaMotivos: string = meta?.motivos ?? '';
+                const metaAgenda: string = meta?.agenda ?? '';
+                const metaNoLlamar: string = meta?.no_llamar ?? '';
                 const isExpanded = expandedId === row.id;
                 const durationMs = typeof row.duration === 'string' ? parseInt(row.duration, 10) : (row.duration ?? 0);
 
                 return (
                   <div
                     key={row.id}
-                    className="relative bg-white border border-slate-200 shadow-md shadow-slate-100/60 rounded-2xl overflow-hidden transition-all duration-200 hover:shadow-lg hover:-translate-y-[1px]"
+                    className={`relative bg-white border shadow-md shadow-slate-100/60 rounded-2xl overflow-hidden transition-all duration-200 hover:shadow-lg hover:-translate-y-[1px] ${
+                      metaNoLlamar === 'si'
+                        ? 'border-slate-300'
+                        : metaCualificado === 'cualificado'
+                        ? 'border-emerald-200'
+                        : metaCualificado === 'no_cualificado'
+                        ? 'border-orange-200'
+                        : 'border-slate-200'
+                    }`}
                   >
                     <div className="p-5">
                       {/* Top row: nombre + badges */}
                       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-4">
                         <div className="flex items-start gap-4">
-                          <div className="p-3 bg-blue-50 rounded-xl text-blue-500 shrink-0">
+                          <div className={`p-3 rounded-xl shrink-0 ${
+                            metaCualificado === 'cualificado' ? 'bg-emerald-50 text-emerald-600'
+                            : metaCualificado === 'no_cualificado' ? 'bg-orange-50 text-orange-500'
+                            : 'bg-blue-50 text-blue-500'
+                          }`}>
                             <User className="w-5 h-5" />
                           </div>
                           <div>
@@ -406,8 +543,28 @@ export function Interesados({ onNavigate: _onNavigate }: InteresadosProps) {
                           </div>
                         </div>
 
-                        {/* Badge duración */}
-                        <div className="shrink-0">
+                        {/* Badges: cualificación + duración */}
+                        <div className="shrink-0 flex flex-wrap items-center gap-2">
+                          {metaNoLlamar === 'si' && (
+                            <span className="px-2.5 py-1 rounded-full text-xs font-semibold border bg-slate-100 text-slate-600 border-slate-300">
+                              No llamar
+                            </span>
+                          )}
+                          {metaCualificado === 'cualificado' && (
+                            <span className="px-2.5 py-1 rounded-full text-xs font-semibold border bg-emerald-50 text-emerald-700 border-emerald-200">
+                              Cualificado
+                            </span>
+                          )}
+                          {metaCualificado === 'no_cualificado' && (
+                            <span className="px-2.5 py-1 rounded-full text-xs font-semibold border bg-orange-50 text-orange-600 border-orange-200">
+                              No cualificado
+                            </span>
+                          )}
+                          {metaAgenda === 'si' && (
+                            <span className="px-2.5 py-1 rounded-full text-xs font-semibold border bg-violet-50 text-violet-700 border-violet-200">
+                              Agendado
+                            </span>
+                          )}
                           <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${
                             durationMs >= MIN_DURATION_MS
                               ? 'bg-blue-50 text-blue-700 border-blue-200'
@@ -430,6 +587,12 @@ export function Interesados({ onNavigate: _onNavigate }: InteresadosProps) {
                             <div className="flex items-center gap-2 text-xs text-slate-400">
                               <Clock className="w-3.5 h-3.5 text-slate-400" />
                               <span className="capitalize">{row.end_reason.replace(/_/g, ' ')}</span>
+                            </div>
+                          )}
+                          {metaMotivos && (
+                            <div className="flex items-center gap-1.5 text-xs">
+                              <span className="text-slate-400">Motivo:</span>
+                              <span className="font-medium text-orange-600 capitalize">{metaMotivos.replace(/_/g, ' ')}</span>
                             </div>
                           )}
                           {row.cost != null && row.cost !== '' && (
@@ -517,25 +680,34 @@ export function Interesados({ onNavigate: _onNavigate }: InteresadosProps) {
                         </div>
                       </div>
 
-                      {/* Transcripción expandible */}
-                      {row.transcript && (
+                      {/* Transcripción expandible — carga bajo demanda */}
+                      {row.call_id && (
                         <div className="mt-4 border-t border-slate-100 pt-3">
                           <button
                             type="button"
-                            onClick={() => setExpandedId(isExpanded ? null : row.id)}
+                            onClick={() => handleToggleTranscript(row)}
                             className="flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors"
                           >
                             <FileText className="w-4 h-4" />
-                            {isExpanded ? (
+                            {transcriptLoading[row.call_id] ? (
+                              <>
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                Cargando transcripción...
+                              </>
+                            ) : isExpanded ? (
                               <>Ocultar transcripción <ChevronUp className="w-4 h-4" /></>
                             ) : (
                               <>Ver transcripción <ChevronDown className="w-4 h-4" /></>
                             )}
                           </button>
-                          {isExpanded && (
+                          {isExpanded && !transcriptLoading[row.call_id] && (
                             <div className="mt-3 bg-slate-50 p-4 rounded-xl border border-slate-100 max-h-52 overflow-y-auto">
                               <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Transcripción</p>
-                              <pre className="text-xs text-slate-600 whitespace-pre-wrap font-sans">{row.transcript}</pre>
+                              {transcriptCache[row.call_id] ? (
+                                <pre className="text-xs text-slate-600 whitespace-pre-wrap font-sans">{transcriptCache[row.call_id]}</pre>
+                              ) : (
+                                <p className="text-xs text-slate-400 italic">No hay transcripción disponible para esta llamada.</p>
+                              )}
                             </div>
                           )}
                         </div>
