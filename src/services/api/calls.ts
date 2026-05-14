@@ -596,6 +596,8 @@ export async function listRecoveryCalls(
   };
 }
 
+export type InteresadosCualificacion = 'todos' | 'cualificado' | 'no_cualificado' | 'no_llamar';
+
 // Listar llamadas de interesados (efectivas + sentimiento positivo en metadata)
 export async function listInteresadosCalls(
   apiKey: string,
@@ -607,12 +609,18 @@ export async function listInteresadosCalls(
     fecha_fin?: string;
     min_duration_ms?: number;
     sort_order?: 'ASC' | 'DESC';
+    cualificacion?: InteresadosCualificacion;
+    motivo?: string;
   }
 ): Promise<{
   llamadas: any[];
   pagina_actual: number;
   total_paginas: number;
   total_llamadas: number;
+  total_cualificados: number;
+  total_no_cualificados: number;
+  total_no_llamar: number;
+  total_todos: number;
 }> {
   const url = `${BASE_URL}/api/calls/interesados-list-calls`;
   const response = await fetch(url, {
@@ -633,7 +641,32 @@ export async function listInteresadosCalls(
     pagina_actual: data.pagina_actual ?? 1,
     total_paginas: data.total_paginas ?? 0,
     total_llamadas: data.total_llamadas ?? 0,
+    total_cualificados: data.total_cualificados ?? 0,
+    total_no_cualificados: data.total_no_cualificados ?? 0,
+    total_no_llamar: data.total_no_llamar ?? 0,
+    total_todos: data.total_todos ?? 0,
   };
+}
+
+export async function getInteresadosMotivos(
+  apiKey: string,
+  clientId: string,
+): Promise<string[]> {
+  const url = `${BASE_URL}/api/calls/interesados-motivos`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ client_id: clientId }),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Error en interesados-motivos: ${response.status} - ${text}`);
+  }
+  const data = await response.json();
+  return data.motivos ?? [];
 }
 
 export async function getCallCountsByFromNumber(clientId: string): Promise<CallCountByFromNumber[]> {
