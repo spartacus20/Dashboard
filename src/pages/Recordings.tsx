@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, Pause, Download, Clock, ChevronDown, ChevronUp, Search, X, Phone, ChevronLeft, ChevronRight, ListFilter, PhoneOff, RefreshCw, PhoneCall, Plus, User, Send } from 'lucide-react';
+import { Play, Pause, Download, Clock, ChevronDown, ChevronUp, Search, X, Phone, ChevronLeft, ChevronRight, ListFilter, PhoneOff, RefreshCw, PhoneCall, Plus, User, Send, CalendarDays } from 'lucide-react';
 import type { DetailedRetellCall, FilterCriteria, RetellAgent, RetellPhoneNumber } from '../types';
 import { useCallsContext } from '../context/CallsContext';
 import { Button } from "../components/ui/button";
@@ -588,23 +588,12 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     totalCallsFiltered
   } = useCallsContext();
   
-  let totalCallsDisplay: number | undefined = undefined;
-  let totalCallsLabel: string = '';
+  // El backend aota el conteo a 10,001 para evitar scans completos sobre millones de filas.
+  // Si el total devuelto es exactamente 10,001, significa "hay más de 10,000".
+  const COUNT_CAP = 10001;
+  const formatFilteredTotal = (n: number) => n >= COUNT_CAP ? '10.000+' : n.toLocaleString('es-ES');
 
-  // Priorizar totalCallsFiltered cuando está disponible (indica filtros aplicados)
-  if (totalCallsFiltered !== null && totalCallsFiltered !== undefined) {
-    totalCallsDisplay = totalCallsFiltered;
-    totalCallsLabel = totalCallsFiltered === 1 ? 'llamada filtrada' : 'llamadas filtradas';
-  } else if (dashboardData?.dashboard_data?.metricas_generales?.total_llamadas !== undefined) {
-    totalCallsDisplay = dashboardData.dashboard_data.metricas_generales.total_llamadas;
-    totalCallsLabel = totalCallsDisplay === 1 ? 'llamada en servidor' : 'llamadas en servidor';
-  } else if (totalCalls !== undefined) {
-    totalCallsDisplay = totalCalls;
-    totalCallsLabel = totalCallsDisplay === 1 ? 'llamada cargada' : 'llamadas cargadas';
-  } else {
-    totalCallsDisplay = 0;
-    totalCallsLabel = 'llamadas';
-  }
+  // totalCallsDisplay y hasAnyActiveFilter se calculan más abajo (después de los useState)
 
   // Estados locales para paginación y filtrado
   const [calls, setCalls] = React.useState<DetailedRetellCall[]>([]);
@@ -624,10 +613,22 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   // Estados para los dropdowns
   const [showItemsPerPageDropdown, setShowItemsPerPageDropdown] = React.useState(false);
   const [showUnifiedFiltersDropdown, setShowUnifiedFiltersDropdown] = React.useState(false);
+  const [showDatePresetDropdown, setShowDatePresetDropdown] = React.useState(false);
+  const [expandedFilterSections, setExpandedFilterSections] = React.useState<Set<string>>(new Set());
+  const toggleFilterSection = (key: string) => {
+    setExpandedFilterSections(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  };
   
   // Estados para los filtros
   const [disconnectionReasonFilter, setDisconnectionReasonFilter] = React.useState<string | null>(null);
-  const [durationFilter, setDurationFilter] = React.useState<string | null>(null);
+  const [durationOperator, setDurationOperator] = React.useState<'gt' | 'lt' | 'eq' | null>(null);
+  const [durationMinutes, setDurationMinutes] = React.useState<string>('');
+  // Valor derivado para mantener compatibilidad con todos los checks de "filtro activo"
+  const durationFilter = (durationOperator && durationMinutes.trim()) ? `${durationOperator}:${durationMinutes}` : null;
   const [statusFilter, setStatusFilter] = React.useState<string | null>(null);
   const [phoneNumberFilter, setPhoneNumberFilter] = React.useState<string>('');
   const [sortOrderFilter, setSortOrderFilter] = React.useState<'ASC' | 'DESC'>('DESC');
@@ -670,8 +671,30 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     toNumber: true // Cambiado a true para que sea visible por defecto
   });
   
-  const [startDate, setStartDate] = React.useState('');
-  const [endDate, setEndDate] = React.useState('');
+  // Preset de fecha activo: 'today' | 'week' | 'month' | 'custom'
+  const [datePreset, setDatePreset] = React.useState<'today' | 'week' | 'month' | 'custom'>('today');
+
+  // Calcula el rango ISO para un preset dado (hora UTC, misma lógica que Dashboard)
+  const calcPresetDates = React.useCallback((preset: 'today' | 'week' | 'month') => {
+    const now = new Date();
+    const todayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    if (preset === 'today') {
+      const tomorrow = new Date(todayUTC); tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+      return { start: todayUTC.toISOString(), end: tomorrow.toISOString() };
+    }
+    if (preset === 'week') {
+      const from = new Date(todayUTC); from.setUTCDate(from.getUTCDate() - 6);
+      const to = new Date(todayUTC); to.setUTCDate(to.getUTCDate() + 1);
+      return { start: from.toISOString(), end: to.toISOString() };
+    }
+    // month
+    const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const startOfNext  = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    return { start: startOfMonth.toISOString(), end: startOfNext.toISOString() };
+  }, []);
+
+  const [startDate, setStartDate] = React.useState(() => calcPresetDates('today').start);
+  const [endDate,   setEndDate]   = React.useState(() => calcPresetDates('today').end);
 
   // Flag para evitar cargas automáticas cuando se están aplicando filtros manualmente
   const isApplyingFilters = React.useRef(false);
@@ -753,6 +776,34 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       setMetadataFields({});
     }
   }, [clientId]);
+
+  // Cálculo del total y etiqueta a mostrar en el header.
+  // Se calcula aquí, después de todos los useState, para tener acceso a todas las variables.
+  // Para el display del total: siempre hay filtro activo porque siempre se filtra por fecha
+  const hasAnyActiveFilter = !!(searchTerm || startDate || endDate || statusFilter ||
+    disconnectionReasonFilter || durationFilter || phoneNumberFilter ||
+    sortOrderFilter !== 'DESC' || interestFilter || tipoViviendaFilter ||
+    agentIdFilter || appliedDatabaseFilter);
+
+  let totalCallsDisplay: number | undefined = undefined;
+  let totalCallsLabel: string = '';
+
+  if (hasAnyActiveFilter && totalFilteredCalls > 0) {
+    totalCallsDisplay = totalFilteredCalls;
+    totalCallsLabel = totalFilteredCalls === 1 ? 'llamada encontrada' : 'llamadas encontradas';
+  } else if (!hasAnyActiveFilter && totalCallsFiltered !== null && totalCallsFiltered !== undefined) {
+    totalCallsDisplay = totalCallsFiltered;
+    totalCallsLabel = totalCallsFiltered === 1 ? 'llamada en servidor' : 'llamadas en servidor';
+  } else if (dashboardData?.dashboard_data?.metricas_generales?.total_llamadas !== undefined) {
+    totalCallsDisplay = dashboardData.dashboard_data.metricas_generales.total_llamadas;
+    totalCallsLabel = totalCallsDisplay === 1 ? 'llamada en servidor' : 'llamadas en servidor';
+  } else if (totalCalls !== undefined) {
+    totalCallsDisplay = totalCalls;
+    totalCallsLabel = totalCallsDisplay === 1 ? 'llamada cargada' : 'llamadas cargadas';
+  } else {
+    totalCallsDisplay = 0;
+    totalCallsLabel = 'llamadas';
+  }
 
   // Cargar página cuando cambia currentPage
   React.useEffect(() => {
@@ -852,12 +903,15 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     // 2. No hay datos cargados
     // 3. No está cargando ya
     // 4. No estamos aplicando filtros manualmente
+    // 5. No hay filtros de fecha activos (si los hay, el useEffect de paginación los carga directamente)
+    const hasDateFilter = !!(startDate || endDate);
     if (
       apiKey && 
       clientId && 
       allCalls.length === 0 && 
       !loadingAllCalls && 
-      !isApplyingFilters.current
+      !isApplyingFilters.current &&
+      !hasDateFilter
     ) {
       // console.log('🔄 Iniciando carga de grabaciones con apiKey y clientId disponibles');
       loadAllCalls();
@@ -904,6 +958,9 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       }
       if (!target.closest('.unified-filters-dropdown') && !target.closest('.unified-filters-button')) {
         setShowUnifiedFiltersDropdown(false);
+      }
+      if (!target.closest('.date-preset-dropdown') && !target.closest('.date-preset-button')) {
+        setShowDatePresetDropdown(false);
       }
     };
 
@@ -1191,9 +1248,10 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     setCurrentPage(1); // Reset to first page when filter changes
   };
 
-  const handleDurationFilter = (durationValue: string | null) => {
-    setDurationFilter(durationValue);
-    setCurrentPage(1); // Reset to first page when filter changes
+  const clearDurationFilter = () => {
+    setDurationOperator(null);
+    setDurationMinutes('');
+    setCurrentPage(1);
   };
 
 
@@ -1530,11 +1588,14 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     isApplyingFilters.current = true;
     
     setSearchTerm('');
-    setStartDate('');
-    setEndDate('');
+    const todayRange = calcPresetDates('today');
+    setDatePreset('today');
+    setStartDate(todayRange.start);
+    setEndDate(todayRange.end);
     setStatusFilter(null);
     setDisconnectionReasonFilter(null);
-    setDurationFilter(null);
+    setDurationOperator(null);
+    setDurationMinutes('');
     setPhoneNumberFilter('');
     setSortOrderFilter('DESC'); // Resetear a descendente por defecto
     setInterestFilter(null);
@@ -1584,29 +1645,31 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     if (statusFilter) count++;
     if (disconnectionReasonFilter) count++;
     if (durationFilter) count++;
-    if (sortOrderFilter !== 'DESC') count++; // Contar solo si no es el valor por defecto
+    if (sortOrderFilter !== 'DESC') count++;
     if (interestFilter) count++;
     if (tipoViviendaFilter) count++;
     if (agentIdFilter) count++;
+    if (phoneNumberFilter) count++;
+    if (searchTerm) count++;
     return count;
-  }, [statusFilter, disconnectionReasonFilter, durationFilter, sortOrderFilter, interestFilter, tipoViviendaFilter, agentIdFilter]);
+  }, [statusFilter, disconnectionReasonFilter, durationFilter, sortOrderFilter, interestFilter, tipoViviendaFilter, agentIdFilter, phoneNumberFilter, searchTerm]);
 
   // Calcular el recuento total de filtros aplicados
   const activeFiltersCount = React.useMemo(() => {
     let count = 0;
     if (searchTerm) count++;
-    if (startDate || endDate) count++;
+    if (datePreset !== 'today') count++;
     if (statusFilter) count++;
     if (disconnectionReasonFilter) count++;
     if (durationFilter) count++;
     if (phoneNumberFilter) count++;
-    if (sortOrderFilter !== 'DESC') count++; // Contar solo si no es el valor por defecto
+    if (sortOrderFilter !== 'DESC') count++;
     if (interestFilter) count++;
     if (tipoViviendaFilter) count++;
     if (agentIdFilter) count++;
     if (appliedDatabaseFilter) count++;
     return count;
-  }, [searchTerm, startDate, endDate, statusFilter, disconnectionReasonFilter, durationFilter, phoneNumberFilter, sortOrderFilter, interestFilter, tipoViviendaFilter, agentIdFilter, appliedDatabaseFilter]);
+  }, [searchTerm, datePreset, statusFilter, disconnectionReasonFilter, durationFilter, phoneNumberFilter, sortOrderFilter, interestFilter, tipoViviendaFilter, agentIdFilter, appliedDatabaseFilter]);
 
 
   // Función para aplicar filtros usando la API list-calls
@@ -1695,9 +1758,26 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         // console.log('🔍 Filtro de base de datos aplicado:', appliedDatabaseFilter.trim());
       }
       
-      // Agregar filtros de número (si se implementan en el futuro)
-      // if (fromNumber) params.from_number = fromNumber;
-      // if (toNumber) params.to_number = toNumber;
+      // Filtro de duración: operator (gt/lt/eq) + minutos → ms para el backend
+      if (durationOperator && durationMinutes.trim()) {
+        const ms = Math.round(parseFloat(durationMinutes) * 60_000);
+        if (!isNaN(ms) && ms >= 0) {
+          if (durationOperator === 'gt') {
+            params.min_duration_ms = ms;
+          } else if (durationOperator === 'lt') {
+            params.max_duration_ms = ms;
+          } else if (durationOperator === 'eq') {
+            // Tolerancia ±10 s para igualdad exacta
+            params.min_duration_ms = Math.max(0, ms - 10_000);
+            params.max_duration_ms = ms + 10_000;
+          }
+        }
+      }
+
+      // Buscar por call_id (parcial, server-side)
+      if (searchTerm && searchTerm.trim()) {
+        params.call_id = searchTerm.trim();
+      }
       
       // console.log('Aplicando filtros con parámetros:', params);
       
@@ -1789,6 +1869,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
               const normalizedPhone = normalizePhoneNumber(phoneNumberFilter);
               params.to_number_norm = normalizedPhone;
             }
+            if (searchTerm && searchTerm.trim()) params.call_id = searchTerm.trim();
             if (startDate) params.fecha_inicio = startDate;
             if (endDate) params.fecha_fin = endDate;
             if (interestFilter) params.interest = interestFilter;
@@ -1797,6 +1878,21 @@ export function Recordings({ onNavigate }: RecordingsProps) {
             if (disconnectionReasonFilter) params.end_reason = disconnectionReasonFilter;
             if (appliedDatabaseFilter && appliedDatabaseFilter.trim()) {
               params.bdd = appliedDatabaseFilter.trim();
+            }
+            if (durationFilter) {
+              if (durationOperator && durationMinutes.trim()) {
+                const ms = Math.round(parseFloat(durationMinutes) * 60_000);
+                if (!isNaN(ms) && ms >= 0) {
+                  if (durationOperator === 'gt') {
+                    params.min_duration_ms = ms;
+                  } else if (durationOperator === 'lt') {
+                    params.max_duration_ms = ms;
+                  } else if (durationOperator === 'eq') {
+                    params.min_duration_ms = Math.max(0, ms - 10_000);
+                    params.max_duration_ms = ms + 10_000;
+                  }
+                }
+              }
             }
             
             const response = await listCalls(apiKey, params);
@@ -1910,6 +2006,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       endDateTime = `${tempEndDate}T23:59:59`;
     }
     
+    setDatePreset('custom');
     setStartDate(startDateTime);
     setEndDate(endDateTime);
     setShowFiltersModal(false);
@@ -2025,10 +2122,10 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                 onClick={openExportModal} 
                 variant="outline" 
                 size="sm"
-                className="text-gray-400"
+                className="h-8 px-3 text-xs font-medium bg-blue-600 text-white border-blue-600 hover:bg-blue-700 hover:border-blue-700 transition-colors gap-1.5"
                 disabled={loadingAllCalls}
               >
-                <Download className="h-4 w-4 mr-2" />
+                <Download className="h-3.5 w-3.5" />
                 Exportar CSV
               </Button>
               
@@ -2038,9 +2135,9 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                   onClick={() => setShowColumnCustomizer(!showColumnCustomizer)} 
                   variant="outline" 
                   size="sm"
-                  className="text-gray-400 column-customizer-button"
+                  className="h-8 px-3 text-xs font-medium bg-slate-700 text-white border-slate-700 hover:bg-slate-800 hover:border-slate-800 transition-colors gap-1.5 column-customizer-button"
                 >
-                  <ListFilter className="h-4 w-4 mr-2" />
+                  <ListFilter className="h-3.5 w-3.5" />
                   Columnas
                 </Button>
                 
@@ -2112,14 +2209,17 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                 )}
               </div>
               
-              <Button 
-                onClick={resetAllFilters} 
-                variant="outline" 
-                size="sm"
-                className="text-gray-400"
-              >
-                Limpiar filtros
-              </Button>
+              {activeFiltersCount > 0 && (
+                <Button 
+                  onClick={resetAllFilters} 
+                  variant="outline" 
+                  size="sm"
+                  className="h-8 px-3 text-xs font-medium bg-red-500 text-white border-red-500 hover:bg-red-600 hover:border-red-600 transition-colors gap-1.5"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Limpiar filtros
+                </Button>
+              )}
             </div>
           </div>
           
@@ -2185,30 +2285,73 @@ export function Recordings({ onNavigate }: RecordingsProps) {
           )}
         </CardHeader>
         <CardContent className="pt-6 bg-white">
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-3 mb-6">
-            {/* Botón para abrir modal de filtros de fechas */}
-            <div className="lg:col-span-2">
-              <Button 
-                onClick={openFiltersModal}
+
+            {/* Dropdown de Fechas */}
+            <div className="lg:col-span-2 relative date-preset-dropdown">
+              <Button
+                onClick={() => setShowDatePresetDropdown(!showDatePresetDropdown)}
                 variant="outline"
-                className="w-full h-10 flex items-center justify-center gap-2 text-xs"
+                className="w-full h-10 flex items-center justify-center gap-2 text-xs date-preset-button"
               >
-                <ListFilter className="w-4 h-4" />
-                {startDate || endDate ? (
-                  <span className="text-xs truncate">
-                    {startDate && endDate ? 
-                      `${new Date(startDate).toLocaleDateString('es-ES')} - ${new Date(endDate).toLocaleDateString('es-ES')}` : 
-                     startDate ? `Desde ${new Date(startDate).toLocaleDateString('es-ES')}` : 
-                     `Hasta ${new Date(endDate).toLocaleDateString('es-ES')}`}
-                  </span>
+                <CalendarDays className="w-4 h-4" />
+                <span className="text-xs">
+                  {{ today: 'Hoy', week: 'Última semana', month: 'Último mes', custom: 'Personalizado' }[datePreset]}
+                </span>
+                {showDatePresetDropdown ? (
+                  <ChevronUp className="w-4 h-4" />
                 ) : (
-                  <span className="text-xs">Fechas</span>
+                  <ChevronDown className="w-4 h-4" />
                 )}
               </Button>
+
+              {showDatePresetDropdown && (
+                <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-xl shadow-xl z-50 border border-slate-200 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-slate-100">
+                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Período</span>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {(['today', 'week', 'month', 'custom'] as const).map((preset) => {
+                      const labels = { today: 'Hoy', week: 'Última semana', month: 'Último mes', custom: 'Personalizado…' };
+                      const isActive = datePreset === preset;
+                      return (
+                        <button
+                          key={preset}
+                          onClick={() => {
+                            setShowDatePresetDropdown(false);
+                            if (preset === 'custom') {
+                              setDatePreset('custom');
+                              openFiltersModal();
+                            } else {
+                              const range = calcPresetDates(preset);
+                              setDatePreset(preset);
+                              setStartDate(range.start);
+                              setEndDate(range.end);
+                              setCurrentPage(1);
+                            }
+                          }}
+                          className={`w-full flex items-center justify-between px-4 py-3 text-sm transition-colors hover:bg-slate-50 ${
+                            isActive ? 'text-blue-600 font-semibold' : 'text-slate-700'
+                          }`}
+                        >
+                          <span>{labels[preset]}</span>
+                          {isActive && <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />}
+                        </button>
+                      );
+                    })}
+                    {datePreset === 'custom' && startDate && endDate && (
+                      <div className="px-4 py-2 text-xs text-slate-400">
+                        {new Date(startDate).toLocaleDateString('es-ES')} – {new Date(endDate).toLocaleDateString('es-ES')}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Filtros unificados */}
-            <div className="lg:col-span-3 relative unified-filters-dropdown">
+            <div className={`${hasFiltroSolar ? 'lg:col-span-6' : 'lg:col-span-10'} relative unified-filters-dropdown`}>
               <Button
                 onClick={() => setShowUnifiedFiltersDropdown(!showUnifiedFiltersDropdown)}
                 variant="outline"
@@ -2229,208 +2372,381 @@ export function Recordings({ onNavigate }: RecordingsProps) {
               </Button>
               
               {showUnifiedFiltersDropdown && (
-                <div className="absolute top-full left-0 mt-2 w-80 bg-white rounded-md shadow-xl z-50 border border-slate-200">
-                  <div className="p-4 space-y-4">
-                    {/* Filtro de estado */}
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">
-                        Estado de la llamada
-                      </label>
-                      <Select
-                        value={statusFilter || "all"}
-                        onValueChange={(value) => {
-                          setStatusFilter(value === "all" ? null : value);
-                          setCurrentPage(1);
-                        }}
-                        className="w-full"
-                      >
-                        <SelectItem value="all">Todos</SelectItem>
-                        <SelectItem value="efectiva">Efectiva</SelectItem>
-                        <SelectItem value="fallida">Fallida</SelectItem>
-                      </Select>
-                    </div>
-
-                    {/* Filtro de duración */}
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">
-                        Duración de la llamada
-                      </label>
-                      <Select
-                        value={durationFilter || "all"}
-                        onValueChange={(value) => handleDurationFilter(value === "all" ? null : value)}
-                        className="w-full"
-                      >
-                        <SelectItem value="all">Todas</SelectItem>
-                        <SelectItem value="lt-60">{'<'} 1 min</SelectItem>
-                        <SelectItem value="60-180">1-3 min</SelectItem>
-                        <SelectItem value="180-300">3-5 min</SelectItem>
-                        <SelectItem value="gt-300">{'>'} 5 min</SelectItem>
-                      </Select>
-                    </div>
-
-                    {/* Filtro de ordenamiento */}
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">
-                        Ordenar por
-                      </label>
-                      <Select
-                        value={sortOrderFilter}
-                        onValueChange={(value) => {
-                          setSortOrderFilter(value as 'ASC' | 'DESC');
-                          setCurrentPage(1);
-                        }}
-                        className="w-full"
-                      >
-                        <SelectItem value="DESC">Más recientes</SelectItem>
-                        <SelectItem value="ASC">Más antiguos</SelectItem>
-                      </Select>
-                    </div>
-
-                    {/* Filtro de motivo de desconexión */}
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">
-                        Motivo de desconexión
-                      </label>
-                      <Select
-                        value={disconnectionReasonFilter || "all"}
-                        onValueChange={(value) => handleDisconnectionReasonFilter(value === "all" ? null : value)}
-                        className="w-full"
-                      >
-                        <SelectItem value="all">Todas</SelectItem>
-                        {contextDisconnectionReasons.map(reason => (
-                          <SelectItem key={reason} value={reason}>{reason}</SelectItem>
-                        ))}
-                      </Select>
-                    </div>
-
-                    {/* Filtro de Interés - Solo si tiene permiso filtro_solar */}
-                    {hasFiltroSolar && (
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">
-                          Interés
-                        </label>
-                        <Select
-                          value={interestFilter || "all"}
-                          onValueChange={(value) => {
-                            setInterestFilter(value === "all" ? null : value);
-                            setCurrentPage(1);
-                          }}
-                          className="w-full"
-                        >
-                          <SelectItem value="all">Todos</SelectItem>
-                          <SelectItem value="call_after">Call After</SelectItem>
-                          <SelectItem value="not_interested">No Interesado</SelectItem>
-                          <SelectItem value="yes_call">Sí Llamar</SelectItem>
-                        </Select>
-                      </div>
+                <div className="absolute top-full left-0 mt-2 w-72 bg-white rounded-xl shadow-xl z-50 border border-slate-200 overflow-hidden">
+                  {/* Header del panel */}
+                  <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Filtros</span>
+                    {activeUnifiedFiltersCount > 0 && (
+                      <span className="text-xs text-blue-600 font-medium">{activeUnifiedFiltersCount} activos</span>
                     )}
+                  </div>
 
-                    {/* Filtro de Tipo de Vivienda - Solo si tiene permiso filtro_solar */}
-                    {hasFiltroSolar && (
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">
-                          Tipo de Vivienda
-                        </label>
-                        <Select
-                          value={tipoViviendaFilter || "all"}
-                          onValueChange={(value) => {
-                            setTipoViviendaFilter(value === "all" ? null : value);
-                            setCurrentPage(1);
-                          }}
-                          className="w-full"
-                        >
-                          <SelectItem value="all">Todos</SelectItem>
-                          <SelectItem value="piso">Piso</SelectItem>
-                          <SelectItem value="no_identificado">No Identificado</SelectItem>
-                          <SelectItem value="alquiler">Alquiler</SelectItem>
-                          <SelectItem value="casa">Casa</SelectItem>
-                        </Select>
-                      </div>
-                    )}
+                  <div className="divide-y divide-slate-100 max-h-[70vh] overflow-y-auto">
 
-                    {/* Filtro de Agente */}
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">
-                        Agente
-                      </label>
-                      <Select
-                        value={agentIdFilter || "all"}
-                        onValueChange={(value) => {
-                          setAgentIdFilter(value === "all" ? null : value);
-                          setCurrentPage(1);
-                        }}
-                        className="w-full"
-                      >
-                        <SelectItem value="all">Todos los agentes</SelectItem>
-                        {uniqueAgents.map(agentId => (
-                          <SelectItem key={agentId} value={agentId}>{agentId}</SelectItem>
-                        ))}
-                      </Select>
-                    </div>
+                    {/* Estado de la llamada */}
+                    {(() => {
+                      const key = 'estado';
+                      const open = expandedFilterSections.has(key);
+                      return (
+                        <div>
+                          <button
+                            onClick={() => toggleFilterSection(key)}
+                            className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-slate-700">Estado de la llamada</span>
+                              {statusFilter && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />}
+                            </div>
+                            <span className="text-slate-400 text-base leading-none">{open ? '−' : '+'}</span>
+                          </button>
+                          {open && (
+                            <div className="px-4 pb-3">
+                              <Select
+                                value={statusFilter || "all"}
+                                onValueChange={(value) => { setStatusFilter(value === "all" ? null : value); setCurrentPage(1); }}
+                                className="w-full"
+                              >
+                                <SelectItem value="all">Todos</SelectItem>
+                                <SelectItem value="efectiva">Efectiva</SelectItem>
+                                <SelectItem value="fallida">Fallida</SelectItem>
+                              </Select>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Duración */}
+                    {(() => {
+                      const key = 'duracion';
+                      const open = expandedFilterSections.has(key);
+                      return (
+                        <div>
+                          <button
+                            onClick={() => toggleFilterSection(key)}
+                            className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-slate-700">Duración</span>
+                              {durationFilter && (
+                                <span className="text-xs text-blue-600 font-semibold">
+                                  {durationOperator === 'gt' ? '>' : durationOperator === 'lt' ? '<' : '='} {durationMinutes} min
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-slate-400 text-base leading-none">{open ? '−' : '+'}</span>
+                          </button>
+                          {open && (
+                            <div className="px-4 pb-3 space-y-2">
+                              {/* Selector de operador */}
+                              <div className="flex gap-1.5">
+                                {(['gt', 'lt', 'eq'] as const).map((op) => (
+                                  <button
+                                    key={op}
+                                    onClick={() => { setDurationOperator(op === durationOperator ? null : op); setCurrentPage(1); }}
+                                    className={`flex-1 py-1.5 rounded-lg text-sm font-semibold border transition-colors ${
+                                      durationOperator === op
+                                        ? 'bg-blue-600 border-blue-600 text-white'
+                                        : 'bg-white border-slate-300 text-slate-600 hover:border-blue-400'
+                                    }`}
+                                  >
+                                    {op === 'gt' ? '>' : op === 'lt' ? '<' : '='}
+                                  </button>
+                                ))}
+                              </div>
+                              {/* Input de minutos */}
+                              <div className="relative">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  step="0.5"
+                                  placeholder="Minutos (ej: 1.5)"
+                                  value={durationMinutes}
+                                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                                    setDurationMinutes(e.target.value);
+                                    setCurrentPage(1);
+                                  }}
+                                  className="text-sm pr-12"
+                                />
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none">min</span>
+                              </div>
+                              {/* Limpiar filtro */}
+                              {durationFilter && (
+                                <button
+                                  onClick={clearDurationFilter}
+                                  className="w-full text-xs text-slate-400 hover:text-red-500 text-center py-1 transition-colors"
+                                >
+                                  Limpiar filtro de duración
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Ordenar por */}
+                    {(() => {
+                      const key = 'orden';
+                      const open = expandedFilterSections.has(key);
+                      return (
+                        <div>
+                          <button
+                            onClick={() => toggleFilterSection(key)}
+                            className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-slate-700">Ordenar por</span>
+                              {sortOrderFilter !== 'DESC' && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />}
+                            </div>
+                            <span className="text-slate-400 text-base leading-none">{open ? '−' : '+'}</span>
+                          </button>
+                          {open && (
+                            <div className="px-4 pb-3">
+                              <Select
+                                value={sortOrderFilter}
+                                onValueChange={(value) => { setSortOrderFilter(value as 'ASC' | 'DESC'); setCurrentPage(1); }}
+                                className="w-full"
+                              >
+                                <SelectItem value="DESC">Más recientes</SelectItem>
+                                <SelectItem value="ASC">Más antiguos</SelectItem>
+                              </Select>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Motivo de desconexión */}
+                    {(() => {
+                      const key = 'desconexion';
+                      const open = expandedFilterSections.has(key);
+                      return (
+                        <div>
+                          <button
+                            onClick={() => toggleFilterSection(key)}
+                            className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-slate-700">Motivo de desconexión</span>
+                              {disconnectionReasonFilter && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />}
+                            </div>
+                            <span className="text-slate-400 text-base leading-none">{open ? '−' : '+'}</span>
+                          </button>
+                          {open && (
+                            <div className="px-4 pb-3">
+                              <Select
+                                value={disconnectionReasonFilter || "all"}
+                                onValueChange={(value) => handleDisconnectionReasonFilter(value === "all" ? null : value)}
+                                className="w-full"
+                              >
+                                <SelectItem value="all">Todas</SelectItem>
+                                {contextDisconnectionReasons.map(reason => (
+                                  <SelectItem key={reason} value={reason}>{reason}</SelectItem>
+                                ))}
+                              </Select>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Agente */}
+                    {(() => {
+                      const key = 'agente';
+                      const open = expandedFilterSections.has(key);
+                      return (
+                        <div>
+                          <button
+                            onClick={() => toggleFilterSection(key)}
+                            className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-slate-700">Agente</span>
+                              {agentIdFilter && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />}
+                            </div>
+                            <span className="text-slate-400 text-base leading-none">{open ? '−' : '+'}</span>
+                          </button>
+                          {open && (
+                            <div className="px-4 pb-3">
+                              <Select
+                                value={agentIdFilter || "all"}
+                                onValueChange={(value) => { setAgentIdFilter(value === "all" ? null : value); setCurrentPage(1); }}
+                                className="w-full"
+                              >
+                                <SelectItem value="all">Todos los agentes</SelectItem>
+                                {uniqueAgents.map(agentId => (
+                                  <SelectItem key={agentId} value={agentId}>{agentId}</SelectItem>
+                                ))}
+                              </Select>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Interés — solo filtro_solar */}
+                    {hasFiltroSolar && (() => {
+                      const key = 'interes';
+                      const open = expandedFilterSections.has(key);
+                      return (
+                        <div>
+                          <button
+                            onClick={() => toggleFilterSection(key)}
+                            className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-slate-700">Interés</span>
+                              {interestFilter && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />}
+                            </div>
+                            <span className="text-slate-400 text-base leading-none">{open ? '−' : '+'}</span>
+                          </button>
+                          {open && (
+                            <div className="px-4 pb-3">
+                              <Select
+                                value={interestFilter || "all"}
+                                onValueChange={(value) => { setInterestFilter(value === "all" ? null : value); setCurrentPage(1); }}
+                                className="w-full"
+                              >
+                                <SelectItem value="all">Todos</SelectItem>
+                                <SelectItem value="call_after">Call After</SelectItem>
+                                <SelectItem value="not_interested">No Interesado</SelectItem>
+                                <SelectItem value="yes_call">Sí Llamar</SelectItem>
+                              </Select>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Tipo de Vivienda — solo filtro_solar */}
+                    {hasFiltroSolar && (() => {
+                      const key = 'vivienda';
+                      const open = expandedFilterSections.has(key);
+                      return (
+                        <div>
+                          <button
+                            onClick={() => toggleFilterSection(key)}
+                            className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-slate-700">Tipo de Vivienda</span>
+                              {tipoViviendaFilter && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />}
+                            </div>
+                            <span className="text-slate-400 text-base leading-none">{open ? '−' : '+'}</span>
+                          </button>
+                          {open && (
+                            <div className="px-4 pb-3">
+                              <Select
+                                value={tipoViviendaFilter || "all"}
+                                onValueChange={(value) => { setTipoViviendaFilter(value === "all" ? null : value); setCurrentPage(1); }}
+                                className="w-full"
+                              >
+                                <SelectItem value="all">Todos</SelectItem>
+                                <SelectItem value="piso">Piso</SelectItem>
+                                <SelectItem value="no_identificado">No Identificado</SelectItem>
+                                <SelectItem value="alquiler">Alquiler</SelectItem>
+                                <SelectItem value="casa">Casa</SelectItem>
+                              </Select>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Número de teléfono */}
+                    {(() => {
+                      const key = 'telefono';
+                      const open = expandedFilterSections.has(key);
+                      return (
+                        <div>
+                          <button
+                            onClick={() => toggleFilterSection(key)}
+                            className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-slate-700">Número de teléfono</span>
+                              {phoneNumberFilter && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />}
+                            </div>
+                            <span className="text-slate-400 text-base leading-none">{open ? '−' : '+'}</span>
+                          </button>
+                          {open && (
+                            <div className="px-4 pb-3">
+                              <div className="relative">
+                                <Phone className="w-4 h-4 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2" />
+                                <Input
+                                  type="text"
+                                  placeholder="Ej: +34600123456"
+                                  value={phoneNumberFilter}
+                                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setPhoneNumberFilter(e.target.value); setCurrentPage(1); }}
+                                  className="pl-8 text-sm"
+                                />
+                                {phoneNumberFilter && (
+                                  <button
+                                    onClick={() => { setPhoneNumberFilter(''); setCurrentPage(1); }}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Buscar grabación (Call ID) */}
+                    {(() => {
+                      const key = 'callid';
+                      const open = expandedFilterSections.has(key);
+                      return (
+                        <div>
+                          <button
+                            onClick={() => toggleFilterSection(key)}
+                            className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-slate-700">Buscar grabación</span>
+                              {searchTerm && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />}
+                            </div>
+                            <span className="text-slate-400 text-base leading-none">{open ? '−' : '+'}</span>
+                          </button>
+                          {open && (
+                            <div className="px-4 pb-3">
+                              <div className="relative">
+                                <Search className="w-4 h-4 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2" />
+                                <Input
+                                  type="text"
+                                  placeholder="Ej: call_abc123..."
+                                  value={searchTerm}
+                                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                                  className="pl-8 text-sm"
+                                />
+                                {searchTerm && (
+                                  <button
+                                    onClick={() => { setSearchTerm(''); setCurrentPage(1); }}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
                   </div>
                 </div>
               )}
             </div>
             
-            {/* Filtro por número de teléfono */}
-            <div className={`${hasFiltroSolar ? 'lg:col-span-2' : 'lg:col-span-3'}`}>
-              <div className="relative">
-                <Phone className="w-4 h-4 text-slate-500 absolute left-2 top-1/2 -translate-y-1/2" />
-                <Input
-                  type="text"
-                  placeholder="Número..."
-                  value={phoneNumberFilter}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                    setPhoneNumberFilter(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="pl-8 text-sm"
-                />
-                {phoneNumberFilter && (
-                  <button
-                    onClick={() => {
-                      setPhoneNumberFilter('');
-                      setCurrentPage(1);
-                    }}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            </div>
-            
-            {/* Búsqueda */}
-            <div className={`relative ${hasFiltroSolar ? 'lg:col-span-2' : 'lg:col-span-4'}`}>
-              <div className="relative">
-                <Search className="w-4 h-4 text-slate-500 absolute left-2 top-1/2 -translate-y-1/2" />
-                <Input
-                  type="text"
-                  placeholder="Buscar grabación..."
-                  value={searchTerm}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                    setSearchTerm(e.target.value);
-                    setCurrentPage(1); // Reset to first page when search changes
-                  }}
-                  className="pl-8 text-sm"
-                />
-                {searchTerm && (
-                  <button
-                    onClick={() => {
-                      setSearchTerm('');
-                      setCurrentPage(1);
-                    }}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            </div>
             
             {/* Filtro de base de datos - Solo si tiene permiso */}
             {hasFiltroSolar && (
-              <div className="lg:col-span-3">
+              <div className="lg:col-span-4">
                 <div className="flex items-center gap-1.5">
                   <Input
                     type="text"
@@ -2636,7 +2952,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                     {filteredCallsData.length > 0 ? (
                       <>
                         Mostrando {(currentPage - 1) * itemsPerPage + 1}-
-                        {Math.min(currentPage * itemsPerPage, filteredCalls.length)} de {totalFilteredCalls} grabaciones filtradas
+                        {Math.min(currentPage * itemsPerPage, filteredCalls.length)} de {formatFilteredTotal(totalFilteredCalls)} grabaciones filtradas
                       </>
                     ) : searchTerm || statusFilter || durationFilter || startDate || endDate || phoneNumberFilter || sortOrderFilter !== 'DESC' || agentIdFilter || appliedDatabaseFilter ? (
                       <>
