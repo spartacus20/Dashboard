@@ -779,6 +779,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
 
   // Cálculo del total y etiqueta a mostrar en el header.
   // Se calcula aquí, después de todos los useState, para tener acceso a todas las variables.
+  // Para el display del total: siempre hay filtro activo porque siempre se filtra por fecha
   const hasAnyActiveFilter = !!(searchTerm || startDate || endDate || statusFilter ||
     disconnectionReasonFilter || durationFilter || phoneNumberFilter ||
     sortOrderFilter !== 'DESC' || interestFilter || tipoViviendaFilter ||
@@ -1657,18 +1658,18 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   const activeFiltersCount = React.useMemo(() => {
     let count = 0;
     if (searchTerm) count++;
-    if (startDate || endDate) count++;
+    if (datePreset !== 'today') count++;
     if (statusFilter) count++;
     if (disconnectionReasonFilter) count++;
     if (durationFilter) count++;
     if (phoneNumberFilter) count++;
-    if (sortOrderFilter !== 'DESC') count++; // Contar solo si no es el valor por defecto
+    if (sortOrderFilter !== 'DESC') count++;
     if (interestFilter) count++;
     if (tipoViviendaFilter) count++;
     if (agentIdFilter) count++;
     if (appliedDatabaseFilter) count++;
     return count;
-  }, [searchTerm, startDate, endDate, statusFilter, disconnectionReasonFilter, durationFilter, phoneNumberFilter, sortOrderFilter, interestFilter, tipoViviendaFilter, agentIdFilter, appliedDatabaseFilter]);
+  }, [searchTerm, datePreset, statusFilter, disconnectionReasonFilter, durationFilter, phoneNumberFilter, sortOrderFilter, interestFilter, tipoViviendaFilter, agentIdFilter, appliedDatabaseFilter]);
 
 
   // Función para aplicar filtros usando la API list-calls
@@ -2208,15 +2209,17 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                 )}
               </div>
               
-              <Button 
-                onClick={resetAllFilters} 
-                variant="outline" 
-                size="sm"
-                className="h-8 px-3 text-xs font-medium bg-red-500 text-white border-red-500 hover:bg-red-600 hover:border-red-600 transition-colors gap-1.5"
-              >
-                <X className="h-3.5 w-3.5" />
-                Limpiar filtros
-              </Button>
+              {activeFiltersCount > 0 && (
+                <Button 
+                  onClick={resetAllFilters} 
+                  variant="outline" 
+                  size="sm"
+                  className="h-8 px-3 text-xs font-medium bg-red-500 text-white border-red-500 hover:bg-red-600 hover:border-red-600 transition-colors gap-1.5"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Limpiar filtros
+                </Button>
+              )}
             </div>
           </div>
           
