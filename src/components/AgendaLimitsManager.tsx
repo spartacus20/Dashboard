@@ -70,6 +70,10 @@ export function AgendaLimitsManager() {
   const [error, setError] = useState<string | null>(null);
   const [filterProvincia, setFilterProvincia] = useState('all');
   const [filterFecha, setFilterFecha] = useState('');
+  const [filterFechaDesde, setFilterFechaDesde] = useState<string>(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
   const [filterTipo, setFilterTipo] = useState<'all' | AgendaLimitsTipo>('all');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createTipo, setCreateTipo] = useState<AgendaLimitsTipo>('placas_solares');
@@ -98,6 +102,7 @@ export function AgendaLimitsManager() {
         fetchAgendaSlots({
           provincia: filterProvincia !== 'all' ? filterProvincia : undefined,
           fecha: filterFecha || undefined,
+          fecha_desde: !filterFecha ? (filterFechaDesde || undefined) : undefined,
           tipo: tipoFilter,
         }),
         fetchSlotProvinces(tipoFilter),
@@ -110,7 +115,7 @@ export function AgendaLimitsManager() {
     } finally {
       setLoading(false);
     }
-  }, [filterFecha, filterProvincia, filterTipo]);
+  }, [filterFecha, filterFechaDesde, filterProvincia, filterTipo]);
 
   useEffect(() => {
     loadSlots();
@@ -618,7 +623,7 @@ export function AgendaLimitsManager() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
           <div className="relative">
             <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
             <select
@@ -650,16 +655,30 @@ export function AgendaLimitsManager() {
             <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
             <input
               type="date"
+              value={filterFechaDesde}
+              onChange={(e) => setFilterFechaDesde(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-transparent transition-all"
+              title="Mostrar desde esta fecha en adelante"
+            />
+          </div>
+          <div className="relative">
+            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+            <input
+              type="date"
               value={filterFecha}
               onChange={(e) => setFilterFecha(e.target.value)}
               className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-400 focus:border-transparent transition-all"
+              title="Filtrar por fecha exacta (anula el filtro Desde)"
+              placeholder="Fecha exacta"
             />
           </div>
           <button
             type="button"
             onClick={() => {
+              const d = new Date();
               setFilterProvincia('all');
               setFilterFecha('');
+              setFilterFechaDesde(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
               setFilterTipo('all');
             }}
             className="px-4 py-3 text-slate-600 hover:bg-slate-100 rounded-xl font-medium transition-colors flex items-center justify-center gap-2 border border-slate-200 bg-white"

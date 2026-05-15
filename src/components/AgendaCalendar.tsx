@@ -6,13 +6,15 @@ import { DayAgendasModal } from './DayAgendasModal';
 interface AgendaCalendarProps {
   agendas: Agenda[];
   onAgendaClick: (agenda: Agenda) => void;
-  onLoadAllAgendas?: () => Promise<Agenda[]>;
+  onLoadMonthAgendas?: (year: number, month: number) => Promise<Agenda[]>;
+  // Si true, carga los datos una sola vez al montar y navega localmente sin refetch
+  cacheAcrossMonths?: boolean;
   // mode controla qué fecha se usa para ubicar la agenda en el calendario:
   // 'created' = fecha de creación, 'scheduled' = fecha agendada
   mode?: 'created' | 'scheduled';
 }
 
-export function AgendaCalendar({ agendas, onAgendaClick, onLoadAllAgendas, mode = 'created' }: AgendaCalendarProps) {
+export function AgendaCalendar({ agendas, onAgendaClick, onLoadMonthAgendas, cacheAcrossMonths = false, mode = 'created' }: AgendaCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedType, setSelectedType] = useState<string>('all');
   const [showTypeFilter, setShowTypeFilter] = useState(false);
@@ -21,26 +23,29 @@ export function AgendaCalendar({ agendas, onAgendaClick, onLoadAllAgendas, mode 
   const [allAgendas, setAllAgendas] = useState<Agenda[]>(agendas);
   const [loadingAllAgendas, setLoadingAllAgendas] = useState(false);
 
-  // Cargar todas las agendas al montar el componente
-  useEffect(() => {
-    const loadAllAgendas = async () => {
-      if (onLoadAllAgendas) {
-        setLoadingAllAgendas(true);
-        try {
-          const allAgendasData = await onLoadAllAgendas();
-          setAllAgendas(allAgendasData);
-        } catch (error) {
-          // console.error('Error al cargar todas las agendas:', error);
-        } finally {
-          setLoadingAllAgendas(false);
-        }
-      } else {
-        setAllAgendas(agendas);
+  // Carga agendas: si cacheAcrossMonths ignora year/month (carga todo de una vez)
+  const loadMonthAgendas = async (year: number, month: number) => {
+    if (onLoadMonthAgendas) {
+      setLoadingAllAgendas(true);
+      try {
+        const data = await onLoadMonthAgendas(year, month);
+        setAllAgendas(data);
+      } catch (error) {
+        // console.error('Error al cargar agendas:', error);
+        setAllAgendas([]);
+      } finally {
+        setLoadingAllAgendas(false);
       }
-    };
+    } else {
+      setAllAgendas(agendas);
+    }
+  };
 
-    loadAllAgendas();
-  }, [agendas, onLoadAllAgendas]);
+  // Carga inicial al montar (o cuando cambia el callback)
+  useEffect(() => {
+    loadMonthAgendas(currentDate.getFullYear(), currentDate.getMonth());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onLoadMonthAgendas]);
 
   // Obtener tipos únicos de agenda
   const uniqueTypes = useMemo(() => {
@@ -123,17 +128,33 @@ export function AgendaCalendar({ agendas, onAgendaClick, onLoadAllAgendas, mode 
 
   // Navegar al mes anterior
   const goToPreviousMonth = () => {
-    setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+    setCurrentDate(prev => {
+      const next = new Date(prev.getFullYear(), prev.getMonth() - 1, 1);
+      if (!cacheAcrossMonths) {
+        loadMonthAgendas(next.getFullYear(), next.getMonth());
+      }
+      return next;
+    });
   };
 
   // Navegar al mes siguiente
   const goToNextMonth = () => {
-    setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+    setCurrentDate(prev => {
+      const next = new Date(prev.getFullYear(), prev.getMonth() + 1, 1);
+      if (!cacheAcrossMonths) {
+        loadMonthAgendas(next.getFullYear(), next.getMonth());
+      }
+      return next;
+    });
   };
 
   // Ir al mes actual
   const goToCurrentMonth = () => {
-    setCurrentDate(new Date());
+    const now = new Date();
+    setCurrentDate(now);
+    if (!cacheAcrossMonths) {
+      loadMonthAgendas(now.getFullYear(), now.getMonth());
+    }
   };
 
   // Abrir modal del día

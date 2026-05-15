@@ -1,5 +1,5 @@
 import { Agenda, AgendaSlot } from '../../types';
-import { getClientId, GET_AGENDAS_WEBHOOK_URL, DELETE_AGENDA_WEBHOOK_URL, AVERAGE_CALLS_PER_AGENDA_URL, MOTIVOS_RECHAZO_URL } from './config';
+import { getClientId, GET_AGENDAS_WEBHOOK_URL, GET_AGENDAS_BY_SCHEDULED_URL, DELETE_AGENDA_WEBHOOK_URL, AVERAGE_CALLS_PER_AGENDA_URL, MOTIVOS_RECHAZO_URL } from './config';
 import { supabase } from '../../lib/supabase';
 
 
@@ -496,6 +496,7 @@ export async function releaseAgendaSlotOccupancy(agenda: Agenda): Promise<boolea
 export async function fetchAgendaSlots(filters?: {
   provincia?: string;
   fecha?: string;
+  fecha_desde?: string;
   tipo?: 'placas_solares' | 'bateria';
 }): Promise<AgendaSlot[]> {
   try {
@@ -511,6 +512,8 @@ export async function fetchAgendaSlots(filters?: {
 
     if (filters?.fecha) {
       query = query.eq('fecha', filters.fecha);
+    } else if (filters?.fecha_desde) {
+      query = query.gte('fecha', filters.fecha_desde);
     }
 
     if (filters?.tipo) {
@@ -684,3 +687,50 @@ export async function fetchMotivosRechazo(
   return (data.motivos ?? []) as MotivoRechazoStat[];
 }
 
+// Obtener agendas filtradas por fecha de visita (fecha_agendamiento) — mes a mes para el calendario de visitas
+export async function fetchAgendasByScheduledDate(
+  clientId: string,
+  year: number,
+  month: number,
+): Promise<Agenda[]> {
+  const mm = String(month + 1).padStart(2, '0');
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  const fechaInicio = `${year}-${mm}-01`;
+  const fechaFin = `${year}-${mm}-${String(lastDay).padStart(2, '0')}`;
+
+  let allAgendas: Agenda[] = [];
+  let page = 1;
+  let hasMore = true;
+
+  while (hasMore) {
+    const response = await fetch(GET_AGENDAS_BY_SCHEDULED_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: clientId,
+        fecha_inicio: fechaInicio,
+        fecha_fin: fechaFin,
+        per_page: 500,
+        page,
+        sort_order: 'ASC',
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error al obtener agendas por fecha de visita: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    const agendas: Agenda[] = data.agendas || [];
+    allAgendas = [...allAgendas, ...agendas];
+
+    if (page >= (data.total_paginas || 1) || agendas.length === 0) {
+      hasMore = false;
+    } else {
+      page += 1;
+    }
+  }
+
+  return allAgendas;
+}
