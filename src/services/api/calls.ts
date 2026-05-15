@@ -596,7 +596,7 @@ export async function listRecoveryCalls(
   };
 }
 
-export type InteresadosCualificacion = 'todos' | 'cualificado' | 'no_cualificado' | 'no_llamar';
+export type InteresadosCualificacion = 'todos' | 'agendados' | 'cualificado' | 'no_cualificado' | 'no_llamar';
 
 // Listar llamadas de interesados (efectivas + sentimiento positivo en metadata)
 export async function listInteresadosCalls(
@@ -620,6 +620,7 @@ export async function listInteresadosCalls(
   total_cualificados: number;
   total_no_cualificados: number;
   total_no_llamar: number;
+  total_con_agenda: number;
   total_todos: number;
 }> {
   const url = `${BASE_URL}/api/calls/interesados-list-calls`;
@@ -644,6 +645,7 @@ export async function listInteresadosCalls(
     total_cualificados: data.total_cualificados ?? 0,
     total_no_cualificados: data.total_no_cualificados ?? 0,
     total_no_llamar: data.total_no_llamar ?? 0,
+    total_con_agenda: data.total_con_agenda ?? 0,
     total_todos: data.total_todos ?? 0,
   };
 }

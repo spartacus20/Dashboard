@@ -2091,7 +2091,7 @@ export function Dashboard({
               <Card>
                 <CardHeader className="flex flex-row items-center justify-center gap-2 pb-2">
                   <CardTitle className="text-sm font-medium text-center">
-                    Total Agendamientos
+                    {hasFiltroSolar ? "Paneles Solares" : "Total Agendamientos"}
                   </CardTitle>
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -2115,9 +2115,9 @@ export function Dashboard({
                       const efectivas =
                         dashboardData?.dashboard_data?.metricas_generales
                           ?.llamadas_efectivas || 0;
-                      const agendas =
-                        dashboardData?.dashboard_data?.metricas_generales
-                          ?.total_agendamientos || 0;
+                      const agendas = hasFiltroSolar
+                        ? dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos_paneles || 0
+                        : dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos || 0;
                       if (efectivas > 0) {
                         return (
                           <span className="font-bold">
@@ -2129,9 +2129,10 @@ export function Dashboard({
                     })()}
                   </div>
                   <div className="text-xs text-slate-600 text-center">
-                    {dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos?.toLocaleString() ||
-                      0}{" "}
-                    agendamientos
+                    {hasFiltroSolar
+                      ? (dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos_paneles?.toLocaleString() || 0)
+                      : (dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos?.toLocaleString() || 0)}{" "}
+                    {hasFiltroSolar ? "paneles solares" : "agendamientos"}
                   </div>
                 </CardContent>
               </Card>
@@ -2164,9 +2165,9 @@ export function Dashboard({
                       const costo =
                         dashboardData?.dashboard_data?.metricas_generales
                           ?.costo_total || 0;
-                      const agendas =
-                        dashboardData?.dashboard_data?.metricas_generales
-                          ?.total_agendamientos || 0;
+                      const agendas = hasFiltroSolar
+                        ? dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos_paneles || 0
+                        : dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos || 0;
                       if (agendas > 0) {
                         return (
                           <span className="font-bold">
@@ -2178,9 +2179,10 @@ export function Dashboard({
                     })()}
                   </div>
                   <div className="text-xs text-slate-600 text-center">
-                    {dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos?.toLocaleString() ||
-                      0}{" "}
-                    agendamientos
+                    {hasFiltroSolar
+                      ? (dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos_paneles?.toLocaleString() || 0)
+                      : (dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos?.toLocaleString() || 0)}{" "}
+                    {hasFiltroSolar ? "paneles solares" : "agendamientos"}
                   </div>
                 </CardContent>
               </Card>
@@ -2212,9 +2214,9 @@ export function Dashboard({
                       const efectivas =
                         dashboardData?.dashboard_data?.metricas_generales
                           ?.llamadas_efectivas || 0;
-                      const agendas =
-                        dashboardData?.dashboard_data?.metricas_generales
-                          ?.total_agendamientos || 0;
+                      const agendas = hasFiltroSolar
+                        ? dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos_paneles || 0
+                        : dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos || 0;
                       if (agendas > 0) {
                         const promedio = efectivas / agendas;
                         return (
@@ -2227,7 +2229,7 @@ export function Dashboard({
                     })()}
                   </div>
                   <div className="text-xs text-slate-600 text-center">
-                    llamadas por agenda
+                    llamadas por {hasFiltroSolar ? "panel solar" : "agenda"}
                   </div>
                 </CardContent>
               </Card>
