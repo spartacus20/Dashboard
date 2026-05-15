@@ -629,7 +629,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   const [durationMinutes, setDurationMinutes] = React.useState<string>('');
   // Valor derivado para mantener compatibilidad con todos los checks de "filtro activo"
   const durationFilter = (durationOperator && durationMinutes.trim()) ? `${durationOperator}:${durationMinutes}` : null;
-  const [statusFilter, setStatusFilter] = React.useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = React.useState<string | null>('efectiva');
   const [phoneNumberFilter, setPhoneNumberFilter] = React.useState<string>('');
   const [sortOrderFilter, setSortOrderFilter] = React.useState<'ASC' | 'DESC'>('DESC');
   const [interestFilter, setInterestFilter] = React.useState<string | null>(null);

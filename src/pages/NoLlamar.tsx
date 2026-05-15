@@ -2,6 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
 import { 
   PhoneOff, 
   Search, 
@@ -18,14 +25,40 @@ import { useCallsContext } from '../context/CallsContext';
 import { listDontCallRecords } from '../api';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 
+const getTodayLocal = (): string => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const getDateRangeForPeriod = (period: string): { from: string; to: string } => {
+  const today = getTodayLocal();
+  if (period === 'today') {
+    return { from: today, to: today };
+  }
+  if (period === 'week') {
+    const d = new Date();
+    d.setDate(d.getDate() - 6);
+    const from = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return { from, to: today };
+  }
+  if (period === 'month') {
+    const d = new Date();
+    d.setDate(d.getDate() - 29);
+    const from = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return { from, to: today };
+  }
+  return { from: '', to: '' };
+};
+
 const NoLlamar: React.FC = () => {
   const { dontCallEnabled, apiKey, clientId } = useCallsContext();
   const [dontCallRecords, setDontCallRecords] = useState<DontCall[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [dateFrom, setDateFrom] = useState<string>('');
-  const [dateTo, setDateTo] = useState<string>('');
+  const [timePeriod, setTimePeriod] = useState<string>('today');
+  const [dateFrom, setDateFrom] = useState<string>(getTodayLocal());
+  const [dateTo, setDateTo] = useState<string>(getTodayLocal());
   const [currentPage, setCurrentPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
@@ -214,6 +247,14 @@ const NoLlamar: React.FC = () => {
     }
   };
 
+  const handleTimePeriodChange = (period: string) => {
+    setTimePeriod(period);
+    if (period !== 'custom') {
+      const { from, to } = getDateRangeForPeriod(period);
+      setDateFrom(from);
+      setDateTo(to);
+    }
+  };
 
   // Efectos
   useEffect(() => {
@@ -286,55 +327,110 @@ const NoLlamar: React.FC = () => {
       </div>
 
       {/* Estadísticas */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Registros</CardTitle>
-            <AlertCircle className="h-4 w-4 text-blue-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalRecords.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">
-              Registros en la base de datos
-            </p>
-          </CardContent>
-        </Card>
+      {(() => {
+        const periodLabels: Record<string, string> = {
+          today: 'Hoy',
+          week: 'Última semana',
+          month: 'Último mes',
+          all: 'Todos los registros',
+          custom: 'Personalizado',
+        };
+        const formatShort = (dateStr: string) => {
+          if (!dateStr) return '';
+          const months = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+          const [y, m, d] = dateStr.split('-');
+          return `${d} ${months[parseInt(m) - 1]} ${y}`;
+        };
+        const periodRangeLabel = () => {
+          if (timePeriod === 'all') return 'Sin restricción de fecha';
+          if (timePeriod === 'today') return formatShort(dateFrom);
+          if (dateFrom && dateTo) return `${formatShort(dateFrom)} — ${formatShort(dateTo)}`;
+          return '';
+        };
+        const getHourlyAverage = (): { value: string; subtitle: string } | null => {
+          if (totalRecords === 0 || timePeriod === 'all') return null;
+          const now = new Date();
+          let hours = 1;
+          if (timePeriod === 'today') {
+            const midnight = new Date();
+            midnight.setHours(0, 0, 0, 0);
+            hours = Math.max(1, (now.getTime() - midnight.getTime()) / (1000 * 60 * 60));
+          } else if (timePeriod === 'week') {
+            hours = 7 * 24;
+          } else if (timePeriod === 'month') {
+            hours = 30 * 24;
+          } else if (timePeriod === 'custom' && dateFrom && dateTo) {
+            const from = new Date(`${dateFrom}T00:00:00`);
+            const to = new Date(`${dateTo}T23:59:59`);
+            hours = Math.max(1, (to.getTime() - from.getTime()) / (1000 * 60 * 60));
+          }
+          const avg = totalRecords / hours;
+          const hoursLabel = timePeriod === 'today'
+            ? `${Math.floor(hours)}h transcurridas hoy`
+            : timePeriod === 'week' ? '168h (7 días)'
+            : timePeriod === 'month' ? '720h (30 días)'
+            : `${Math.round(hours)}h del rango`;
+          return {
+            value: avg >= 1 ? avg.toFixed(1) : avg.toFixed(2),
+            subtitle: hoursLabel,
+          };
+        };
+        const hourly = getHourlyAverage();
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Registros Recientes</CardTitle>
-            <Calendar className="h-4 w-4 text-orange-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-orange-600">
-              {dontCallRecords.filter(r => {
-                const recordDate = new Date(r.created_at);
-                const sevenDaysAgo = new Date();
-                sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-                return recordDate >= sevenDaysAgo;
-              }).length.toLocaleString()}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Últimos 7 días
-            </p>
-          </CardContent>
-        </Card>
+        return (
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total en período</CardTitle>
+                <AlertCircle className="h-4 w-4 text-blue-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{totalRecords.toLocaleString()}</div>
+                <p className="text-xs text-muted-foreground">
+                  {periodLabels[timePeriod] ?? timePeriod}
+                </p>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Página Actual</CardTitle>
-            <Calendar className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {currentPage} / {totalPages}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {recordsPerPage} registros por página
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Período activo</CardTitle>
+                <Calendar className="h-4 w-4 text-purple-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-lg font-bold text-purple-600">
+                  {periodLabels[timePeriod] ?? timePeriod}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {periodRangeLabel()}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Promedio por hora</CardTitle>
+                <PhoneOff className="h-4 w-4 text-orange-500" />
+              </CardHeader>
+              <CardContent>
+                {hourly ? (
+                  <>
+                    <div className="text-2xl font-bold text-orange-500">
+                      {hourly.value} <span className="text-sm font-normal text-muted-foreground">reg/h</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{hourly.subtitle}</p>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-2xl font-bold text-gray-400">—</div>
+                    <p className="text-xs text-muted-foreground">No aplica para este período</p>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        );
+      })()}
 
       {/* Dialog de exportación */}
       <Dialog open={isExportDialogOpen} onOpenChange={(open) => {
@@ -456,7 +552,25 @@ const NoLlamar: React.FC = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="bg-white">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            {/* Selector de período */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Período</label>
+              <Select value={timePeriod} onValueChange={handleTimePeriodChange}>
+                <SelectTrigger className="bg-white border-gray-300 text-gray-700 focus:border-blue-500 focus:ring-blue-500">
+                  <SelectValue placeholder="Seleccionar período" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="today">Hoy</SelectItem>
+                  <SelectItem value="week">Última semana</SelectItem>
+                  <SelectItem value="month">Último mes</SelectItem>
+                  <SelectItem value="all">Todos los registros</SelectItem>
+                  <SelectItem value="custom">Personalizado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Búsqueda por texto */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700">Buscar</label>
               <div className="relative">
@@ -469,28 +583,31 @@ const NoLlamar: React.FC = () => {
                 />
               </div>
             </div>
-
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">Desde</label>
-              <Input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="bg-white border-gray-300 text-gray-700 focus:border-blue-500 focus:ring-blue-500"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">Hasta</label>
-              <Input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="bg-white border-gray-300 text-gray-700 focus:border-blue-500 focus:ring-blue-500"
-              />
-            </div>
           </div>
+
+          {/* Campos de fecha: solo visibles en modo Personalizado */}
+          {timePeriod === 'custom' && (
+            <div className="grid gap-4 md:grid-cols-2 mt-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">Desde</label>
+                <Input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="bg-white border-gray-300 text-gray-700 focus:border-blue-500 focus:ring-blue-500"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">Hasta</label>
+                <Input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="bg-white border-gray-300 text-gray-700 focus:border-blue-500 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

@@ -1,9 +1,12 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Phone, Copy, RefreshCw, ExternalLink, X, Send, Plus, ChevronDown, User, Trash2, AlertTriangle, Search, BarChart3 } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Phone, Copy, RefreshCw, ExternalLink, X, Send, Plus, ChevronDown, User, Trash2, AlertTriangle, Search, BarChart3, ChevronLeft, ChevronRight } from 'lucide-react';
 import { RetellPhoneNumber, RetellAgent, BlockedNumber } from '../types';
 import { createPhoneCall, fetchAgents, importPhoneNumber, deletePhoneNumber, fetchFolders, getCallCountsByFromNumber, listBlockedNumbers, createBlockedNumber, updateBlockedNumber, deleteBlockedNumber } from '../api';
+import { fetchPhoneNumbers } from '../services/api/telephony';
 import { useCallsContext } from '../context/CallsContext';
 import { getUserData } from '../lib/supabase';
+
+const PHONES_PER_PAGE = 25;
 
 interface PhoneNumbersProps {
   onNavigate: (page: 'dashboard' | 'recordings' | 'phones') => void;
@@ -1199,7 +1202,6 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
   const [showDeletePhoneModal, setShowDeletePhoneModal] = useState(false);
   const [showDeleteMultipleModal, setShowDeleteMultipleModal] = useState(false);
   const [phoneToDelete, setPhoneToDelete] = useState<RetellPhoneNumber | null>(null);
-  const [workspaceFilter, setWorkspaceFilter] = useState<string | null>(null);
   const [phoneSearchTerm, setPhoneSearchTerm] = useState('');
   const [workspaceFoldersByApiKey, setWorkspaceFoldersByApiKey] = useState<Record<string, string>>({});
   const [callCountsByPhone, setCallCountsByPhone] = useState<Record<string, { total: number; efectivas: number; fallidas: number }>>({});
@@ -1216,85 +1218,93 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
   const [editBlockedSaving, setEditBlockedSaving] = useState(false);
   const [editBlockedError, setEditBlockedError] = useState<string | null>(null);
 
-  // Usar el contexto para obtener la API key, números de teléfono y el estado de llamadas
+  // Usar el contexto para obtener la API key y configuración
   const { 
     apiKey, 
     apiKeyTest,
     clientId,
-    phoneNumbers: contextPhoneNumbers, 
-    loadingPhoneNumbers: contextLoadingPhoneNumbers,
-    loadPhoneNumbers: contextLoadPhoneNumbers,
     callsEnabled, 
     phoneFilter 
   } = useCallsContext();
-  
-  // Usar los números de teléfono del contexto en lugar de estado local
-  const phoneNumbers = contextPhoneNumbers;
-  const loading = contextLoadingPhoneNumbers;
 
-  // Cargar folders (workspaces) desde Retell para cada API key y mapearlos por similitud con clientId
+  // Estado local de números de teléfono (carga por workspace seleccionado)
+  const [selectedWorkspaceKey, setSelectedWorkspaceKey] = useState<string | null>(null);
+  const [localPhoneNumbers, setLocalPhoneNumbers] = useState<RetellPhoneNumber[]>([]);
+  const [localLoading, setLocalLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const phoneNumbers = localPhoneNumbers;
+  const loading = localLoading;
+
+  const loadLocalPhoneNumbers = useCallback(async (apiKeyToLoad: string) => {
+    setLocalLoading(true);
+    try {
+      const numbers = await fetchPhoneNumbers(apiKeyToLoad);
+      setLocalPhoneNumbers(numbers);
+      setCurrentPage(1);
+    } catch {
+      // silencioso
+    } finally {
+      setLocalLoading(false);
+    }
+  }, []);
+
+  // Cargar el primer workspace al montar o cuando cambien las keys
   useEffect(() => {
-    const loadFoldersForWorkspaces = async () => {
-      const apiKeysToUse = apiKeyTest && apiKeyTest.length > 0
-        ? apiKeyTest
-        : apiKey
-          ? [apiKey]
-          : [];
+    const firstKey = (apiKeyTest && apiKeyTest.length > 0 ? apiKeyTest[0] : null) ?? apiKey;
+    if (firstKey) {
+      setSelectedWorkspaceKey(firstKey);
+      loadLocalPhoneNumbers(firstKey);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiKey, apiKeyTest]);
 
-      if (apiKeysToUse.length === 0) return;
+  // Cargar nombres de folders POR WORKSPACE en paralelo, PERO solo después de que
+  // los teléfonos del primer workspace ya cargaron. Así evitamos saturar el pool de
+  // conexiones del navegador (máx. 6 por dominio) y los teléfonos se muestran primero.
+  useEffect(() => {
+    if (localLoading) return; // esperar a que terminen los teléfonos
 
-      const newMapping: Record<string, string> = {};
+    const apiKeysToUse = apiKeyTest && apiKeyTest.length > 0
+      ? apiKeyTest
+      : apiKey ? [apiKey] : [];
 
-      for (const key of apiKeysToUse) {
-        try {
-          const folders = await fetchFolders(key);
-          if (!folders || folders.length === 0) continue;
+    if (apiKeysToUse.length === 0) return;
 
-          // Si solo hay una carpeta, usar esa directamente
-          if (folders.length === 1) {
-            newMapping[key] = folders[0].folderName;
-            continue;
-          }
+    const baseClientId = (clientId || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 
-          // Normalizar clientId para comparación
-          const baseClientId = (clientId || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-
-          let bestFolder = folders[0];
-          let bestScore = -1;
-
-          for (const folder of folders) {
-            const normalizedName = folder.folderName.toLowerCase().replace(/[^a-z0-9]+/g, '');
-            let score = 0;
-
-            if (baseClientId && normalizedName.includes(baseClientId)) {
-              score = baseClientId.length;
-            } else if (baseClientId) {
-              // Longitud de prefijo común como heurística simple
-              const maxLen = Math.min(baseClientId.length, normalizedName.length);
-              while (score < maxLen && baseClientId[score] === normalizedName[score]) {
-                score++;
-              }
-            }
-
-            if (score > bestScore) {
-              bestScore = score;
-              bestFolder = folder;
-            }
-          }
-
-          newMapping[key] = bestFolder.folderName;
-        } catch (e) {
-          // console.error('Error al cargar folders para workspace:', key, e);
+    const resolveFolderName = (folders: { folderName: string }[]): string => {
+      if (folders.length === 1) return folders[0].folderName;
+      let best = folders[0];
+      let bestScore = -1;
+      for (const folder of folders) {
+        const norm = folder.folderName.toLowerCase().replace(/[^a-z0-9]+/g, '');
+        let score = 0;
+        if (baseClientId && norm.includes(baseClientId)) {
+          score = baseClientId.length;
+        } else if (baseClientId) {
+          const maxLen = Math.min(baseClientId.length, norm.length);
+          while (score < maxLen && baseClientId[score] === norm[score]) score++;
         }
+        if (score > bestScore) { bestScore = score; best = folder; }
       }
-
-      if (Object.keys(newMapping).length > 0) {
-        setWorkspaceFoldersByApiKey(newMapping);
-      }
+      return best.folderName;
     };
 
-    loadFoldersForWorkspaces();
-  }, [apiKey, apiKeyTest, clientId]);
+    // Una vez libres las conexiones, lanzar todos en paralelo e ir actualizando el estado
+    apiKeysToUse.forEach(async (key) => {
+      try {
+        const folders = await fetchFolders(key);
+        if (!folders || folders.length === 0) return;
+        const name = resolveFolderName(folders);
+        setWorkspaceFoldersByApiKey(prev => ({ ...prev, [key]: name }));
+      } catch {
+        // silencioso
+      }
+    });
+  // localLoading como dependencia hace que este efecto corra cuando los teléfonos terminan
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localLoading, apiKey, apiKeyTest, clientId]);
 
   // Cargar números bloqueados
   useEffect(() => {
@@ -1415,45 +1425,42 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
     return mapping;
   }, [phoneNumbers, workspaceFoldersByApiKey]);
 
-  // Obtener lista de workspaces únicos disponibles (labels)
+  // Opciones de workspace para el selector (derivadas de las API keys disponibles)
+  const workspaceOptions = useMemo(() => {
+    const keys = apiKeyTest && apiKeyTest.length > 0 ? apiKeyTest : (apiKey ? [apiKey] : []);
+    return keys.map((key, i) => ({
+      key,
+      label: workspaceFoldersByApiKey[key] || `Workspace ${i + 1}`,
+    }));
+  }, [apiKey, apiKeyTest, workspaceFoldersByApiKey]);
+
+  // Para el modal de eliminar múltiples (sigue necesitando availableWorkspaces por nombre)
   const availableWorkspaces = Array.from(
-    new Set(
-      Object.values(workspaceNameByApiKey).filter((ws) => !!ws)
-    )
+    new Set(Object.values(workspaceNameByApiKey).filter(Boolean))
   );
-  
-  // Filtrar números de teléfono por número específico (URL) y por workspace si hay filtros activos
-  const filteredByPhone = phoneFilter 
+
+  // Filtrar solo por número específico de URL (el workspace ya viene filtrado por la carga)
+  const filteredPhoneNumbers = phoneFilter
     ? phoneNumbers.filter(phone => phone.phone_number === phoneFilter)
     : phoneNumbers;
 
-  const filteredPhoneNumbers = workspaceFilter
-    ? filteredByPhone.filter(phone => {
-        const labelFromApiKey = phone.workspace_api_key
-          ? workspaceNameByApiKey[phone.workspace_api_key]
-          : undefined;
-        const labelFromWebhook = phone.inbound_webhook_url
-          ? getWorkspaceFromWebhook(phone.inbound_webhook_url)
-          : null;
-        const finalLabel = labelFromApiKey || labelFromWebhook;
-        return finalLabel === workspaceFilter;
-      })
-    : filteredByPhone;
-
   // Filtrar por búsqueda de número (incluye dígitos y espacios/guiones)
   const normalizePhone = (s: string) => (s || '').replace(/\D/g, '');
-  const displayPhoneNumbers = !phoneSearchTerm.trim()
+  const filteredBySearch = !phoneSearchTerm.trim()
     ? filteredPhoneNumbers
     : filteredPhoneNumbers.filter(phone => {
         const normalized = normalizePhone(phone.phone_number || '');
         const term = normalizePhone(phoneSearchTerm);
         return normalized.includes(term);
       });
-  
-  // Cargar los números al montar el componente usando la función del contexto
-  useEffect(() => {
-    contextLoadPhoneNumbers();
-  }, [contextLoadPhoneNumbers]);
+
+  // Paginación de 25 items
+  const totalPages = Math.max(1, Math.ceil(filteredBySearch.length / PHONES_PER_PAGE));
+  const safePage = Math.min(currentPage, totalPages);
+  const displayPhoneNumbers = filteredBySearch.slice(
+    (safePage - 1) * PHONES_PER_PAGE,
+    safePage * PHONES_PER_PAGE
+  );
   
   // Función para copiar un número al portapapeles
   const copyToClipboard = (number: string) => {
@@ -1588,35 +1595,40 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
           <h3 className="text-lg font-semibold text-slate-800">Números de Teléfono</h3>
           
           <div className="flex flex-wrap gap-2 items-center justify-end">
+            {/* Selector de workspace (controla qué números se cargan) */}
+            {workspaceOptions.length > 1 && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-600">Workspace:</span>
+                <select
+                  value={selectedWorkspaceKey || ''}
+                  onChange={(e) => {
+                    const key = e.target.value;
+                    setSelectedWorkspaceKey(key);
+                    loadLocalPhoneNumbers(key);
+                  }}
+                  disabled={localLoading}
+                  className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+                >
+                  {workspaceOptions.map((ws) => (
+                    <option key={ws.key} value={ws.key}>
+                      {ws.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {/* Buscador por número de teléfono */}
             <div className="relative flex items-center">
               <Search className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
               <input
                 type="text"
                 value={phoneSearchTerm}
-                onChange={(e) => setPhoneSearchTerm(e.target.value)}
+                onChange={(e) => { setPhoneSearchTerm(e.target.value); setCurrentPage(1); }}
                 placeholder="Buscar por número..."
                 className="pl-9 pr-3 py-2 rounded-lg border border-slate-300 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 w-48 min-w-0"
               />
             </div>
-
-            {availableWorkspaces.length > 0 && (
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-slate-600">Workspace:</span>
-                <select
-                  value={workspaceFilter || ''}
-                  onChange={(e) => setWorkspaceFilter(e.target.value || null)}
-                  className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Todos</option>
-                  {availableWorkspaces.map((ws) => (
-                    <option key={ws} value={ws}>
-                      {ws}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
 
             <button
               onClick={() => setShowAddPhoneModal(true)}
@@ -1627,7 +1639,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
             </button>
             
             <button
-              onClick={() => contextLoadPhoneNumbers(true)}
+              onClick={() => selectedWorkspaceKey && loadLocalPhoneNumbers(selectedWorkspaceKey)}
               disabled={loadingAll}
               className={`px-4 py-2 rounded-lg text-white flex items-center ${
                 loadingAll
@@ -1700,6 +1712,18 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
             </div>
           )}
           
+          {/* Info de paginación */}
+          {!loadingAll && !error && filteredBySearch.length > 0 && (
+            <div className="flex items-center justify-between text-sm text-slate-500 pb-1">
+              <span>
+                {filteredBySearch.length} número{filteredBySearch.length !== 1 ? 's' : ''} en total
+              </span>
+              <span>
+                Página {safePage} de {totalPages}
+              </span>
+            </div>
+          )}
+
           {/* Lista de números de teléfono */}
           {!loadingAll && !error && displayPhoneNumbers.map((phone) => {
             const counts = getCallCountsForPhone(phone.phone_number);
@@ -1867,6 +1891,53 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
               </div>
             );
           })}
+
+          {/* Controles de paginación */}
+          {!loadingAll && !error && totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={safePage <= 1}
+                className="p-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter((p) => p === 1 || p === totalPages || Math.abs(p - safePage) <= 2)
+                .reduce<(number | '...')[]>((acc, p, idx, arr) => {
+                  if (idx > 0 && p - (arr[idx - 1] as number) > 1) acc.push('...');
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((item, idx) =>
+                  item === '...' ? (
+                    <span key={`dots-${idx}`} className="px-1 text-slate-400 text-sm">…</span>
+                  ) : (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => setCurrentPage(item as number)}
+                      className={`w-9 h-9 rounded-lg text-sm font-medium transition-colors ${
+                        safePage === item
+                          ? 'bg-blue-600 text-white'
+                          : 'border border-slate-300 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {item}
+                    </button>
+                  )
+                )}
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={safePage >= totalPages}
+                className="p-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
       )}
@@ -2093,7 +2164,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
       {showAddPhoneModal && (
         <AddPhoneModal
           onClose={() => setShowAddPhoneModal(false)}
-          onSuccess={() => contextLoadPhoneNumbers(true)}
+          onSuccess={() => selectedWorkspaceKey && loadLocalPhoneNumbers(selectedWorkspaceKey)}
           workspaceNameByApiKey={workspaceNameByApiKey}
         />
       )}
@@ -2106,7 +2177,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
             setPhoneToDelete(null);
             setShowDeletePhoneModal(false);
           }}
-          onSuccess={() => contextLoadPhoneNumbers(true)}
+          onSuccess={() => selectedWorkspaceKey && loadLocalPhoneNumbers(selectedWorkspaceKey)}
           apiKey={apiKey}
         />
       )}
@@ -2123,7 +2194,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
           }}
           apiKey={apiKey}
           onClose={() => setShowDeleteMultipleModal(false)}
-          onSuccess={() => contextLoadPhoneNumbers(true)}
+          onSuccess={() => selectedWorkspaceKey && loadLocalPhoneNumbers(selectedWorkspaceKey)}
         />
       )}
     </div>

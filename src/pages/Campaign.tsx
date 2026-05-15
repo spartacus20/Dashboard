@@ -1,10 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Megaphone, RefreshCw, AlertCircle, Search, BarChart3, Upload, Pencil, Trash2 } from 'lucide-react';
-import { RetellBatchCall, RetellPhoneNumber } from '../types';
-import { fetchBatchCalls, fetchFolders, getWorkspaceNameFromWebhook, deleteBatchCall } from '../api';
+import { Megaphone, RefreshCw, AlertCircle, Search, BarChart3, Upload, Pencil, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { RetellBatchCall } from '../types';
+import { fetchBatchCalls, fetchFolders, deleteBatchCall } from '../api';
 import { useCallsContext } from '../context/CallsContext';
 import { BatchCallingTab } from './campaign/BatchCallingTab';
 import { Button } from '../components/ui/button';
+
+const ITEMS_PER_PAGE = 50;
 
 interface BatchCallWithWorkspace extends RetellBatchCall {
   workspace_api_key: string;
@@ -16,8 +18,9 @@ interface CampaignProps {
 }
 
 export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
-  const { apiKey, apiKeyTest, phoneNumbers, loadPhoneNumbers, clientId } = useCallsContext();
+  const { apiKey, apiKeyTest, clientId } = useCallsContext();
   const [campaignTab, setCampaignTab] = useState<'campaigns' | 'batch-calling'>('campaigns');
+  const [currentPage, setCurrentPage] = useState(1);
   const [batchCallsByWorkspace, setBatchCallsByWorkspace] = useState<BatchCallWithWorkspace[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,73 +57,52 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
     setCampaignTab('batch-calling');
   };
 
-  // Cargar nombres de workspace desde Retell (folders), igual que en PhoneNumbers
+  // Cargar nombres de folders en paralelo, actualizando el estado de forma incremental
   useEffect(() => {
-    const loadFoldersForWorkspaces = async () => {
-      const apiKeysToUse =
-        apiKeyTest && apiKeyTest.length > 0 ? apiKeyTest : apiKey ? [apiKey] : [];
-      if (apiKeysToUse.length === 0) return;
+    const apiKeysToUse = apiKeyTest && apiKeyTest.length > 0 ? apiKeyTest : apiKey ? [apiKey] : [];
+    if (apiKeysToUse.length === 0) return;
 
-      const newMapping: Record<string, string> = {};
-      for (const key of apiKeysToUse) {
-        try {
-          const folders = await fetchFolders(key);
-          if (!folders || folders.length === 0) continue;
-          if (folders.length === 1) {
-            newMapping[key] = folders[0].folderName;
-            continue;
-          }
-          const baseClientId = (clientId || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-          let bestFolder = folders[0];
-          let bestScore = -1;
-          for (const folder of folders) {
-            const normalizedName = folder.folderName.toLowerCase().replace(/[^a-z0-9]+/g, '');
-            let score = 0;
-            if (baseClientId && normalizedName.includes(baseClientId)) {
-              score = baseClientId.length;
-            } else if (baseClientId) {
-              const maxLen = Math.min(baseClientId.length, normalizedName.length);
-              while (score < maxLen && baseClientId[score] === normalizedName[score]) {
-                score++;
-              }
-            }
-            if (score > bestScore) {
-              bestScore = score;
-              bestFolder = folder;
-            }
-          }
-          newMapping[key] = bestFolder.folderName;
-        } catch (e) {
-          // console.error('Error al cargar folders para workspace (Campaign):', key, e);
+    const baseClientId = (clientId || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+    const resolveFolderName = (folders: { folderName: string }[]): string => {
+      if (folders.length === 1) return folders[0].folderName;
+      let best = folders[0];
+      let bestScore = -1;
+      for (const folder of folders) {
+        const norm = folder.folderName.toLowerCase().replace(/[^a-z0-9]+/g, '');
+        let score = 0;
+        if (baseClientId && norm.includes(baseClientId)) {
+          score = baseClientId.length;
+        } else if (baseClientId) {
+          const maxLen = Math.min(baseClientId.length, norm.length);
+          while (score < maxLen && baseClientId[score] === norm[score]) score++;
         }
+        if (score > bestScore) { bestScore = score; best = folder; }
       }
-      if (Object.keys(newMapping).length > 0) {
-        setWorkspaceFoldersByApiKey(newMapping);
-      }
+      return best.folderName;
     };
-    loadFoldersForWorkspaces();
+
+    apiKeysToUse.forEach(async (key) => {
+      try {
+        const folders = await fetchFolders(key);
+        if (!folders || folders.length === 0) return;
+        const name = resolveFolderName(folders);
+        setWorkspaceFoldersByApiKey(prev => ({ ...prev, [key]: name }));
+      } catch {
+        // silencioso
+      }
+    });
   }, [apiKey, apiKeyTest, clientId]);
 
-  // Mapear cada API key a un nombre de workspace (misma prioridad que PhoneNumbers: folders → metadata → webhook → fallback)
+  // Mapear cada API key a un nombre de workspace (folders primero, fallback genérico)
   const workspaceNameByApiKey = useMemo(() => {
     const mapping: Record<string, string> = {};
-    const keys = Array.from(
-      new Set(
-        (apiKeyTest && apiKeyTest.length > 0 ? apiKeyTest : apiKey ? [apiKey] : []).filter(Boolean)
-      )
-    ) as string[];
-
+    const keys = (apiKeyTest && apiKeyTest.length > 0 ? apiKeyTest : apiKey ? [apiKey] : []) as string[];
     keys.forEach((key, index) => {
-      const phoneForKey = phoneNumbers.find((p: RetellPhoneNumber) => p.workspace_api_key === key);
-      const fromFolders = workspaceFoldersByApiKey[key];
-      const fromMetadata = phoneForKey?.workspace_name;
-      const fromWebhook = phoneForKey?.inbound_webhook_url
-        ? getWorkspaceNameFromWebhook(phoneForKey.inbound_webhook_url)
-        : null;
-      mapping[key] = fromFolders || fromMetadata || fromWebhook || `Workspace ${index + 1}`;
+      mapping[key] = workspaceFoldersByApiKey[key] || `Workspace ${index + 1}`;
     });
     return mapping;
-  }, [apiKey, apiKeyTest, phoneNumbers, workspaceFoldersByApiKey]);
+  }, [apiKey, apiKeyTest, workspaceFoldersByApiKey]);
 
   const availableWorkspaces = useMemo(
     () => Array.from(new Set(Object.values(workspaceNameByApiKey).filter(Boolean))),
@@ -142,12 +124,10 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
     return 2;
   };
 
-  // Filtrar campañas por workspace y búsqueda; ordenar: planned y en lanzamiento primero
-  const displayBatchCalls = useMemo(() => {
+  // Filtrar, ordenar y paginar campañas
+  const filteredBatchCalls = useMemo(() => {
     let list = batchCallsByWorkspace;
-    if (workspaceFilter) {
-      list = list.filter((b) => b.workspace_name === workspaceFilter);
-    }
+    if (workspaceFilter) list = list.filter((b) => b.workspace_name === workspaceFilter);
     if (searchTerm.trim()) {
       const term = searchTerm.trim().toLowerCase();
       list = list.filter(
@@ -161,6 +141,13 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
       (a, b) => getSortPriority(a.status || '') - getSortPriority(b.status || '')
     );
   }, [batchCallsByWorkspace, workspaceFilter, searchTerm]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredBatchCalls.length / ITEMS_PER_PAGE));
+  const safePage = Math.min(currentPage, totalPages);
+  const displayBatchCalls = filteredBatchCalls.slice(
+    (safePage - 1) * ITEMS_PER_PAGE,
+    safePage * ITEMS_PER_PAGE
+  );
 
   // Cargar batch calls de todas las API keys
   const loadAllBatchCalls = async () => {
@@ -201,10 +188,6 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    loadPhoneNumbers();
-  }, [loadPhoneNumbers]);
 
   useEffect(() => {
     loadAllBatchCalls();
@@ -279,7 +262,7 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
               <input
                 type="text"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
                 placeholder="Buscar por nombre, ID o número..."
                 className="pl-9 pr-3 py-2 rounded-lg border border-slate-300 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 w-56 min-w-0"
               />
@@ -290,7 +273,7 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
                 <span className="text-sm text-slate-600">Workspace:</span>
                 <select
                   value={workspaceFilter || ''}
-                  onChange={(e) => setWorkspaceFilter(e.target.value || null)}
+                  onChange={(e) => { setWorkspaceFilter(e.target.value || null); setCurrentPage(1); }}
                   className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Todos</option>
@@ -341,6 +324,13 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
           {loading && (
             <div className="p-6 text-center text-slate-600">
               Cargando datos...
+            </div>
+          )}
+
+          {!loading && !error && filteredBatchCalls.length > 0 && (
+            <div className="flex items-center justify-between text-sm text-slate-500 pb-1">
+              <span>{filteredBatchCalls.length} campaña{filteredBatchCalls.length !== 1 ? 's' : ''} en total</span>
+              {totalPages > 1 && <span>Página {safePage} de {totalPages}</span>}
             </div>
           )}
 
@@ -482,6 +472,53 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
               </div>
             );
           })}
+
+          {/* Controles de paginación */}
+          {!loading && !error && totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={safePage <= 1}
+                className="p-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter((p) => p === 1 || p === totalPages || Math.abs(p - safePage) <= 2)
+                .reduce<(number | '...')[]>((acc, p, idx, arr) => {
+                  if (idx > 0 && p - (arr[idx - 1] as number) > 1) acc.push('...');
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((item, idx) =>
+                  item === '...' ? (
+                    <span key={`dots-${idx}`} className="px-1 text-slate-400 text-sm">…</span>
+                  ) : (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => setCurrentPage(item as number)}
+                      className={`w-9 h-9 rounded-lg text-sm font-medium transition-colors ${
+                        safePage === item
+                          ? 'bg-blue-600 text-white'
+                          : 'border border-slate-300 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {item}
+                    </button>
+                  )
+                )}
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={safePage >= totalPages}
+                className="p-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
       )}

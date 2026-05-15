@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import {
   fetchAgendas,
   fetchAllAgendas,
+  fetchAgendasByScheduledDate,
   deleteAgenda,
   getAverageCallsPerAgenda,
   updateAgendaStatus,
@@ -2005,8 +2006,20 @@ export function Agendas({ onNavigate }: AgendasProps) {
               <AgendaCalendar
                 agendas={filteredAgendas}
                 onAgendaClick={openAgendaModal}
-                onLoadAllAgendas={
-                  clientId ? () => fetchAllAgendas(clientId) : undefined
+                onLoadMonthAgendas={
+                  clientId
+                    ? (year, month) => {
+                        const mm = String(month + 1).padStart(2, '0');
+                        const lastDay = new Date(year, month + 1, 0).getDate();
+                        return fetchAllAgendas(
+                          clientId,
+                          undefined,
+                          undefined,
+                          `${year}-${mm}-01`,
+                          `${year}-${mm}-${String(lastDay).padStart(2, '0')}`,
+                        );
+                      }
+                    : undefined
                 }
                 mode="created"
               />
@@ -2041,8 +2054,10 @@ export function Agendas({ onNavigate }: AgendasProps) {
               <AgendaCalendar
                 agendas={filteredAgendas}
                 onAgendaClick={openAgendaModal}
-                onLoadAllAgendas={
-                  clientId ? () => fetchAllAgendas(clientId) : undefined
+                onLoadMonthAgendas={
+                  clientId
+                    ? (year, month) => fetchAgendasByScheduledDate(clientId, year, month)
+                    : undefined
                 }
                 mode="scheduled"
               />
