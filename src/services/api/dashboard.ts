@@ -282,7 +282,7 @@ const EMPTY_DASHBOARD = {
   dashboard_data: {
     metricas_generales: {
       total_llamadas: 0, llamadas_efectivas: 0, llamadas_fallidas: 0, costo_total: 0,
-      total_duration_seconds: 0, total_duration_minutes: 0, total_agendamientos: 0, costo_por_agenda: 0
+      total_duration_seconds: 0, total_duration_minutes: 0, total_agendamientos: 0, total_agendamientos_paneles: 0, costo_por_agenda: 0
     },
     llamadas_por_dia: [], llamadas_por_hora: [], razones_desconexion: [], tipos_vivienda: [],
     tipos_vivienda_agendas: [], interes: [], llamadas_efectivas_por_hora: [], agentes_por_agendas: [],
@@ -307,6 +307,7 @@ function transformDashboardData(data: any): any {
           total_duration_seconds: data.total_duration_seconds || 0,
           total_duration_minutes: data.total_duration_seconds ? Math.round((data.total_duration_seconds || 0) / 60) : 0,
           total_agendamientos: data.total_agendamientos || 0,
+          total_agendamientos_paneles: data.total_agendamientos_paneles || 0,
           costo_por_agenda: data.costo_por_agenda || 0
         },
         // Transformar llamadas_por_dia reales si están disponibles; si no, hacer fallback a costos_por_dia

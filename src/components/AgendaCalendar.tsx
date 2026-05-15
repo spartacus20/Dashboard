@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Agenda } from '../types';
-import { Calendar, ChevronLeft, ChevronRight, Filter, X, RefreshCw } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Filter, X, RefreshCw, BarChart3 } from 'lucide-react';
 import { DayAgendasModal } from './DayAgendasModal';
 
 interface AgendaCalendarProps {
@@ -22,6 +22,7 @@ export function AgendaCalendar({ agendas, onAgendaClick, onLoadMonthAgendas, cac
   const [dayModalOpen, setDayModalOpen] = useState(false);
   const [allAgendas, setAllAgendas] = useState<Agenda[]>(agendas);
   const [loadingAllAgendas, setLoadingAllAgendas] = useState(false);
+  const [viewMode, setViewMode] = useState<'calendar' | 'bars'>('calendar');
 
   // Carga agendas: si cacheAcrossMonths ignora year/month (carga todo de una vez)
   const loadMonthAgendas = async (year: number, month: number) => {
@@ -60,6 +61,44 @@ export function AgendaCalendar({ agendas, onAgendaClick, onLoadMonthAgendas, cac
     return source.filter(agenda => agenda.tipo_agenda === selectedType);
   }, [allAgendas, selectedType]);
 
+  // Obtener la fecha relevante según el modo (debe declararse antes de barData)
+  const getAgendaDateForMode = (agenda: Agenda): Date | null => {
+    const dateString =
+      mode === 'scheduled'
+        ? (agenda.fecha_agendamiento || agenda.created_at)
+        : (agenda.created_at || agenda.fecha_agendamiento);
+
+    if (!dateString) return null;
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return null;
+    return d;
+  };
+
+  // Datos para la vista de barras: un registro por día del mes actual
+  const barData = useMemo(() => {
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    return Array.from({ length: daysInMonth }, (_, i) => {
+      const day = i + 1;
+      const date = new Date(year, month, day);
+      const dayAgendas = filteredAgendas.filter(agenda => {
+        const d = getAgendaDateForMode(agenda);
+        return d ? d.toDateString() === date.toDateString() : false;
+      });
+      let solar = 0, batteries = 0, others = 0;
+      for (const a of dayAgendas) {
+        const t = (a.tipo_agenda || '').toLowerCase();
+        if (t.includes('paneles solares') || t.includes('placas solares')) solar++;
+        else if (t.includes('bater')) batteries++;
+        else others++;
+      }
+      return { day, date, solar, batteries, others, total: dayAgendas.length, agendas: dayAgendas };
+    });
+  }, [filteredAgendas, currentDate, mode]);
+
+  const maxBarCount = useMemo(() => Math.max(1, ...barData.map(d => d.total)), [barData]);
+
   // Generar días del mes actual
   const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear();
@@ -82,19 +121,6 @@ export function AgendaCalendar({ agendas, onAgendaClick, onLoadMonthAgendas, cac
     }
     
     return days;
-  };
-
-  // Obtener la fecha relevante según el modo
-  const getAgendaDateForMode = (agenda: Agenda): Date | null => {
-    const dateString =
-      mode === 'scheduled'
-        ? (agenda.fecha_agendamiento || agenda.created_at)
-        : (agenda.created_at || agenda.fecha_agendamiento);
-
-    if (!dateString) return null;
-    const d = new Date(dateString);
-    if (isNaN(d.getTime())) return null;
-    return d;
   };
 
   // Obtener agendas para una fecha específica,
@@ -193,8 +219,8 @@ export function AgendaCalendar({ agendas, onAgendaClick, onLoadMonthAgendas, cac
     <div className="bg-white rounded-lg shadow-lg border border-slate-200">
       {/* Header del calendario */}
       <div className="p-6 border-b border-slate-200">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
             <h3 className="text-xl font-semibold text-slate-800 capitalize">{monthName}</h3>
             <div className="flex items-center space-x-2">
               <button
@@ -215,6 +241,39 @@ export function AgendaCalendar({ agendas, onAgendaClick, onLoadMonthAgendas, cac
               >
                 <ChevronRight className="w-5 h-5 text-slate-600" />
               </button>
+            </div>
+            {/* Calendario vs barras por día */}
+            <div
+              className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1"
+              role="group"
+              aria-label="Cambiar entre calendario y barras por día"
+            >
+                <button
+                  type="button"
+                  onClick={() => setViewMode('calendar')}
+                  aria-pressed={viewMode === 'calendar'}
+                  className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                    viewMode === 'calendar'
+                      ? 'bg-white text-blue-700 shadow-sm ring-1 ring-slate-200'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
+                  }`}
+                >
+                  <Calendar className="h-4 w-4 shrink-0" />
+                  <span>Calendario</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('bars')}
+                  aria-pressed={viewMode === 'bars'}
+                  className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                    viewMode === 'bars'
+                      ? 'bg-white text-blue-700 shadow-sm ring-1 ring-slate-200'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
+                  }`}
+                >
+                  <BarChart3 className="h-4 w-4 shrink-0" />
+                  <span>Barras por día</span>
+                </button>
             </div>
           </div>
           
@@ -284,76 +343,130 @@ export function AgendaCalendar({ agendas, onAgendaClick, onLoadMonthAgendas, cac
         </div>
       </div>
 
-      {/* Calendario */}
-      <div className="p-6">
-        {/* Días de la semana */}
-        <div className="grid grid-cols-7 gap-1 mb-4">
-          {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map(day => (
-            <div key={day} className="text-center text-sm font-medium text-slate-500 py-2">
-              {day}
-            </div>
-          ))}
-        </div>
-
-        {/* Días del mes */}
-        <div className="grid grid-cols-7 gap-1">
-          {days.map((day, index) => {
-            if (!day) {
-              return <div key={index} className="h-24 bg-slate-50 rounded-lg" />;
-            }
-
-            const isToday = day.toDateString() === today.toDateString();
-            const isCurrentMonth = day.getMonth() === currentDate.getMonth();
-            const dayAgendas = getAgendasForDate(day);
-
-                         return (
-               <div
-                 key={index}
-                 onClick={() => openDayModal(day)}
-                 className={`h-24 border border-slate-200 rounded-lg p-1 cursor-pointer hover:bg-slate-50 transition-colors ${
-                   isToday ? 'bg-blue-50 border-blue-300' : 'bg-white'
-                 } ${!isCurrentMonth ? 'opacity-50' : ''}`}
-               >
-                {/* Número del día */}
-                <div className={`text-xs font-medium mb-1 ${
-                  isToday ? 'text-blue-700' : 'text-slate-700'
-                }`}>
-                  {day.getDate()}
-                </div>
-                
-                                 {/* Agendas del día */}
-                 <div className="space-y-1">
-                   {dayAgendas.slice(0, 2).map((agenda, agendaIndex) => {
-                     const titleDate =
-                       mode === 'scheduled'
-                         ? (agenda.fecha_agendamiento
-                            ? `Agendado: ${formatDate(agenda.fecha_agendamiento)}`
-                            : (agenda.created_at ? `Creado: ${formatDate(agenda.created_at)}` : ''))
-                         : (agenda.created_at
-                            ? `Creado: ${formatDate(agenda.created_at)}`
-                            : (agenda.fecha_agendamiento ? `Agendado: ${formatDate(agenda.fecha_agendamiento)}` : ''));
-
-                     return (
-                     <div
-                       key={agendaIndex}
-                       className={`text-xs p-1 rounded text-white truncate cursor-pointer hover:opacity-80 transition-opacity ${getAgendaColor(agenda.tipo_agenda)}`}
-                       title={`${agenda.nombre} - ${agenda.tipo_agenda}${titleDate ? ' - ' + titleDate : ''}`}
-                       onClick={() => onAgendaClick(agenda)}
-                     >
-                       {agenda.nombre}
-                     </div>
-                   ); })}
-                   {dayAgendas.length > 2 && (
-                     <div className="text-xs text-slate-500 text-center">
-                       +{dayAgendas.length - 2} más
-                     </div>
-                   )}
-                 </div>
+      {/* Vista calendario */}
+      {viewMode === 'calendar' && (
+        <div className="p-6">
+          {/* Días de la semana */}
+          <div className="grid grid-cols-7 gap-1 mb-4">
+            {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map(day => (
+              <div key={day} className="text-center text-sm font-medium text-slate-500 py-2">
+                {day}
               </div>
-            );
-          })}
+            ))}
+          </div>
+
+          {/* Días del mes */}
+          <div className="grid grid-cols-7 gap-1">
+            {days.map((day, index) => {
+              if (!day) {
+                return <div key={index} className="h-24 bg-slate-50 rounded-lg" />;
+              }
+
+              const isToday = day.toDateString() === today.toDateString();
+              const isCurrentMonth = day.getMonth() === currentDate.getMonth();
+              const dayAgendas = getAgendasForDate(day);
+
+              return (
+                <div
+                  key={index}
+                  onClick={() => openDayModal(day)}
+                  className={`h-24 border border-slate-200 rounded-lg p-1 cursor-pointer hover:bg-slate-50 transition-colors ${
+                    isToday ? 'bg-blue-50 border-blue-300' : 'bg-white'
+                  } ${!isCurrentMonth ? 'opacity-50' : ''}`}
+                >
+                  {/* Número del día */}
+                  <div className={`text-xs font-medium mb-1 ${isToday ? 'text-blue-700' : 'text-slate-700'}`}>
+                    {day.getDate()}
+                  </div>
+
+                  {/* Agendas del día */}
+                  <div className="space-y-1">
+                    {dayAgendas.slice(0, 2).map((agenda, agendaIndex) => {
+                      const titleDate =
+                        mode === 'scheduled'
+                          ? (agenda.fecha_agendamiento
+                              ? `Agendado: ${formatDate(agenda.fecha_agendamiento)}`
+                              : (agenda.created_at ? `Creado: ${formatDate(agenda.created_at)}` : ''))
+                          : (agenda.created_at
+                              ? `Creado: ${formatDate(agenda.created_at)}`
+                              : (agenda.fecha_agendamiento ? `Agendado: ${formatDate(agenda.fecha_agendamiento)}` : ''));
+                      return (
+                        <div
+                          key={agendaIndex}
+                          className={`text-xs p-1 rounded text-white truncate cursor-pointer hover:opacity-80 transition-opacity ${getAgendaColor(agenda.tipo_agenda)}`}
+                          title={`${agenda.nombre} - ${agenda.tipo_agenda}${titleDate ? ' - ' + titleDate : ''}`}
+                          onClick={e => { e.stopPropagation(); onAgendaClick(agenda); }}
+                        >
+                          {agenda.nombre}
+                        </div>
+                      );
+                    })}
+                    {dayAgendas.length > 2 && (
+                      <div className="text-xs text-slate-500 text-center">
+                        +{dayAgendas.length - 2} más
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Vista de barras */}
+      {viewMode === 'bars' && (
+        <div className="p-6">
+          <div className="flex items-end gap-1 overflow-x-auto pb-2" style={{ minHeight: '220px' }}>
+            {barData.map(({ day, date, solar, batteries, others, total }) => {
+              const BAR_MAX_H = 160;
+              const barH = total > 0 ? Math.max(Math.round((total / maxBarCount) * BAR_MAX_H), 6) : 0;
+              const solarH = total > 0 ? Math.round((solar / total) * barH) : 0;
+              const battH = total > 0 ? Math.round((batteries / total) * barH) : 0;
+              const othersH = barH - solarH - battH;
+              const isToday = date.toDateString() === today.toDateString();
+
+              return (
+                <div
+                  key={day}
+                  className="flex flex-col items-center flex-shrink-0 cursor-pointer group"
+                  style={{ width: 'calc((100% - 30px) / 31)', minWidth: '22px' }}
+                  onClick={() => openDayModal(date)}
+                  title={`${date.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })}: ${total} agendas`}
+                >
+                  {/* Contador encima */}
+                  <div className="text-[10px] font-bold text-slate-700 mb-1 h-4 leading-4">
+                    {total > 0 ? total : ''}
+                  </div>
+
+                  {/* Barra apilada */}
+                  <div
+                    className="w-full flex flex-col justify-end rounded-t overflow-hidden group-hover:opacity-75 transition-opacity"
+                    style={{ height: `${BAR_MAX_H}px` }}
+                  >
+                    <div className="w-full flex flex-col" style={{ height: barH > 0 ? `${barH}px` : '0px' }}>
+                      {solar > 0 && (
+                        <div className="w-full bg-gradient-to-b from-yellow-500 to-orange-500" style={{ height: `${solarH}px` }} />
+                      )}
+                      {batteries > 0 && (
+                        <div className="w-full bg-gradient-to-b from-blue-500 to-indigo-600" style={{ height: `${battH}px` }} />
+                      )}
+                      {others > 0 && (
+                        <div className="w-full bg-gradient-to-b from-slate-400 to-gray-500" style={{ height: `${othersH}px` }} />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Número de día */}
+                  <div className={`text-[10px] mt-1 font-medium ${isToday ? 'text-blue-700 font-bold' : 'text-slate-400'}`}>
+                    {day}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Leyenda */}
       <div className="p-4 border-t border-slate-200 bg-slate-50">

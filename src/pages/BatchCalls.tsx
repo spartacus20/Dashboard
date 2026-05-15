@@ -31,6 +31,9 @@ function BatchCall({ onNavigate }: { onNavigate: (page: string) => void }) {
     batchCallsLoaded,
   } = useCallsContext();
 
+  const noPhoneNumbersAvailable =
+    !loadingPhoneNumbers && phoneNumbers.length === 0;
+
   // Estado para el modal de tareas
   const [selectedBatch, setSelectedBatch] =
     React.useState<RetellBatchCall | null>(null);
