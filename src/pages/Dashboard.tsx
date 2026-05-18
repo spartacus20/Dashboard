@@ -74,6 +74,7 @@ import { DailyCallsTrendChart } from "../components/dashboard/charts/DailyCallsT
 import { SimplePieChart } from "../components/dashboard/charts/SimplePieChart";
 import { TimePeriodSelector } from "../components/dashboard/TimePeriodSelector";
 import { getMetadata } from "../lib/supabase";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 // Helpers de zona horaria (Europa/Madrid)
 // Componente para mostrar esqueletos de carga
@@ -235,6 +236,9 @@ export function Dashboard({
     useState<string>("0");
   const [effectiveCallsHourEnd, setEffectiveCallsHourEnd] =
     useState<string>("23");
+
+  /** 0 = duración media efectivas, 1 = duración total (todas las llamadas con duración válida) */
+  const [duracionCardSlide, setDuracionCardSlide] = useState<0 | 1>(0);
 
   // Estado para filtro de base de datos
   const [databaseFilter, setDatabaseFilter] = useState<string>("");
@@ -2235,40 +2239,140 @@ export function Dashboard({
               </Card>
             )}
             <Card>
-              <CardHeader className="flex flex-row items-center justify-center gap-2 pb-2">
-                <CardTitle className="text-sm font-medium text-center">
-                  Duración Total de Llamadas
-                </CardTitle>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  className="h-4 w-4 text-slate-400"
+              <CardHeader className="flex flex-row items-center gap-1 pb-2 px-1 pt-4">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 text-slate-500 hover:text-slate-900"
+                  aria-label="Métrica anterior"
+                  onClick={() =>
+                    setDuracionCardSlide((s) => (s === 0 ? 1 : 0))
+                  }
                 >
-                  <circle cx="12" cy="12" r="10" />
-                  <polyline points="12 6 12 12 16 14" />
-                </svg>
+                  <ChevronLeft className="h-5 w-5" />
+                </Button>
+                <div className="flex flex-1 flex-col items-center justify-center gap-1 min-w-0 px-1">
+                  <div className="flex flex-row items-center justify-center gap-2">
+                    <CardTitle className="text-sm font-medium text-center leading-tight">
+                      {duracionCardSlide === 0
+                        ? "Duración media (efectivas)"
+                        : "Duración total de llamadas"}
+                    </CardTitle>
+                    {duracionCardSlide === 0 ? (
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        className="h-4 w-4 shrink-0 text-teal-400"
+                        aria-hidden
+                      >
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M12 6v6l4 2" />
+                      </svg>
+                    ) : (
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        className="h-4 w-4 shrink-0 text-slate-400"
+                        aria-hidden
+                      >
+                        <circle cx="12" cy="12" r="10" />
+                        <polyline points="12 6 12 12 16 14" />
+                      </svg>
+                    )}
+                  </div>
+                  <div
+                    className="flex flex-row gap-1.5"
+                    role="tablist"
+                    aria-label="Indicador de métrica de duración"
+                  >
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full transition-colors ${duracionCardSlide === 0 ? "bg-teal-500" : "bg-slate-200"}`}
+                      aria-current={
+                        duracionCardSlide === 0 ? "true" : undefined
+                      }
+                    />
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full transition-colors ${duracionCardSlide === 1 ? "bg-slate-500" : "bg-slate-200"}`}
+                      aria-current={
+                        duracionCardSlide === 1 ? "true" : undefined
+                      }
+                    />
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 text-slate-500 hover:text-slate-900"
+                  aria-label="Siguiente métrica"
+                  onClick={() =>
+                    setDuracionCardSlide((s) => (s === 1 ? 0 : 1))
+                  }
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </Button>
               </CardHeader>
-              <CardContent className="flex flex-col items-center justify-center text-center">
-                <div className="text-xl font-bold text-center">
-                  {(() => {
-                    const minutes =
-                      dashboardData?.dashboard_data?.metricas_generales
-                        ?.total_duration_minutes || 0;
-                    return (
-                      <span className="font-bold">
-                        {minutes.toLocaleString()} min
-                      </span>
-                    );
-                  })()}
-                </div>
-                <div className="text-xs text-slate-600 text-center">
-                  Suma de duración de llamadas (en minutos)
-                </div>
+              <CardContent className="flex flex-col items-center justify-center text-center min-h-[5.25rem] pb-4 pt-0">
+                {duracionCardSlide === 0 ? (
+                  <>
+                    <div className="text-xl font-bold text-center">
+                      {(() => {
+                        const min =
+                          dashboardData?.dashboard_data?.metricas_generales
+                            ?.promedio_duracion_efectivas_minutos ?? 0;
+                        return (
+                          <span className="font-bold">
+                            {Number(min).toLocaleString("es-ES", {
+                              minimumFractionDigits: 1,
+                              maximumFractionDigits: 1,
+                            })}{" "}
+                            min
+                          </span>
+                        );
+                      })()}
+                    </div>
+                    <div className="text-xs text-slate-600 text-center mt-1">
+                      Promedio solo entre llamadas efectivas con duración válida
+                      {(() => {
+                        const n =
+                          dashboardData?.dashboard_data?.metricas_generales
+                            ?.efectivas_con_duracion ?? 0;
+                        return n > 0
+                          ? ` (${n.toLocaleString()} llamadas)`
+                          : "";
+                      })()}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-xl font-bold text-center">
+                      {(() => {
+                        const minutes =
+                          dashboardData?.dashboard_data?.metricas_generales
+                            ?.total_duration_minutes || 0;
+                        return (
+                          <span className="font-bold">
+                            {minutes.toLocaleString()} min
+                          </span>
+                        );
+                      })()}
+                    </div>
+                    <div className="text-xs text-slate-600 text-center mt-1">
+                      Suma de duración de llamadas (en minutos)
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           </div>

@@ -2,17 +2,32 @@ import { Agenda, AgendaSlot } from '../../types';
 import { getClientId, GET_AGENDAS_WEBHOOK_URL, GET_AGENDAS_BY_SCHEDULED_URL, DELETE_AGENDA_WEBHOOK_URL, AVERAGE_CALLS_PER_AGENDA_URL, MOTIVOS_RECHAZO_URL } from './config';
 import { supabase } from '../../lib/supabase';
 
+/** Body para filtrar agendas sin motivo de rechazo (NULL o vacío); debe coincidir con el backend */
+export const MOTIVO_RECHAZO_FILTRO_SIN = '__sin_motivo__';
 
+/** Motivos válidos al crear/filtrar agendas (misma lista que createAgenda en el API) */
+export const MOTIVOS_RECHAZO_AGENDA_FILTRO = [
+  'Edad',
+  'Pago mensual bajo',
+  'Otros',
+  'Ubicacion fuera alcance',
+  'Casco historico',
+  'No interesado',
+  'Detecta IA',
+  'Tiene bateria',
+  'Incidencia',
+] as const;
 
 // Función para obtener todas las agendas con paginación
 export async function fetchAllAgendas(
-  clientId?: string, 
-  searchTerm?: string, 
-  filterType?: string, 
-  dateFrom?: string, 
+  clientId?: string,
+  searchTerm?: string,
+  filterType?: string,
+  dateFrom?: string,
   dateTo?: string,
   sortOrder?: 'ASC' | 'DESC',
-  agentId?: string
+  agentId?: string,
+  motivoRechazo?: string,
 ): Promise<Agenda[]> {
   try {
     // Usar el client_id proporcionado o el del localStorage
@@ -60,7 +75,11 @@ export async function fetchAllAgendas(
       if (agentId) {
         requestBody.agent_id = agentId;
       }
-      
+
+      if (motivoRechazo != null && motivoRechazo !== '' && motivoRechazo !== 'all') {
+        requestBody.motivo_rechazo = motivoRechazo;
+      }
+
       // console.log(`Página ${page}:`, requestBody);
       
       const response = await fetch(GET_AGENDAS_WEBHOOK_URL, {
@@ -692,6 +711,7 @@ export async function fetchAgendasByScheduledDate(
   clientId: string,
   year: number,
   month: number,
+  motivoRechazo?: string,
 ): Promise<Agenda[]> {
   const mm = String(month + 1).padStart(2, '0');
   const lastDay = new Date(year, month + 1, 0).getDate();
@@ -703,17 +723,22 @@ export async function fetchAgendasByScheduledDate(
   let hasMore = true;
 
   while (hasMore) {
+    const body: Record<string, unknown> = {
+      client_id: clientId,
+      fecha_inicio: fechaInicio,
+      fecha_fin: fechaFin,
+      per_page: 500,
+      page,
+      sort_order: 'ASC',
+    };
+    if (motivoRechazo != null && motivoRechazo !== '' && motivoRechazo !== 'all') {
+      body.motivo_rechazo = motivoRechazo;
+    }
+
     const response = await fetch(GET_AGENDAS_BY_SCHEDULED_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: clientId,
-        fecha_inicio: fechaInicio,
-        fecha_fin: fechaFin,
-        per_page: 500,
-        page,
-        sort_order: 'ASC',
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
