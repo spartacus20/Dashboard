@@ -10,6 +10,7 @@ export const WEBHOOK_URL = BASE_URL;
 export const GET_CLIENT_WEBHOOK_URL = `${BASE_URL}/get-client`;
 export const GET_DASHBOARD_WEBHOOK_URL = `${BASE_URL}/api/dashboard/get-dashboard`;
 export const GET_DASHBOARD_CUSTOM_WEBHOOK_URL = `${BASE_URL}/api/dashboard/get-dashboard-custom`;
+export const PROMEDIO_DURACION_LLAMADAS_EFECTIVAS_URL = `${BASE_URL}/api/dashboard/promedio-duracion-llamadas-efectivas`;
 export const GET_AGENDAS_WEBHOOK_URL =  `${BASE_URL}/api/agenda/get-agenda`;
 export const GET_AGENDAS_BY_SCHEDULED_URL = `${BASE_URL}/api/agenda/get-agenda-by-scheduled`;
 export const DELETE_AGENDA_WEBHOOK_URL = `${BASE_URL}/api/agenda/delete`;

@@ -1,4 +1,4 @@
-import { getClientId, BASE_URL, GET_DASHBOARD_WEBHOOK_URL, GET_DASHBOARD_CUSTOM_WEBHOOK_URL } from './config';
+import { getClientId, BASE_URL, GET_DASHBOARD_WEBHOOK_URL, GET_DASHBOARD_CUSTOM_WEBHOOK_URL, PROMEDIO_DURACION_LLAMADAS_EFECTIVAS_URL } from './config';
 
 
 
@@ -259,6 +259,49 @@ export async function getDashboardMonth(clientId?: string, bdd?: string, cliente
   }
 }
 
+/** POST `/api/dashboard/promedio-duracion-llamadas-efectivas` — mismos filtros opcionales que el dashboard (`fecha_inicio`, `fecha_fin`, `bdd`, `cliente`). */
+export async function getPromedioDuracionLlamadasEfectivas(
+  clientId?: string,
+  fechaInicio?: string,
+  fechaFin?: string,
+  bdd?: string,
+  cliente?: string
+): Promise<{
+  promedio_duracion_efectivas_segundos: number;
+  promedio_duracion_efectivas_minutos: number;
+  efectivas_con_duracion: number;
+}> {
+  const actualClientId = clientId || getClientId();
+  if (!actualClientId) {
+    throw new Error('No se encontró client_id. Por favor, inicia sesión nuevamente.');
+  }
+  const body: Record<string, string> = { client_id: actualClientId };
+  if (fechaInicio) body.fecha_inicio = fechaInicio;
+  if (fechaFin) body.fecha_fin = fechaFin;
+  if (bdd?.trim()) body.bdd = bdd.trim();
+  if (cliente?.trim()) body.cliente = cliente.trim();
+
+  const response = await fetch(PROMEDIO_DURACION_LLAMADAS_EFECTIVAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Error al obtener promedio de duración (efectivas): ${response.status} ${response.statusText}`
+    );
+  }
+  const data = await response.json();
+  if (data?.error) {
+    throw new Error(typeof data.error === 'string' ? data.error : 'Error del servidor');
+  }
+  return {
+    promedio_duracion_efectivas_segundos: Number(data.promedio_duracion_efectivas_segundos) || 0,
+    promedio_duracion_efectivas_minutos: Number(data.promedio_duracion_efectivas_minutos) || 0,
+    efectivas_con_duracion: Number(data.efectivas_con_duracion) || 0,
+  };
+}
+
 
 
 // Función para obtener los valores únicos de metadata->>'cliente' para el filtro de clientes
@@ -282,7 +325,9 @@ const EMPTY_DASHBOARD = {
   dashboard_data: {
     metricas_generales: {
       total_llamadas: 0, llamadas_efectivas: 0, llamadas_fallidas: 0, costo_total: 0,
-      total_duration_seconds: 0, total_duration_minutes: 0, total_agendamientos: 0, total_agendamientos_paneles: 0, costo_por_agenda: 0
+      total_duration_seconds: 0, total_duration_minutes: 0,
+      promedio_duracion_efectivas_segundos: 0, promedio_duracion_efectivas_minutos: 0, efectivas_con_duracion: 0,
+      total_agendamientos: 0, total_agendamientos_paneles: 0, costo_por_agenda: 0
     },
     llamadas_por_dia: [], llamadas_por_hora: [], razones_desconexion: [], tipos_vivienda: [],
     tipos_vivienda_agendas: [], interes: [], llamadas_efectivas_por_hora: [], agentes_por_agendas: [],
@@ -306,6 +351,18 @@ function transformDashboardData(data: any): any {
           costo_total: data.costo_total || 0,
           total_duration_seconds: data.total_duration_seconds || 0,
           total_duration_minutes: data.total_duration_seconds ? Math.round((data.total_duration_seconds || 0) / 60) : 0,
+          ...(() => {
+            const promoSeg = Number(data.promedio_duracion_efectivas_segundos) || 0;
+            const promoMin =
+              data.promedio_duracion_efectivas_minutos != null && data.promedio_duracion_efectivas_minutos !== ''
+                ? Number(data.promedio_duracion_efectivas_minutos)
+                : Math.round((promoSeg / 60) * 10) / 10;
+            return {
+              promedio_duracion_efectivas_segundos: promoSeg,
+              promedio_duracion_efectivas_minutos: promoMin,
+              efectivas_con_duracion: Number(data.efectivas_con_duracion) || 0,
+            };
+          })(),
           total_agendamientos: data.total_agendamientos || 0,
           total_agendamientos_paneles: data.total_agendamientos_paneles || 0,
           costo_por_agenda: data.costo_por_agenda || 0
