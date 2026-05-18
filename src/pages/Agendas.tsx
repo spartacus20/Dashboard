@@ -6,6 +6,8 @@ import {
   deleteAgenda,
   getAverageCallsPerAgenda,
   updateAgendaStatus,
+  MOTIVO_RECHAZO_FILTRO_SIN,
+  MOTIVOS_RECHAZO_AGENDA_FILTRO,
 } from "../api";
 import { Agenda } from "../types";
 import { useCallsContext } from "../context/CallsContext";
@@ -18,6 +20,7 @@ import {
   Building,
   Search,
   Filter,
+  ListFilter,
   RefreshCw,
   AlertCircle,
   X,
@@ -41,6 +44,8 @@ import {
   CardTitle,
 } from "../components/ui/card";
 import { Chart } from "../components/ui/chart";
+import { Button } from "../components/ui/button";
+import { Badge } from "../components/ui/badge";
 import { AgendaModal } from "../components/AgendaModal";
 import { AgendaCalendar } from "../components/AgendaCalendar";
 import { AgendaLimitsManager } from "../components/AgendaLimitsManager";
@@ -65,6 +70,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
   const [filterReviewed, setFilterReviewed] = useState<
     "all" | "true" | "false"
   >("all");
+  const [filterMotivoRechazo, setFilterMotivoRechazo] = useState<string>("all");
   const [scheduledDateFilter, setScheduledDateFilter] = useState<string[]>([]);
   const [onlyDuplicatedPhones, setOnlyDuplicatedPhones] = useState(false);
   const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -98,6 +104,11 @@ export function Agendas({ onNavigate }: AgendasProps) {
   const itemsPerPage = 10;
   const [listViewMode, setListViewMode] = useState<"list" | "grouped">("list");
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
+  const [showUnifiedFiltersDropdown, setShowUnifiedFiltersDropdown] =
+    useState(false);
+  const [expandedFilterSections, setExpandedFilterSections] = useState<
+    Set<string>
+  >(new Set());
 
   const getDateOnly = (value?: string | null) => {
     if (!value) return "";
@@ -150,6 +161,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
         dateTo || undefined,
         sortOrder, // sort_order
         filterAgentId !== "all" ? filterAgentId : undefined, // agentId
+        filterMotivoRechazo !== "all" ? filterMotivoRechazo : undefined,
       );
 
       // Asegurar que siempre trabajamos con un array
@@ -216,10 +228,24 @@ export function Agendas({ onNavigate }: AgendasProps) {
     }
   }, [hasFiltroSolar, activeTab]);
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (
+        !target.closest(".unified-filters-dropdown-agendas") &&
+        !target.closest(".unified-filters-button-agendas")
+      ) {
+        setShowUnifiedFiltersDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   // Cargar agendas al montar el componente o cuando cambien los filtros de fecha, tipo, ordenamiento o agente
   useEffect(() => {
     loadAgendas();
-  }, [clientId, dateFrom, dateTo, sortOrder, filterAgentId, filterType]);
+  }, [clientId, dateFrom, dateTo, sortOrder, filterAgentId, filterType, filterMotivoRechazo]);
 
   // Cargar promedio de llamadas por agenda
   useEffect(() => {
@@ -330,6 +356,21 @@ export function Agendas({ onNavigate }: AgendasProps) {
       });
     }
 
+    // Motivo de rechazo (refuerzo en cliente; el filtro principal viene de la API)
+    if (filterMotivoRechazo !== "all") {
+      if (filterMotivoRechazo === MOTIVO_RECHAZO_FILTRO_SIN) {
+        filtered = filtered.filter(
+          (a) =>
+            a.motivo_rechazo == null ||
+            String(a.motivo_rechazo).trim() === "",
+        );
+      } else {
+        filtered = filtered.filter(
+          (a) => a.motivo_rechazo === filterMotivoRechazo,
+        );
+      }
+    }
+
     // Filtro opcional: solo teléfonos con más de una agenda (para detectar duplicados)
     if (onlyDuplicatedPhones) {
       filtered = filtered.filter(
@@ -356,6 +397,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
     filterType,
     filterApproved,
     filterReviewed,
+    filterMotivoRechazo,
     onlyDuplicatedPhones,
     scheduledDateFilter,
   ]);
@@ -445,6 +487,35 @@ export function Agendas({ onNavigate }: AgendasProps) {
     ),
   ].sort();
 
+  const activeUnifiedFiltersCount = useMemo(() => {
+    let n = 0;
+    if (searchTerm.trim()) n++;
+    if (filterType !== "all") n++;
+    if (filterAgentId !== "all") n++;
+    if (filterApproved !== "all") n++;
+    if (filterReviewed !== "all") n++;
+    if (filterMotivoRechazo !== "all") n++;
+    if (sortOrder !== "DESC") n++;
+    return n;
+  }, [
+    searchTerm,
+    filterType,
+    filterAgentId,
+    filterApproved,
+    filterReviewed,
+    filterMotivoRechazo,
+    sortOrder,
+  ]);
+
+  const toggleAgendaFilterSection = (key: string) => {
+    setExpandedFilterSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
   // Paginación
   const totalPages = Math.ceil(filteredAgendas.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -518,6 +589,16 @@ export function Agendas({ onNavigate }: AgendasProps) {
     setDateFrom("");
     setDateTo("");
     setDatePreset("all");
+  };
+
+  const clearListFilters = () => {
+    setSearchTerm("");
+    setFilterType("all");
+    setFilterAgentId("all");
+    setFilterApproved("all");
+    setFilterReviewed("all");
+    setFilterMotivoRechazo("all");
+    setSortOrder("DESC");
   };
 
   // Abrir modal con agenda seleccionada
@@ -640,6 +721,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
         dateTo || undefined,
         sortOrder,
         filterAgentId !== "all" ? filterAgentId : undefined,
+        filterMotivoRechazo !== "all" ? filterMotivoRechazo : undefined,
       );
 
       if (allAgendas.length === 0) {
@@ -1122,7 +1204,6 @@ export function Agendas({ onNavigate }: AgendasProps) {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Rango rápido: dentro de la card */}
                 <div className="flex flex-wrap items-center gap-3">
                   <span className="text-slate-500 text-sm font-medium">
                     Rango:
@@ -1308,157 +1389,442 @@ export function Agendas({ onNavigate }: AgendasProps) {
               </div>
             </div>
 
-            {/* Filtros y búsqueda (el rango de fechas se cambia en la card Promedio de llamadas por agenda) */}
-            <div className="bg-white rounded-lg p-6 mb-6 shadow-lg border border-slate-200">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
-                {/* Búsqueda */}
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
-                  <input
-                    type="text"
-                    placeholder="Buscar por teléfono, dirección..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                {/* Filtro por tipo */}
-                <div className="relative">
-                  <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
-                  <select
-                    value={filterType}
-                    onChange={(e) => setFilterType(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
-                  >
-                    <option value="all">Todos los tipos</option>
-                    {uniqueTypes.map((type) => (
-                      <option key={type} value={type}>
-                        {type}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Filtro por agente */}
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
-                  <select
-                    value={filterAgentId}
-                    onChange={(e) => setFilterAgentId(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
-                  >
-                    <option value="all">Todos los agentes</option>
-                    {uniqueAgents.map((agentId) => (
-                      <option key={agentId} value={agentId}>
-                        {agentId}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Filtro por aprobada */}
-                <div className="relative">
-                  <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
-                  <select
-                    value={filterApproved}
-                    onChange={(e) =>
-                      setFilterApproved(
-                        e.target.value as "all" | "true" | "false",
-                      )
-                    }
-                    className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
-                  >
-                    <option value="all">Todas (aprobadas)</option>
-                    <option value="true">Solo aprobadas</option>
-                    <option value="false">Solo no aprobadas</option>
-                  </select>
-                </div>
-
-                  {/* Filtro por revisada */}
-                  <div className="relative">
-                    <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
-                    <select
-                      value={filterReviewed}
-                      onChange={(e) =>
-                        setFilterReviewed(
-                          e.target.value as "all" | "true" | "false",
-                        )
-                      }
-                      className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
-                    >
-                      <option value="all">Todas (revisadas)</option>
-                      <option value="true">Solo revisadas</option>
-                      <option value="false">Solo no revisadas</option>
-                    </select>
-                  </div>
-
-                  {/* Ordenamiento */}
-                  <div className="relative">
-                    <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
-                    <select
-                      value={sortOrder}
-                      onChange={(e) =>
-                        setSortOrder(e.target.value as "ASC" | "DESC")
-                      }
-                      className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
-                    >
-                      <option value="DESC">Más recientes primero</option>
-                      <option value="ASC">Más antiguos primero</option>
-                    </select>
-                  </div>
-
-                  {/* Filtro por días agendados (múltiples) */}
-                  <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
+            {/* Filtros de lista + día agendado en la misma caja. Rango por creación en card Promedio. */}
+            <div className="mb-6 space-y-2">
+              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
+                <div className="flex flex-col-reverse sm:flex-row-reverse sm:flex-wrap sm:items-center gap-3 sm:gap-4">
+                <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0 sm:justify-end pt-3 border-t border-slate-100 sm:border-t-0 sm:pt-0 sm:border-l sm:border-slate-200 sm:pl-4">
+                  <span className="text-xs font-medium text-slate-600 shrink-0 flex items-center gap-1.5">
+                    <Calendar className="w-4 h-4 text-emerald-600" />
+                    Día agendado
+                  </span>
+                  <div className="relative flex-1 min-w-[140px] max-w-[200px]">
                     <input
                       type="date"
                       value=""
                       onChange={(e) => {
                         const val = e.target.value;
                         if (val && !scheduledDateFilter.includes(val)) {
-                          setScheduledDateFilter([...scheduledDateFilter, val]);
+                          setScheduledDateFilter([
+                            ...scheduledDateFilter,
+                            val,
+                          ]);
                         }
                         e.target.value = "";
                       }}
-                      className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      title="Agregar día agendado al filtro"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                      title="Añadir fecha de día agendado al filtro"
                     />
                   </div>
-                </div>
-            </div>
-
-            {/* Chips de días agendados seleccionados */}
-            {scheduledDateFilter.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1 mt-2 mb-2">
-                <span className="text-xs text-slate-500 mr-1">Días agendados:</span>
-                {scheduledDateFilter.map((d) => (
-                  <span
-                    key={d}
-                    className="flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs"
-                  >
-                    {d}
+                  {scheduledDateFilter.length > 0 && (
                     <button
                       type="button"
-                      onClick={() =>
-                        setScheduledDateFilter(scheduledDateFilter.filter((x) => x !== d))
-                      }
-                      className="hover:text-blue-600"
-                      title={`Quitar ${d}`}
+                      onClick={() => setScheduledDateFilter([])}
+                      className="text-xs text-slate-500 hover:text-slate-800 underline shrink-0"
                     >
-                      <X className="w-3 h-3" />
+                      Quitar todos los días
                     </button>
-                  </span>
-                ))}
-                <button
+                  )}
+                </div>
+
+                <div className="relative unified-filters-dropdown-agendas w-full sm:w-auto sm:shrink-0">
+                <Button
                   type="button"
-                  onClick={() => setScheduledDateFilter([])}
-                  className="text-xs text-slate-500 hover:text-slate-700 underline ml-1"
+                  variant="outline"
+                  onClick={() =>
+                    setShowUnifiedFiltersDropdown(!showUnifiedFiltersDropdown)
+                  }
+                  className="w-full sm:w-auto min-w-[220px] h-10 flex items-center justify-center gap-2 text-xs unified-filters-button-agendas border-slate-300"
                 >
-                  Limpiar todo
-                </button>
+                  <ListFilter className="w-4 h-4 shrink-0" />
+                  <span>Filtros</span>
+                  {activeUnifiedFiltersCount > 0 && (
+                    <Badge
+                      variant="default"
+                      className="ml-1 px-1.5 py-0 text-[10px] shrink-0"
+                    >
+                      {activeUnifiedFiltersCount}
+                    </Badge>
+                  )}
+                  {showUnifiedFiltersDropdown ? (
+                    <ChevronUp className="w-4 h-4 shrink-0" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 shrink-0" />
+                  )}
+                </Button>
+
+                {showUnifiedFiltersDropdown && (
+                  <div className="absolute top-full left-0 mt-2 w-[min(100vw-2rem,22rem)] sm:w-80 bg-white rounded-xl shadow-xl z-50 border border-slate-200 overflow-hidden">
+                    <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                        Filtros
+                      </span>
+                      {activeUnifiedFiltersCount > 0 && (
+                        <span className="text-xs text-blue-600 font-medium whitespace-nowrap">
+                          {activeUnifiedFiltersCount} activo
+                          {activeUnifiedFiltersCount !== 1 ? "s" : ""}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="divide-y divide-slate-100 max-h-[70vh] overflow-y-auto">
+                      {/* Búsqueda */}
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => toggleAgendaFilterSection("busqueda")}
+                          className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors text-left"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-sm font-medium text-slate-700">
+                              Búsqueda
+                            </span>
+                            {searchTerm.trim() ? (
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                            ) : null}
+                          </div>
+                          <span className="text-slate-400 text-base leading-none shrink-0">
+                            {expandedFilterSections.has("busqueda")
+                              ? "−"
+                              : "+"}
+                          </span>
+                        </button>
+                        {expandedFilterSections.has("busqueda") && (
+                          <div className="px-4 pb-3">
+                            <div className="relative">
+                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 pointer-events-none" />
+                              <input
+                                type="text"
+                                placeholder="Teléfono, dirección..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Tipo de agenda */}
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => toggleAgendaFilterSection("tipo")}
+                          className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors text-left"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-sm font-medium text-slate-700">
+                              Tipo de agenda
+                            </span>
+                            {filterType !== "all" ? (
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                            ) : null}
+                          </div>
+                          <span className="text-slate-400 text-base leading-none shrink-0">
+                            {expandedFilterSections.has("tipo") ? "−" : "+"}
+                          </span>
+                        </button>
+                        {expandedFilterSections.has("tipo") && (
+                          <div className="px-4 pb-3">
+                            <div className="relative">
+                              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 pointer-events-none" />
+                              <select
+                                value={filterType}
+                                onChange={(e) =>
+                                  setFilterType(e.target.value)
+                                }
+                                className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
+                              >
+                                <option value="all">Todos los tipos</option>
+                                {uniqueTypes.map((type) => (
+                                  <option key={type} value={type}>
+                                    {type}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Agente */}
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => toggleAgendaFilterSection("agente")}
+                          className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors text-left"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-sm font-medium text-slate-700">
+                              Agente
+                            </span>
+                            {filterAgentId !== "all" ? (
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                            ) : null}
+                          </div>
+                          <span className="text-slate-400 text-base leading-none shrink-0">
+                            {expandedFilterSections.has("agente") ? "−" : "+"}
+                          </span>
+                        </button>
+                        {expandedFilterSections.has("agente") && (
+                          <div className="px-4 pb-3">
+                            <div className="relative">
+                              <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 pointer-events-none" />
+                              <select
+                                value={filterAgentId}
+                                onChange={(e) =>
+                                  setFilterAgentId(e.target.value)
+                                }
+                                className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
+                              >
+                                <option value="all">Todos los agentes</option>
+                                {uniqueAgents.map((agentId) => (
+                                  <option key={agentId} value={agentId}>
+                                    {agentId}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Aprobada */}
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            toggleAgendaFilterSection("aprobada")
+                          }
+                          className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors text-left"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-sm font-medium text-slate-700">
+                              Aprobada
+                            </span>
+                            {filterApproved !== "all" ? (
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                            ) : null}
+                          </div>
+                          <span className="text-slate-400 text-base leading-none shrink-0">
+                            {expandedFilterSections.has("aprobada")
+                              ? "−"
+                              : "+"}
+                          </span>
+                        </button>
+                        {expandedFilterSections.has("aprobada") && (
+                          <div className="px-4 pb-3">
+                            <div className="relative">
+                              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 pointer-events-none" />
+                              <select
+                                value={filterApproved}
+                                onChange={(e) =>
+                                  setFilterApproved(
+                                    e.target.value as "all" | "true" | "false",
+                                  )
+                                }
+                                className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
+                              >
+                                <option value="all">Todas</option>
+                                <option value="true">Solo aprobadas</option>
+                                <option value="false">Solo no aprobadas</option>
+                              </select>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Revisada */}
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            toggleAgendaFilterSection("revisada")
+                          }
+                          className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors text-left"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-sm font-medium text-slate-700">
+                              Revisada
+                            </span>
+                            {filterReviewed !== "all" ? (
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                            ) : null}
+                          </div>
+                          <span className="text-slate-400 text-base leading-none shrink-0">
+                            {expandedFilterSections.has("revisada")
+                              ? "−"
+                              : "+"}
+                          </span>
+                        </button>
+                        {expandedFilterSections.has("revisada") && (
+                          <div className="px-4 pb-3">
+                            <div className="relative">
+                              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 pointer-events-none" />
+                              <select
+                                value={filterReviewed}
+                                onChange={(e) =>
+                                  setFilterReviewed(
+                                    e.target.value as "all" | "true" | "false",
+                                  )
+                                }
+                                className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
+                              >
+                                <option value="all">Todas</option>
+                                <option value="true">Solo revisadas</option>
+                                <option value="false">Solo no revisadas</option>
+                              </select>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Motivo de rechazo */}
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            toggleAgendaFilterSection("motivo_rechazo")
+                          }
+                          className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors text-left"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-sm font-medium text-slate-700">
+                              Motivo de rechazo
+                            </span>
+                            {filterMotivoRechazo !== "all" ? (
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                            ) : null}
+                          </div>
+                          <span className="text-slate-400 text-base leading-none shrink-0">
+                            {expandedFilterSections.has("motivo_rechazo")
+                              ? "−"
+                              : "+"}
+                          </span>
+                        </button>
+                        {expandedFilterSections.has("motivo_rechazo") && (
+                          <div className="px-4 pb-3">
+                            <div className="relative">
+                              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 pointer-events-none" />
+                              <select
+                                value={filterMotivoRechazo}
+                                onChange={(e) =>
+                                  setFilterMotivoRechazo(e.target.value)
+                                }
+                                className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
+                              >
+                                <option value="all">Todos</option>
+                                <option value={MOTIVO_RECHAZO_FILTRO_SIN}>
+                                  Sin motivo
+                                </option>
+                                {MOTIVOS_RECHAZO_AGENDA_FILTRO.map((m) => (
+                                  <option key={m} value={m}>
+                                    {m}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Orden */}
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => toggleAgendaFilterSection("orden")}
+                          className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors text-left"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-sm font-medium text-slate-700">
+                              Orden
+                            </span>
+                            {sortOrder !== "DESC" ? (
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                            ) : null}
+                          </div>
+                          <span className="text-slate-400 text-base leading-none shrink-0">
+                            {expandedFilterSections.has("orden") ? "−" : "+"}
+                          </span>
+                        </button>
+                        {expandedFilterSections.has("orden") && (
+                          <div className="px-4 pb-3">
+                            <div className="relative">
+                              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 pointer-events-none" />
+                              <select
+                                value={sortOrder}
+                                onChange={(e) =>
+                                  setSortOrder(
+                                    e.target.value as "ASC" | "DESC",
+                                  )
+                                }
+                                className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
+                              >
+                                <option value="DESC">
+                                  Más recientes primero
+                                </option>
+                                <option value="ASC">
+                                  Más antiguos primero
+                                </option>
+                              </select>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {activeUnifiedFiltersCount > 0 && (
+                      <div className="px-4 py-2 border-t border-slate-100 bg-slate-50">
+                        <button
+                          type="button"
+                          onClick={() => clearListFilters()}
+                          className="w-full text-xs text-blue-600 hover:text-blue-800 font-medium py-1.5 transition-colors"
+                        >
+                          Restablecer filtros de lista
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            )}
+              </div>
+              </div>
+
+              {scheduledDateFilter.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1">
+                  <span className="text-xs text-slate-500 mr-1">
+                    Días agendados:
+                  </span>
+                  {scheduledDateFilter.map((d) => (
+                    <span
+                      key={d}
+                      className="flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs"
+                    >
+                      {d}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setScheduledDateFilter(
+                            scheduledDateFilter.filter((x) => x !== d),
+                          )
+                        }
+                        className="hover:text-blue-600"
+                        title={`Quitar ${d}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setScheduledDateFilter([])}
+                    className="text-xs text-slate-500 hover:text-slate-700 underline ml-1"
+                  >
+                    Limpiar todo
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Loading state */}
             {loading && (
@@ -2017,6 +2383,11 @@ export function Agendas({ onNavigate }: AgendasProps) {
                           undefined,
                           `${year}-${mm}-01`,
                           `${year}-${mm}-${String(lastDay).padStart(2, '0')}`,
+                          undefined,
+                          undefined,
+                          filterMotivoRechazo !== "all"
+                            ? filterMotivoRechazo
+                            : undefined,
                         );
                       }
                     : undefined
@@ -2056,7 +2427,15 @@ export function Agendas({ onNavigate }: AgendasProps) {
                 onAgendaClick={openAgendaModal}
                 onLoadMonthAgendas={
                   clientId
-                    ? (year, month) => fetchAgendasByScheduledDate(clientId, year, month)
+                    ? (year, month) =>
+                        fetchAgendasByScheduledDate(
+                          clientId,
+                          year,
+                          month,
+                          filterMotivoRechazo !== "all"
+                            ? filterMotivoRechazo
+                            : undefined,
+                        )
                     : undefined
                 }
                 mode="scheduled"
