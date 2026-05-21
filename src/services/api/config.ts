@@ -24,3 +24,10 @@ export const GET_CALL_TRANSCRIPT_URL = `${BASE_URL}/api/calls/get-call-transcrip
 export function getClientId(): string | null {
   return localStorage.getItem(get_client_id);
 }
+
+// Función helper para proxear y transcodificar grabaciones
+export function getAudioUrl(url: string | undefined): string {
+  if (!url) return '';
+  if (!url.startsWith('http')) return url;
+  return `${BASE_URL}/api/calls/proxy-audio?url=${encodeURIComponent(url)}`;
+}

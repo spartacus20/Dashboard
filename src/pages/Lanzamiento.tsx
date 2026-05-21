@@ -934,7 +934,9 @@ const Lanzamiento: React.FC = () => {
                   </div>
                   <div className="text-center p-4 bg-purple-50 rounded-lg">
                     <div className="text-2xl font-bold text-purple-600">
-                      {calculatePercentage(metrics.total_clicks_totales, funnel?.totals?.total_links_unique ?? metrics.total_enlaces_enviados)}%
+                      {funnel?.totals?.pct_clicks_over_links != null
+                        ? `${funnel.totals.pct_clicks_over_links.toFixed(1)}`
+                        : calculatePercentage(metrics.total_clicks_totales, funnel?.totals?.total_links_unique ?? metrics.total_enlaces_enviados)}%
                     </div>
                     <div className="text-sm text-gray-600">Tasa de Clicks</div>
                   </div>
