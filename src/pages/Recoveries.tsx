@@ -7,6 +7,7 @@ import {
   listRecoveryCalls,
   RECOVERY_CODIGOS,
 } from '../services/api/calls';
+import { getAudioUrl } from '../api';
 
 const CODE_COLORS: Record<string, string> = {
   TON: '#10b981',
@@ -134,7 +135,6 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
   useEffect(() => {
     audioRef.current = new Audio();
     audioRef.current.preload = 'metadata';
-    try { (audioRef.current as any).crossOrigin = 'anonymous'; } catch {}
     const handleTimeUpdate = () => {
       if (audioRef.current) setAudioCurrentTime(audioRef.current.currentTime);
     };
@@ -198,9 +198,10 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
       setIsAudioPlaying(false);
       return;
     }
-    if (audioRef.current.src !== recordingUrl) {
+    const proxiedUrl = getAudioUrl(recordingUrl);
+    if (audioRef.current.src !== proxiedUrl) {
       audioRef.current.pause();
-      audioRef.current.src = recordingUrl;
+      audioRef.current.src = proxiedUrl;
       audioRef.current.currentTime = 0;
       setAudioCurrentTime(0);
       setAudioDuration(0);
@@ -222,7 +223,7 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
       setIsAudioPlaying(true);
     } else {
       audioRef.current.pause();
-      audioRef.current.src = recordingUrl;
+      audioRef.current.src = proxiedUrl;
       audioRef.current.currentTime = 0;
       setAudioCurrentTime(0);
       setAudioDuration(0);

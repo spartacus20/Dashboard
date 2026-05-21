@@ -29,6 +29,7 @@ import {
 } from '../components/ui/dialog';
 import { useCallsContext } from '../context/CallsContext';
 import { listInteresadosCalls, getInteresadosMotivos, type InteresadosCualificacion } from '../services/api/calls';
+import { getAudioUrl } from '../api';
 import { listDontCallRecords } from '../services/api/dontCall';
 import { getCallTranscript } from '../services/api/misc';
 import type { DontCall } from '../types';
@@ -325,7 +326,6 @@ export function Interesados({ onNavigate: _onNavigate }: InteresadosProps) {
   useEffect(() => {
     audioRef.current = new Audio();
     audioRef.current.preload = 'metadata';
-    try { (audioRef.current as any).crossOrigin = 'anonymous'; } catch {}
     const onTime = () => { if (audioRef.current) setAudioCurrentTime(audioRef.current.currentTime); };
     const onDur = () => {
       if (audioRef.current) {
@@ -538,15 +538,15 @@ export function Interesados({ onNavigate: _onNavigate }: InteresadosProps) {
 
   const togglePlay = (row: Llamada) => {
     if (!audioRef.current || !row.recordings) return;
-    const url = row.recordings;
+    const proxiedUrl = getAudioUrl(row.recordings);
     if (playingId === row.id && !audioRef.current.paused) {
       audioRef.current.pause();
       setIsAudioPlaying(false);
       return;
     }
-    if (audioRef.current.src !== url) {
+    if (audioRef.current.src !== proxiedUrl) {
       audioRef.current.pause();
-      audioRef.current.src = url;
+      audioRef.current.src = proxiedUrl;
       audioRef.current.currentTime = 0;
       setAudioCurrentTime(0);
       setAudioDuration(0);

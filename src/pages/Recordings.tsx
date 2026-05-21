@@ -4,7 +4,7 @@ import type { DetailedRetellCall, FilterCriteria, RetellAgent, RetellPhoneNumber
 import { useCallsContext } from '../context/CallsContext';
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { listCalls, exportCallsWithColumns, fetchAgents, createPhoneCall, getCallTranscript } from '../api';
+import { listCalls, exportCallsWithColumns, fetchAgents, createPhoneCall, getCallTranscript, getAudioUrl } from '../api';
 
 // Componentes UI simplificados
 const Input = ({ className = "", ...props }: { className?: string; [key: string]: any }) => (
@@ -975,9 +975,6 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     audioRef.current = new Audio();
     if (audioRef.current) {
       audioRef.current.preload = 'metadata';
-      try {
-        audioRef.current.crossOrigin = 'anonymous';
-      } catch {}
     }
     
     const handleTimeUpdate = () => {
@@ -1062,12 +1059,13 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       // Si es una nueva pista, o la pista actual está pausada, o era otra pista la que se reproducía.
 
       // Si la URL de la grabación es diferente a la actual en el reproductor.
-      if (audioRef.current.src !== callToPlay.recording_url) {
+      const proxiedUrl = getAudioUrl(callToPlay.recording_url);
+      if (audioRef.current.src !== proxiedUrl) {
         // Pausar si algo más se estaba reproduciendo.
         if (playingId && !audioRef.current.paused) {
           audioRef.current.pause();
         }
-        audioRef.current.src = callToPlay.recording_url;
+        audioRef.current.src = proxiedUrl;
         audioRef.current.currentTime = 0; // Reiniciar tiempo del reproductor.
         setAudioCurrentTime(0);          // Reiniciar estado de tiempo actual para UI.
         setAudioDuration(0);             // Reiniciar estado de duración para UI (se actualizará con 'durationchange').
@@ -1140,8 +1138,9 @@ export function Recordings({ onNavigate }: RecordingsProps) {
 
     if (audioRef.current) { // Ensure audioRef is initialized
       if (call.recording_url) {
+        const proxiedUrl = getAudioUrl(call.recording_url);
         // Recording URL is present
-        if (audioRef.current.src !== call.recording_url) {
+        if (audioRef.current.src !== proxiedUrl) {
           // New source: pause if playing, set src, reset UI states, load.
           if (!audioRef.current.paused) {
             audioRef.current.pause();
@@ -1150,7 +1149,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
           if (playingId) { 
             setPlayingId(null);
           }
-          audioRef.current.src = call.recording_url;
+          audioRef.current.src = proxiedUrl;
           setAudioCurrentTime(0);
           setAudioDuration(0); // Explicitly reset duration state for UI
           audioRef.current.load(); // Load new source, should trigger 'durationchange'
