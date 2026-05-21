@@ -8,6 +8,13 @@ import { getUserData } from '../lib/supabase';
 
 const PHONES_PER_PAGE = 25;
 
+const DEFAULT_TERMINATION_URIS = [
+  'livekit.netelip.com',
+  'livekit2.netelip.com',
+  'livekit3.netelip.com',
+  'livekit4.netelip.com',
+];
+
 interface PhoneNumbersProps {
   onNavigate: (page: 'dashboard' | 'recordings' | 'phones') => void;
 }
@@ -408,9 +415,15 @@ function AddPhoneModal({ onClose, onSuccess, workspaceNameByApiKey }: AddPhoneMo
       }
     }
 
-    if (options && options.length > 0) {
-      setTerminationUriOptions(options);
+    const merged = [...DEFAULT_TERMINATION_URIS];
+    if (options) {
+      for (const uri of options) {
+        if (!merged.includes(uri)) {
+          merged.push(uri);
+        }
+      }
     }
+    setTerminationUriOptions(merged);
   }, []);
 
   // Construir opciones de workspace a partir de apiKeyTest (todas las API keys de los workspaces)
