@@ -2490,6 +2490,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
                     : undefined
                 }
                 mode="created"
+                hasFit={hasFit}
               />
             )}
           </div>
@@ -2536,6 +2537,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
                     : undefined
                 }
                 mode="scheduled"
+                hasFit={hasFit}
               />
             )}
           </div>
