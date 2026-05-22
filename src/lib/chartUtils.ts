@@ -217,6 +217,22 @@ export function generateAgentesPorAgendasData(dashboardData?: any) {
 
 
 
+// Función para generar datos del gráfico de agendas por canal por hora (clientes FIT)
+export function generateHourlyAgendasByChannelData(dashboardData?: any, hourStart?: string, hourEnd?: string) {
+  if (dashboardData?.dashboard_data?.agendas_por_hora_canal && Array.isArray(dashboardData.dashboard_data.agendas_por_hora_canal)) {
+    const startHour = parseInt(hourStart || '0');
+    const endHour = parseInt(hourEnd || '23');
+    return dashboardData.dashboard_data.agendas_por_hora_canal
+      .filter((item: any) => item.hora >= startHour && item.hora <= endHour && (item.whatsapp > 0 || item.llamada > 0))
+      .map((item: any) => ({
+        label: item.label,
+        WhatsApp: item.whatsapp || 0,
+        Llamada: item.llamada || 0,
+      }));
+  }
+  return [];
+}
+
 // Función para generar datos del gráfico de agendamientos por hora
 export function generateHourlyAgendasData(dashboardData?: any, hourStart?: string, hourEnd?: string) {
   if (dashboardData?.dashboard_data?.llamadas_por_hora && Array.isArray(dashboardData.dashboard_data.llamadas_por_hora)) {

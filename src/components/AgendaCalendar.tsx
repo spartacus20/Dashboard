@@ -7,14 +7,12 @@ interface AgendaCalendarProps {
   agendas: Agenda[];
   onAgendaClick: (agenda: Agenda) => void;
   onLoadMonthAgendas?: (year: number, month: number) => Promise<Agenda[]>;
-  // Si true, carga los datos una sola vez al montar y navega localmente sin refetch
   cacheAcrossMonths?: boolean;
-  // mode controla qué fecha se usa para ubicar la agenda en el calendario:
-  // 'created' = fecha de creación, 'scheduled' = fecha agendada
   mode?: 'created' | 'scheduled';
+  hasFit?: boolean;
 }
 
-export function AgendaCalendar({ agendas, onAgendaClick, onLoadMonthAgendas, cacheAcrossMonths = false, mode = 'created' }: AgendaCalendarProps) {
+export function AgendaCalendar({ agendas, onAgendaClick, onLoadMonthAgendas, cacheAcrossMonths = false, mode = 'created', hasFit = false }: AgendaCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedType, setSelectedType] = useState<string>('all');
   const [showTypeFilter, setShowTypeFilter] = useState(false);
@@ -48,18 +46,24 @@ export function AgendaCalendar({ agendas, onAgendaClick, onLoadMonthAgendas, cac
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onLoadMonthAgendas]);
 
-  // Obtener tipos únicos de agenda
+  // Obtener tipos únicos de agenda (para FIT se usan canales, no tipo_agenda)
   const uniqueTypes = useMemo(() => {
+    if (hasFit) return ['llamada', 'whatsapp'];
     const types = [...new Set(allAgendas.map(agenda => agenda.tipo_agenda))].filter(Boolean);
     return types;
-  }, [allAgendas]);
+  }, [allAgendas, hasFit]);
 
-  // Filtrar agendas por tipo seleccionado (sobre todas las agendas cargadas)
+  // Filtrar agendas por tipo/canal seleccionado
   const filteredAgendas = useMemo(() => {
     const source = allAgendas;
     if (selectedType === 'all') return source;
+    if (hasFit) {
+      if (selectedType === 'llamada') return source.filter(a => !!a.call_id);
+      if (selectedType === 'whatsapp') return source.filter(a => !a.call_id);
+      return source;
+    }
     return source.filter(agenda => agenda.tipo_agenda === selectedType);
-  }, [allAgendas, selectedType]);
+  }, [allAgendas, selectedType, hasFit]);
 
   // Obtener la fecha relevante según el modo (debe declararse antes de barData)
   const getAgendaDateForMode = (agenda: Agenda): Date | null => {
@@ -88,10 +92,15 @@ export function AgendaCalendar({ agendas, onAgendaClick, onLoadMonthAgendas, cac
       });
       let solar = 0, batteries = 0, others = 0;
       for (const a of dayAgendas) {
-        const t = (a.tipo_agenda || '').toLowerCase();
-        if (t.includes('paneles solares') || t.includes('placas solares')) solar++;
-        else if (t.includes('bater')) batteries++;
-        else others++;
+        if (hasFit) {
+          if (!!a.call_id) batteries++; // Llamada → slot "batteries" (azul)
+          else solar++;                 // WhatsApp → slot "solar" (verde)
+        } else {
+          const t = (a.tipo_agenda || '').toLowerCase();
+          if (t.includes('paneles solares') || t.includes('placas solares')) solar++;
+          else if (t.includes('bater')) batteries++;
+          else others++;
+        }
       }
       return { day, date, solar, batteries, others, total: dayAgendas.length, agendas: dayAgendas };
     });
@@ -133,22 +142,22 @@ export function AgendaCalendar({ agendas, onAgendaClick, onLoadMonthAgendas, cac
     });
   };
 
-  // Obtener color según el tipo de agenda
-  const getAgendaColor = (tipoAgenda: string) => {
+  // Obtener color según el tipo de agenda (o canal para FIT)
+  const getAgendaColor = (tipoAgenda: string, agenda?: Agenda) => {
+    if (hasFit && agenda) {
+      return agenda.call_id
+        ? 'bg-gradient-to-r from-blue-500 to-blue-600'
+        : 'bg-gradient-to-r from-emerald-500 to-green-600';
+    }
+
     const tipo = tipoAgenda?.toLowerCase() || '';
-    
-    // Paneles solares
     if (tipo.includes('paneles solares') || tipo.includes('placas solares')) {
       return 'bg-gradient-to-r from-yellow-500 to-orange-600';
     }
-    
-    // Baterías
-    if (tipo.includes('baterías') || tipo.includes('baterias') || 
+    if (tipo.includes('baterías') || tipo.includes('baterias') ||
         tipo.includes('bateria') || tipo.includes('batería')) {
       return 'bg-gradient-to-r from-blue-500 to-indigo-600';
     }
-    
-    // Color por defecto para otros tipos
     return 'bg-gradient-to-r from-slate-500 to-gray-600';
   };
 
@@ -285,7 +294,11 @@ export function AgendaCalendar({ agendas, onAgendaClick, onLoadMonthAgendas, cac
             >
               <Filter className="w-4 h-4" />
               <span className="text-sm">
-                {selectedType === 'all' ? 'Todos los tipos' : selectedType}
+                {selectedType === 'all'
+                ? (hasFit ? 'Todos los canales' : 'Todos los tipos')
+                : hasFit
+                  ? (selectedType === 'llamada' ? 'Llamada' : 'WhatsApp')
+                  : selectedType}
               </span>
             </button>
             
@@ -293,28 +306,24 @@ export function AgendaCalendar({ agendas, onAgendaClick, onLoadMonthAgendas, cac
               <div className="absolute right-0 top-full mt-2 bg-white border border-slate-200 rounded-lg shadow-lg z-10 min-w-48">
                 <div className="p-2">
                   <button
-                    onClick={() => {
-                      setSelectedType('all');
-                      setShowTypeFilter(false);
-                    }}
+                    onClick={() => { setSelectedType('all'); setShowTypeFilter(false); }}
                     className={`w-full text-left px-3 py-2 rounded text-sm hover:bg-slate-100 ${
                       selectedType === 'all' ? 'bg-blue-100 text-blue-700' : 'text-slate-700'
                     }`}
                   >
-                    Todos los tipos
+                    {hasFit ? 'Todos los canales' : 'Todos los tipos'}
                   </button>
                   {uniqueTypes.map(type => (
                     <button
                       key={type}
-                      onClick={() => {
-                        setSelectedType(type);
-                        setShowTypeFilter(false);
-                      }}
+                      onClick={() => { setSelectedType(type); setShowTypeFilter(false); }}
                       className={`w-full text-left px-3 py-2 rounded text-sm hover:bg-slate-100 ${
                         selectedType === type ? 'bg-blue-100 text-blue-700' : 'text-slate-700'
                       }`}
                     >
-                      {type}
+                      {hasFit
+                        ? (type === 'llamada' ? 'Llamada' : 'WhatsApp')
+                        : type}
                     </button>
                   ))}
                 </div>
@@ -393,7 +402,7 @@ export function AgendaCalendar({ agendas, onAgendaClick, onLoadMonthAgendas, cac
                       return (
                         <div
                           key={agendaIndex}
-                          className={`text-xs p-1 rounded text-white truncate cursor-pointer hover:opacity-80 transition-opacity ${getAgendaColor(agenda.tipo_agenda)}`}
+                          className={`text-xs p-1 rounded text-white truncate cursor-pointer hover:opacity-80 transition-opacity ${getAgendaColor(agenda.tipo_agenda, agenda)}`}
                           title={`${agenda.nombre} - ${agenda.tipo_agenda}${titleDate ? ' - ' + titleDate : ''}`}
                           onClick={e => { e.stopPropagation(); onAgendaClick(agenda); }}
                         >
@@ -446,10 +455,16 @@ export function AgendaCalendar({ agendas, onAgendaClick, onLoadMonthAgendas, cac
                   >
                     <div className="w-full flex flex-col" style={{ height: barH > 0 ? `${barH}px` : '0px' }}>
                       {solar > 0 && (
-                        <div className="w-full bg-gradient-to-b from-yellow-500 to-orange-500" style={{ height: `${solarH}px` }} />
+                        <div
+                          className={`w-full ${hasFit ? 'bg-gradient-to-b from-emerald-500 to-green-600' : 'bg-gradient-to-b from-yellow-500 to-orange-500'}`}
+                          style={{ height: `${solarH}px` }}
+                        />
                       )}
                       {batteries > 0 && (
-                        <div className="w-full bg-gradient-to-b from-blue-500 to-indigo-600" style={{ height: `${battH}px` }} />
+                        <div
+                          className={`w-full ${hasFit ? 'bg-gradient-to-b from-blue-500 to-blue-600' : 'bg-gradient-to-b from-blue-500 to-indigo-600'}`}
+                          style={{ height: `${battH}px` }}
+                        />
                       )}
                       {others > 0 && (
                         <div className="w-full bg-gradient-to-b from-slate-400 to-gray-500" style={{ height: `${othersH}px` }} />
@@ -472,18 +487,33 @@ export function AgendaCalendar({ agendas, onAgendaClick, onLoadMonthAgendas, cac
       <div className="p-4 border-t border-slate-200 bg-slate-50">
         <div className="flex items-center justify-between text-sm text-slate-600">
           <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-gradient-to-r from-yellow-500 to-orange-600 rounded"></div>
-              <span>Paneles Solares</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-gradient-to-r from-blue-500 to-indigo-600 rounded"></div>
-              <span>Baterías</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-gradient-to-r from-slate-500 to-gray-600 rounded"></div>
-              <span>Otros</span>
-            </div>
+            {hasFit ? (
+              <>
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 bg-gradient-to-r from-emerald-500 to-green-600 rounded"></div>
+                  <span>WhatsApp</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 bg-gradient-to-r from-blue-500 to-blue-600 rounded"></div>
+                  <span>Llamada</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 bg-gradient-to-r from-yellow-500 to-orange-600 rounded"></div>
+                  <span>Paneles Solares</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 bg-gradient-to-r from-blue-500 to-indigo-600 rounded"></div>
+                  <span>Baterías</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 bg-gradient-to-r from-slate-500 to-gray-600 rounded"></div>
+                  <span>Otros</span>
+                </div>
+              </>
+            )}
             <div className="flex items-center space-x-2">
               <div className="w-3 h-3 bg-blue-50 border border-blue-300 rounded"></div>
               <span>Hoy</span>

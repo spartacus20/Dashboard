@@ -35,6 +35,7 @@ import {
   ChevronUp,
   LayoutList,
   Rows3,
+  MessageCircle,
 } from "lucide-react";
 import {
   Card,
@@ -71,6 +72,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
     "all" | "true" | "false"
   >("all");
   const [filterMotivoRechazo, setFilterMotivoRechazo] = useState<string>("all");
+  const [filterChannel, setFilterChannel] = useState<"all" | "llamada" | "whatsapp">("all");
   const [scheduledDateFilter, setScheduledDateFilter] = useState<string[]>([]);
   const [onlyDuplicatedPhones, setOnlyDuplicatedPhones] = useState(false);
   const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -101,6 +103,8 @@ export function Agendas({ onNavigate }: AgendasProps) {
   const [cardsContentVisible, setCardsContentVisible] = useState(false);
   // Permiso para ver estadísticas de Paneles Solares / Baterías según metadata.filtro_solar
   const [hasFiltroSolar, setHasFiltroSolar] = useState(false);
+  // Cliente FIT: agendas vienen por llamada (con call_id) o por WhatsApp (sin call_id)
+  const [hasFit, setHasFit] = useState(false);
   const itemsPerPage = 10;
   const [listViewMode, setListViewMode] = useState<"list" | "grouped">("list");
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
@@ -189,8 +193,10 @@ export function Agendas({ onNavigate }: AgendasProps) {
         if (metadataStr) {
           const metadata = JSON.parse(metadataStr);
           setHasFiltroSolar(metadata?.filtro_solar === true);
+          setHasFit(metadata?.fit === true);
         } else {
           setHasFiltroSolar(false);
+          setHasFit(false);
         }
       } catch (error) {
         // console.error(
@@ -198,6 +204,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
           // error,
         // );
         setHasFiltroSolar(false);
+        setHasFit(false);
       }
     };
 
@@ -205,6 +212,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
       const customEvent = event as CustomEvent;
       if (customEvent.detail?.metadata) {
         setHasFiltroSolar(customEvent.detail.metadata.filtro_solar === true);
+        setHasFit(customEvent.detail.metadata.fit === true);
       } else {
         updateFromSession();
       }
@@ -379,6 +387,15 @@ export function Agendas({ onNavigate }: AgendasProps) {
       );
     }
 
+    // Filtrar por canal de origen (solo clientes FIT)
+    if (filterChannel !== "all") {
+      if (filterChannel === "llamada") {
+        filtered = filtered.filter((agenda) => !!agenda.call_id);
+      } else if (filterChannel === "whatsapp") {
+        filtered = filtered.filter((agenda) => !agenda.call_id);
+      }
+    }
+
     // Filtrar por días agendados (fecha de visita) — puede ser uno o varios
     if (scheduledDateFilter.length > 0) {
       filtered = filtered.filter((agenda) =>
@@ -398,6 +415,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
     filterApproved,
     filterReviewed,
     filterMotivoRechazo,
+    filterChannel,
     onlyDuplicatedPhones,
     scheduledDateFilter,
   ]);
@@ -495,6 +513,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
     if (filterApproved !== "all") n++;
     if (filterReviewed !== "all") n++;
     if (filterMotivoRechazo !== "all") n++;
+    if (filterChannel !== "all") n++;
     if (sortOrder !== "DESC") n++;
     return n;
   }, [
@@ -504,6 +523,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
     filterApproved,
     filterReviewed,
     filterMotivoRechazo,
+    filterChannel,
     sortOrder,
   ]);
 
@@ -598,6 +618,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
     setFilterApproved("all");
     setFilterReviewed("all");
     setFilterMotivoRechazo("all");
+    setFilterChannel("all");
     setSortOrder("DESC");
   };
 
@@ -1505,47 +1526,49 @@ export function Agendas({ onNavigate }: AgendasProps) {
                         )}
                       </div>
 
-                      {/* Tipo de agenda */}
-                      <div>
-                        <button
-                          type="button"
-                          onClick={() => toggleAgendaFilterSection("tipo")}
-                          className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors text-left"
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-sm font-medium text-slate-700">
-                              Tipo de agenda
-                            </span>
-                            {filterType !== "all" ? (
-                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
-                            ) : null}
-                          </div>
-                          <span className="text-slate-400 text-base leading-none shrink-0">
-                            {expandedFilterSections.has("tipo") ? "−" : "+"}
-                          </span>
-                        </button>
-                        {expandedFilterSections.has("tipo") && (
-                          <div className="px-4 pb-3">
-                            <div className="relative">
-                              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 pointer-events-none" />
-                              <select
-                                value={filterType}
-                                onChange={(e) =>
-                                  setFilterType(e.target.value)
-                                }
-                                className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
-                              >
-                                <option value="all">Todos los tipos</option>
-                                {uniqueTypes.map((type) => (
-                                  <option key={type} value={type}>
-                                    {type}
-                                  </option>
-                                ))}
-                              </select>
+                      {/* Tipo de agenda — oculto para clientes FIT */}
+                      {!hasFit && (
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => toggleAgendaFilterSection("tipo")}
+                            className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors text-left"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-sm font-medium text-slate-700">
+                                Tipo de agenda
+                              </span>
+                              {filterType !== "all" ? (
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                              ) : null}
                             </div>
-                          </div>
-                        )}
-                      </div>
+                            <span className="text-slate-400 text-base leading-none shrink-0">
+                              {expandedFilterSections.has("tipo") ? "−" : "+"}
+                            </span>
+                          </button>
+                          {expandedFilterSections.has("tipo") && (
+                            <div className="px-4 pb-3">
+                              <div className="relative">
+                                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 pointer-events-none" />
+                                <select
+                                  value={filterType}
+                                  onChange={(e) =>
+                                    setFilterType(e.target.value)
+                                  }
+                                  className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
+                                >
+                                  <option value="all">Todos los tipos</option>
+                                  {uniqueTypes.map((type) => (
+                                    <option key={type} value={type}>
+                                      {type}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {/* Agente */}
                       <div>
@@ -1727,6 +1750,52 @@ export function Agendas({ onNavigate }: AgendasProps) {
                           </div>
                         )}
                       </div>
+
+                      {/* Canal de origen — solo clientes FIT */}
+                      {hasFit && (
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => toggleAgendaFilterSection("canal")}
+                            className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors text-left"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-sm font-medium text-slate-700">
+                                Canal de origen
+                              </span>
+                              {filterChannel !== "all" ? (
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                              ) : null}
+                            </div>
+                            <span className="text-slate-400 text-base leading-none shrink-0">
+                              {expandedFilterSections.has("canal") ? "−" : "+"}
+                            </span>
+                          </button>
+                          {expandedFilterSections.has("canal") && (
+                            <div className="px-4 pb-3">
+                              <div className="flex flex-col gap-1.5">
+                                {(["all", "llamada", "whatsapp"] as const).map((opt) => (
+                                  <button
+                                    key={opt}
+                                    type="button"
+                                    onClick={() => setFilterChannel(opt)}
+                                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-left ${
+                                      filterChannel === opt
+                                        ? "bg-blue-600 text-white"
+                                        : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                                    }`}
+                                  >
+                                    {opt === "llamada" && <Phone className="w-3.5 h-3.5 shrink-0" />}
+                                    {opt === "whatsapp" && <MessageCircle className="w-3.5 h-3.5 shrink-0" />}
+                                    {opt === "all" && <Filter className="w-3.5 h-3.5 shrink-0" />}
+                                    {opt === "all" ? "Todos los canales" : opt === "llamada" ? "Llamada" : "WhatsApp"}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {/* Orden */}
                       <div>
@@ -2000,7 +2069,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
                                         </div>
                                       </div>
                                       <div className="flex items-center gap-2 shrink-0">
-                                        {agenda.tipo_agenda && (
+                                        {agenda.tipo_agenda && !hasFit && (
                                           <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold text-white uppercase tracking-wide ${getAgendaTypeBadgeClass(agenda.tipo_agenda)}`}>
                                             {agenda.tipo_agenda}
                                           </span>
@@ -2025,7 +2094,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
                                     </div>
                                   </div>
                                   {/* Mini barra de estados */}
-                                  <div className="bg-slate-50 border-t border-slate-100 px-4 py-2 flex flex-wrap gap-2">
+                                  <div className="bg-slate-50 border-t border-slate-100 px-4 py-2 flex flex-wrap items-center gap-2">
                                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${isApproved(agenda.aprobada) ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-red-100 text-red-700 border-red-200"}`}>
                                       {isApproved(agenda.aprobada) ? "Aprobada" : "No aprobada"}
                                     </span>
@@ -2035,6 +2104,17 @@ export function Agendas({ onNavigate }: AgendasProps) {
                                     {isReviewed(agenda.revisada) && !isApproved(agenda.aprobada) && (
                                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${agenda.llamada_enviada === true ? "bg-blue-100 text-blue-700 border-blue-200" : "bg-amber-100 text-amber-700 border-amber-200"}`}>
                                         {agenda.llamada_enviada === true ? "✓ Notif. enviada" : "⏳ Notif. pendiente"}
+                                      </span>
+                                    )}
+                                    {hasFit && (
+                                      <span
+                                        className={`ml-auto px-2 py-0.5 rounded-full text-[10px] font-semibold border flex items-center gap-1 ${agenda.call_id ? "bg-blue-100 text-blue-700 border-blue-200" : "bg-green-100 text-green-700 border-green-200"}`}
+                                        title={agenda.call_id ? "Agendado por llamada" : "Agendado por WhatsApp"}
+                                      >
+                                        {agenda.call_id
+                                          ? <Phone className="w-3 h-3" />
+                                          : <MessageCircle className="w-3 h-3" />}
+                                        {agenda.call_id ? "Llamada" : "WhatsApp"}
                                       </span>
                                     )}
                                   </div>
@@ -2150,7 +2230,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
                                 </div>
                               </div>
 
-                              {agenda?.tipo_agenda && (
+                              {agenda?.tipo_agenda && !hasFit && (
                                 <span
                                   className={`inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black text-white shadow-sm uppercase tracking-[0.1em] ${getAgendaTypeBadgeClass(agenda.tipo_agenda)}`}
                                 >
@@ -2268,6 +2348,23 @@ export function Agendas({ onNavigate }: AgendasProps) {
                               <span>
                                 {agenda.llamada_enviada === true ? "Notif. enviada" : "Notif. pendiente"}
                               </span>
+                            </div>
+                          )}
+
+                          {/* Canal de origen — solo para clientes FIT */}
+                          {hasFit && (
+                            <div
+                              className={`px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 cursor-default ml-auto ${
+                                agenda.call_id
+                                  ? "bg-blue-100 text-blue-800 border-blue-300"
+                                  : "bg-green-100 text-green-800 border-green-300"
+                              }`}
+                              title={agenda.call_id ? "Agendado por llamada" : "Agendado por WhatsApp"}
+                            >
+                              {agenda.call_id
+                                ? <Phone className="w-3 h-3" />
+                                : <MessageCircle className="w-3 h-3" />}
+                              <span>{agenda.call_id ? "Llamada" : "WhatsApp"}</span>
                             </div>
                           )}
                         </div>
@@ -2393,6 +2490,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
                     : undefined
                 }
                 mode="created"
+                hasFit={hasFit}
               />
             )}
           </div>
@@ -2439,6 +2537,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
                     : undefined
                 }
                 mode="scheduled"
+                hasFit={hasFit}
               />
             )}
           </div>
