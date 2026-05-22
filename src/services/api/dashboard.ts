@@ -327,9 +327,10 @@ const EMPTY_DASHBOARD = {
       total_llamadas: 0, llamadas_efectivas: 0, llamadas_fallidas: 0, costo_total: 0,
       total_duration_seconds: 0, total_duration_minutes: 0,
       promedio_duracion_efectivas_segundos: 0, promedio_duracion_efectivas_minutos: 0, efectivas_con_duracion: 0,
-      total_agendamientos: 0, total_agendamientos_paneles: 0, costo_por_agenda: 0
+      total_agendamientos: 0, total_agendamientos_paneles: 0, costo_por_agenda: 0,
+      total_agendamientos_whatsapp: 0, total_agendamientos_llamada: 0
     },
-    llamadas_por_dia: [], llamadas_por_hora: [], razones_desconexion: [], tipos_vivienda: [],
+    llamadas_por_dia: [], llamadas_por_hora: [], agendas_por_hora_canal: [], razones_desconexion: [], tipos_vivienda: [],
     tipos_vivienda_agendas: [], interes: [], llamadas_efectivas_por_hora: [], agentes_por_agendas: [],
     duracion_llamadas_efectivas: null, identidad: []
   }
@@ -365,7 +366,9 @@ function transformDashboardData(data: any): any {
           })(),
           total_agendamientos: data.total_agendamientos || 0,
           total_agendamientos_paneles: data.total_agendamientos_paneles || 0,
-          costo_por_agenda: data.costo_por_agenda || 0
+          costo_por_agenda: data.costo_por_agenda || 0,
+          total_agendamientos_whatsapp: data.total_agendamientos_whatsapp || 0,
+          total_agendamientos_llamada: data.total_agendamientos_llamada || 0
         },
         // Transformar llamadas_por_dia reales si están disponibles; si no, hacer fallback a costos_por_dia
         llamadas_por_dia: (() => {
@@ -457,6 +460,12 @@ function transformDashboardData(data: any): any {
           hora_label: `${item.hora}:00`,
           llamadas_mas_16_segundos: (item.cantidad_agendas || 0) * 5, // Estimación: 5 llamadas por agenda
           cantidad_agendas: item.cantidad_agendas || 0
+        })) : [],
+        agendas_por_hora_canal: Array.isArray(data.distribucion_por_hora_canal) ? data.distribucion_por_hora_canal.map((item: any) => ({
+          hora: item.hora,
+          label: `${String(item.hora).padStart(2, '0')}:00`,
+          whatsapp: item.cantidad_whatsapp || 0,
+          llamada: item.cantidad_llamada || 0,
         })) : [],
         // Transformar razones_desconexion
         razones_desconexion: Array.isArray(data.razones_desconexion) ? data.razones_desconexion.map((item: any) => ({

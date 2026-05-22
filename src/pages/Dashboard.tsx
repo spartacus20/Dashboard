@@ -27,7 +27,6 @@ import {
 import {
   ResponsiveContainer as RechartsResponsiveContainer,
   ComposedChart as RechartsComposedChart,
-  BarChart as RechartsBarChart,
   Bar as RechartsBar,
   Line as RechartsLine,
   PieChart as RechartsPieChart,
@@ -60,6 +59,7 @@ import {
   generateInterestData,
   generateAgentesPorAgendasData,
   generateHourlyAgendasData,
+  generateHourlyAgendasByChannelData,
 } from "../lib/chartUtils";
 import {
   getMadridYmdParts,
@@ -277,6 +277,10 @@ export function Dashboard({
 
   // Verificar si el usuario tiene permiso para ver filtro de base de datos
   const [hasFiltroSolar, setHasFiltroSolar] = React.useState(false);
+  const [hasFit, setHasFit] = React.useState(false);
+
+  /** 0 = WhatsApp, 1 = Llamada */
+  const [agendamientosCardSlide, setAgendamientosCardSlide] = useState<0 | 1>(0);
 
   // Motivos de rechazo (solo para clientes con filtro_solar)
   const [motivosRechazo, setMotivosRechazo] = React.useState<MotivoRechazoStat[]>([]);
@@ -347,15 +351,17 @@ export function Dashboard({
         const metadata = JSON.parse(metadataStr);
         const hasFiltro = metadata?.filtro_solar === true;
         setHasFiltroSolar(hasFiltro);
+        setHasFit(metadata?.fit === true);
         setShowClienteFilter(metadata?.recoveries === true);
         return hasFiltro;
       }
-      // Si no hay metadata, resetear ambos flags
       setHasFiltroSolar(false);
+      setHasFit(false);
       setShowClienteFilter(false);
       return false;
     } catch (error) {
       setHasFiltroSolar(false);
+      setHasFit(false);
       setShowClienteFilter(false);
       return false;
     }
@@ -372,6 +378,7 @@ export function Dashboard({
       if (customEvent.detail?.metadata) {
         const hasFiltro = customEvent.detail.metadata.filtro_solar === true;
         setHasFiltroSolar(hasFiltro);
+        setHasFit(customEvent.detail.metadata.fit === true);
         setShowClienteFilter(customEvent.detail.metadata.recoveries === true);
       } else {
         checkMetadata();
@@ -1261,6 +1268,10 @@ export function Dashboard({
       generateHourlyAgendasData(dashboardData, hourRangeStart, hourRangeEnd),
     [dashboardData, hourRangeStart, hourRangeEnd],
   );
+  const hourlyAgendasByChannelData = useMemo(
+    () => generateHourlyAgendasByChannelData(dashboardData, hourRangeStart, hourRangeEnd),
+    [dashboardData, hourRangeStart, hourRangeEnd],
+  );
   const housingTypeData = useMemo(
     () => generateHousingTypeData(dashboardData),
     [dashboardData],
@@ -2093,52 +2104,105 @@ export function Dashboard({
           <div className="grid gap-4 mb-8 md:grid-cols-2 lg:grid-cols-4">
             {agendaEnabled && (
               <Card>
-                <CardHeader className="flex flex-row items-center justify-center gap-2 pb-2">
-                  <CardTitle className="text-sm font-medium text-center">
-                    {hasFiltroSolar ? "Paneles Solares" : "Total Agendamientos"}
-                  </CardTitle>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    className="h-4 w-4 text-blue-400"
-                  >
-                    <rect width="18" height="18" x="3" y="4" rx="2" ry="2" />
-                    <line x1="16" x2="16" y1="2" y2="6" />
-                    <line x1="8" x2="8" y1="2" y2="6" />
-                    <line x1="3" x2="21" y1="10" y2="10" />
-                  </svg>
-                </CardHeader>
-                <CardContent className="flex flex-col items-center justify-center text-center">
-                  <div className="text-xl font-bold text-center">
-                    {(() => {
-                      const efectivas =
-                        dashboardData?.dashboard_data?.metricas_generales
-                          ?.llamadas_efectivas || 0;
-                      const agendas = hasFiltroSolar
-                        ? dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos_paneles || 0
-                        : dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos || 0;
-                      if (efectivas > 0) {
+                {hasFit ? (
+                  <>
+                    <CardHeader className="flex flex-row items-center gap-1 pb-2 px-1 pt-4">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0 text-slate-500 hover:text-slate-900"
+                        aria-label="Canal anterior"
+                        onClick={() => setAgendamientosCardSlide((s) => (s === 0 ? 1 : 0))}
+                      >
+                        <ChevronLeft className="h-5 w-5" />
+                      </Button>
+                      <div className="flex flex-1 flex-col items-center justify-center gap-1 min-w-0 px-1">
+                        <div className="flex flex-row items-center justify-center gap-2">
+                          <CardTitle className="text-sm font-medium text-center leading-tight">
+                            {agendamientosCardSlide === 0 ? "Agendas WhatsApp" : "Agendas Llamada"}
+                          </CardTitle>
+                          {agendamientosCardSlide === 0 ? (
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" className="h-4 w-4 shrink-0 text-green-500" aria-hidden>
+                              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                            </svg>
+                          ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" className="h-4 w-4 shrink-0 text-blue-400" aria-hidden>
+                              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.63 3.18 2 2 0 0 1 3.6 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.5a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
+                            </svg>
+                          )}
+                        </div>
+                        <div className="flex flex-row gap-1.5" role="tablist">
+                          <span className={`h-1.5 w-1.5 rounded-full transition-colors ${agendamientosCardSlide === 0 ? "bg-green-500" : "bg-slate-200"}`} />
+                          <span className={`h-1.5 w-1.5 rounded-full transition-colors ${agendamientosCardSlide === 1 ? "bg-blue-500" : "bg-slate-200"}`} />
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0 text-slate-500 hover:text-slate-900"
+                        aria-label="Siguiente canal"
+                        onClick={() => setAgendamientosCardSlide((s) => (s === 1 ? 0 : 1))}
+                      >
+                        <ChevronRight className="h-5 w-5" />
+                      </Button>
+                    </CardHeader>
+                    <CardContent className="flex flex-col items-center justify-center text-center min-h-[5.25rem] pb-4 pt-0">
+                      {(() => {
+                        const total = dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos || 0;
+                        const whatsapp = dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos_whatsapp || 0;
+                        const llamada = dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos_llamada || 0;
+                        const count = agendamientosCardSlide === 0 ? whatsapp : llamada;
+                        const color = agendamientosCardSlide === 0 ? "text-green-600" : "text-blue-600";
+                        const label = agendamientosCardSlide === 0 ? "agendas WhatsApp" : "agendas Llamada";
                         return (
-                          <span className="font-bold">
-                            {((agendas / efectivas) * 100).toFixed(2)}%
-                          </span>
+                          <>
+                            <div className={`text-2xl font-bold text-center ${color}`}>{count.toLocaleString()}</div>
+                            <div className="text-xs text-slate-500 text-center mt-0.5">{label}</div>
+                            <div className="text-xs text-slate-400 text-center mt-2 border-t border-slate-100 pt-2 w-full">
+                              Total: <span className="font-semibold text-slate-600">{total.toLocaleString()}</span> agendas
+                            </div>
+                          </>
                         );
-                      }
-                      return <span className="font-bold">0%</span>;
-                    })()}
-                  </div>
-                  <div className="text-xs text-slate-600 text-center">
-                    {hasFiltroSolar
-                      ? (dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos_paneles?.toLocaleString() || 0)
-                      : (dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos?.toLocaleString() || 0)}{" "}
-                    {hasFiltroSolar ? "paneles solares" : "agendamientos"}
-                  </div>
-                </CardContent>
+                      })()}
+                    </CardContent>
+                  </>
+                ) : (
+                  <>
+                    <CardHeader className="flex flex-row items-center justify-center gap-2 pb-2">
+                      <CardTitle className="text-sm font-medium text-center">
+                        {hasFiltroSolar ? "Paneles Solares" : "Total Agendamientos"}
+                      </CardTitle>
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" className="h-4 w-4 text-blue-400">
+                        <rect width="18" height="18" x="3" y="4" rx="2" ry="2" />
+                        <line x1="16" x2="16" y1="2" y2="6" />
+                        <line x1="8" x2="8" y1="2" y2="6" />
+                        <line x1="3" x2="21" y1="10" y2="10" />
+                      </svg>
+                    </CardHeader>
+                    <CardContent className="flex flex-col items-center justify-center text-center">
+                      <div className="text-xl font-bold text-center">
+                        {(() => {
+                          const efectivas = dashboardData?.dashboard_data?.metricas_generales?.llamadas_efectivas || 0;
+                          const agendas = hasFiltroSolar
+                            ? dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos_paneles || 0
+                            : dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos || 0;
+                          if (efectivas > 0) {
+                            return <span className="font-bold">{((agendas / efectivas) * 100).toFixed(2)}%</span>;
+                          }
+                          return <span className="font-bold">0%</span>;
+                        })()}
+                      </div>
+                      <div className="text-xs text-slate-600 text-center">
+                        {hasFiltroSolar
+                          ? (dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos_paneles?.toLocaleString() || 0)
+                          : (dashboardData?.dashboard_data?.metricas_generales?.total_agendamientos?.toLocaleString() || 0)}{" "}
+                        {hasFiltroSolar ? "paneles solares" : "agendamientos"}
+                      </div>
+                    </CardContent>
+                  </>
+                )}
               </Card>
             )}
             {agendaEnabled && (
@@ -2446,6 +2510,37 @@ export function Dashboard({
           {/* Eliminar la Card y el contenido del gráfico de llamadas por día */}
 
           {/* Gráficos de distribución */}
+          {/* Gráfico de agendas por canal — solo clientes FIT — ancho completo */}
+          {hasFit && agendaEnabled && hourlyAgendasByChannelData.length > 0 && (
+            <Card className="mb-8 shadow-lg border border-slate-200">
+              <CardHeader>
+                <CardTitle className="text-base font-semibold text-slate-800">
+                  Agendas por Canal
+                </CardTitle>
+                <CardDescription className="text-slate-500">
+                  Distribución de agendamientos por hora y canal de origen
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-0 md:p-6">
+                <div className="h-[300px] bg-white rounded-xl p-4 md:p-6">
+                  <RechartsResponsiveContainer width="100%" height={300}>
+                    <RechartsComposedChart data={hourlyAgendasByChannelData}>
+                      <RechartsCartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <RechartsXAxis dataKey="label" stroke="#888888" fontSize={12} />
+                      <RechartsYAxis stroke="#888888" fontSize={12} allowDecimals={false} />
+                      <RechartsTooltip
+                        contentStyle={{ background: "white", border: "1px solid #e5e7eb", color: "#111827", fontSize: 13 }}
+                      />
+                      <RechartsLegend />
+                      <RechartsLine type="monotone" dataKey="WhatsApp" stroke="#10b981" strokeWidth={2} dot={{ r: 4 }} />
+                      <RechartsLine type="monotone" dataKey="Llamada" stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }} />
+                    </RechartsComposedChart>
+                  </RechartsResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <div
             className={`grid gap-4 mb-8 ${
               agendaEnabled || showClienteFilter ? "md:grid-cols-2" : "md:grid-cols-1"
