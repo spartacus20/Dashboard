@@ -351,11 +351,11 @@ function CallModal({ phoneNumber, onClose, apiKey }: CallModalProps) {
 interface AddPhoneModalProps {
   onClose: () => void;
   onSuccess: () => void;
-  workspaceNameByApiKey: Record<string, string>;
+  workspaceOptions: { label: string; key: string }[];
 }
 
 // Componente para el modal de añadir número de teléfono
-function AddPhoneModal({ onClose, onSuccess, workspaceNameByApiKey }: AddPhoneModalProps) {
+function AddPhoneModal({ onClose, onSuccess, workspaceOptions }: AddPhoneModalProps) {
   const { apiKey, apiKeyTest, clientId, phoneNumbers: contextPhoneNumbers } = useCallsContext();
   const [phoneNumber, setPhoneNumber] = useState('');
   const [nickname, setNickname] = useState('');
@@ -426,35 +426,10 @@ function AddPhoneModal({ onClose, onSuccess, workspaceNameByApiKey }: AddPhoneMo
     setTerminationUriOptions(merged);
   }, []);
 
-  // Construir opciones de workspace a partir de apiKeyTest (todas las API keys de los workspaces)
-  const workspaceOptions = useMemo(() => {
-    const options: { label: string; apiKey: string }[] = [];
-
-    if (apiKeyTest && apiKeyTest.length > 0) {
-      apiKeyTest.forEach((key, index) => {
-        const workspaceName = workspaceNameByApiKey[key] || null;
-
-        options.push({
-          label: workspaceName || `Workspace ${index + 1}`,
-          apiKey: key,
-        });
-      });
-    } else if (apiKey) {
-      const workspaceName = workspaceNameByApiKey[apiKey] || null;
-
-      options.push({
-        label: workspaceName || `Workspace principal`,
-        apiKey,
-      });
-    }
-
-    return options;
-  }, [apiKey, apiKeyTest, workspaceNameByApiKey]);
-
   // Seleccionar por defecto el primer workspace disponible
   useEffect(() => {
     if (!selectedWorkspaceApiKey && workspaceOptions.length > 0) {
-      setSelectedWorkspaceApiKey(workspaceOptions[0].apiKey);
+      setSelectedWorkspaceApiKey(workspaceOptions[0].key);
     }
   }, [selectedWorkspaceApiKey, workspaceOptions]);
 
@@ -596,7 +571,7 @@ function AddPhoneModal({ onClose, onSuccess, workspaceNameByApiKey }: AddPhoneMo
             >
               <option value="">Selecciona un workspace</option>
               {workspaceOptions.map((ws) => (
-                <option key={ws.apiKey} value={ws.apiKey}>
+                <option key={ws.key} value={ws.key}>
                   {ws.label}
                 </option>
               ))}
@@ -1411,21 +1386,13 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
     }
   };
 
-  // Mapear cada workspace_api_key a un nombre de workspace (bonito o genérico)
+  // Mapear cada API key a un nombre de workspace (misma fuente que el selector de filtro)
   const workspaceNameByApiKey = useMemo(() => {
     const mapping: Record<string, string> = {};
+    const keys = apiKeyTest && apiKeyTest.length > 0 ? apiKeyTest : (apiKey ? [apiKey] : []);
 
-    const apiKeys = Array.from(
-      new Set(
-        phoneNumbers
-          .map((p) => p.workspace_api_key)
-          .filter((k): k is string => !!k)
-      )
-    );
-
-    apiKeys.forEach((key, index) => {
+    keys.forEach((key, index) => {
       const phoneForKey = phoneNumbers.find((p) => p.workspace_api_key === key);
-
       const fromFolders = workspaceFoldersByApiKey[key];
       const fromMetadata = phoneForKey?.workspace_name;
       const fromWebhook = phoneForKey?.inbound_webhook_url
@@ -1435,8 +1402,22 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
       mapping[key] = fromFolders || fromMetadata || fromWebhook || `Workspace ${index + 1}`;
     });
 
+    // Incluir keys de teléfonos cargados que no estén en apiKeyTest
+    phoneNumbers.forEach((p) => {
+      const key = p.workspace_api_key;
+      if (!key || mapping[key]) return;
+
+      const fromFolders = workspaceFoldersByApiKey[key];
+      const fromMetadata = p.workspace_name;
+      const fromWebhook = p.inbound_webhook_url
+        ? getWorkspaceFromWebhook(p.inbound_webhook_url)
+        : null;
+
+      mapping[key] = fromFolders || fromMetadata || fromWebhook || key;
+    });
+
     return mapping;
-  }, [phoneNumbers, workspaceFoldersByApiKey]);
+  }, [phoneNumbers, workspaceFoldersByApiKey, apiKey, apiKeyTest]);
 
   // Opciones de workspace para el selector (derivadas de las API keys disponibles)
   const workspaceOptions = useMemo(() => {
@@ -2178,7 +2159,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
         <AddPhoneModal
           onClose={() => setShowAddPhoneModal(false)}
           onSuccess={() => selectedWorkspaceKey && loadLocalPhoneNumbers(selectedWorkspaceKey)}
-          workspaceNameByApiKey={workspaceNameByApiKey}
+          workspaceOptions={workspaceOptions}
         />
       )}
 
