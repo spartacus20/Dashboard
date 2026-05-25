@@ -566,8 +566,8 @@ const Lanzamiento: React.FC = () => {
   };
 
   const calculatePercentage = (value: number, total: number) => {
-    if (total === 0) return 0;
-    return Math.round((value / total) * 100);
+    if (total === 0) return '0.0';
+    return ((value / total) * 100).toFixed(1);
   };
 
   const MetricCard = ({ title, value, icon: Icon, color = "text-blue-600", bgColor = "bg-blue-100", onClick }: {
@@ -934,9 +934,7 @@ const Lanzamiento: React.FC = () => {
                   </div>
                   <div className="text-center p-4 bg-purple-50 rounded-lg">
                     <div className="text-2xl font-bold text-purple-600">
-                      {funnel?.totals?.pct_clicks_over_links != null
-                        ? `${funnel.totals.pct_clicks_over_links.toFixed(1)}`
-                        : calculatePercentage(metrics.total_clicks_totales, funnel?.totals?.total_links_unique ?? metrics.total_enlaces_enviados)}%
+                      {calculatePercentage(metrics.total_clicks_totales, funnel?.totals?.total_links_unique ?? metrics.total_enlaces_enviados)}%
                     </div>
                     <div className="text-sm text-gray-600">Tasa de Clicks</div>
                   </div>
