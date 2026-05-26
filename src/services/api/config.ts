@@ -19,6 +19,7 @@ export const MOTIVOS_RECHAZO_URL = `${BASE_URL}/api/agenda/motivos-rechazo`;
 export const API_URL = 'https://api.retellai.com/v2/list-calls';
 export const ASISTENCIA_FUNNEL_URL = `${BASE_URL}/api/asistencia/funnel`;
 export const GET_CALL_TRANSCRIPT_URL = `${BASE_URL}/api/calls/get-call-transcript`;
+export const WHATSAPP_BOT_STATS_URL = `${BASE_URL}/api/whatsapp-bot/stats`;
 
 // Función helper para obtener el client_id del localStorage
 export function getClientId(): string | null {

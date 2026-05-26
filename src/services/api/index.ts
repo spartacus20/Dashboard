@@ -12,3 +12,4 @@ export * from './dontCall';
 export * from './launch';
 export * from './tickets';
 export * from './soporteIA';
+export * from './whatsappBot';

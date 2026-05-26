@@ -45,8 +45,10 @@ import {
   fetchAsistenciaClicksByHour,
   fetchMotivosRechazo,
   getAvailableClientes,
+  fetchWhatsappBotStats,
 } from "../api";
 import type { MotivoRechazoStat } from "../services/api/agendas";
+import type { WhatsappBotPeriod } from "../services/api/whatsappBot";
 import {
   translateDisconnectionReason,
   translateHousingType,
@@ -282,6 +284,11 @@ export function Dashboard({
   /** 0 = WhatsApp, 1 = Llamada */
   const [agendamientosCardSlide, setAgendamientosCardSlide] = useState<0 | 1>(0);
 
+  /** 0 = Llamadas Contestadas, 1 = Mensajes WhatsApp (solo hasFit) */
+  const [contestadasSlide, setContestadasSlide] = useState<0 | 1>(0);
+  const [whatsappMsgCount, setWhatsappMsgCount] = useState<number>(0);
+  const [whatsappMsgLoading, setWhatsappMsgLoading] = useState<boolean>(false);
+
   // Motivos de rechazo (solo para clientes con filtro_solar)
   const [motivosRechazo, setMotivosRechazo] = React.useState<MotivoRechazoStat[]>([]);
   const [motivosRechazoLoading, setMotivosRechazoLoading] = React.useState(false);
@@ -392,6 +399,33 @@ export function Dashboard({
       window.removeEventListener("metadataUpdated", handleMetadataUpdate);
     };
   }, [checkMetadata]);
+
+  // Cargar estadísticas de WhatsApp Bot (solo para clientes con fit === true)
+  // Se sincroniza con el período global del dashboard (timePeriod)
+  React.useEffect(() => {
+    if (!hasFit) {
+      setWhatsappMsgCount(0);
+      return;
+    }
+    const clientId = localStorage.getItem('get_client_id');
+    if (!clientId) return;
+
+    const periodMap: Record<string, WhatsappBotPeriod> = {
+      today: 'today',
+      week: 'week',
+      month: 'month',
+    };
+    const waPeriod: WhatsappBotPeriod = periodMap[timePeriod] ?? 'all';
+
+    let cancelled = false;
+    setWhatsappMsgLoading(true);
+    fetchWhatsappBotStats(clientId, waPeriod)
+      .then(({ total }) => { if (!cancelled) setWhatsappMsgCount(total); })
+      .catch(() => { if (!cancelled) setWhatsappMsgCount(0); })
+      .finally(() => { if (!cancelled) setWhatsappMsgLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [hasFit, timePeriod]);
 
   // Cargar clientes disponibles cuando showClienteFilter es true; limpiar cuando es false
   React.useEffect(() => {
@@ -2010,49 +2044,127 @@ export function Dashboard({
               </CardContent>
             </Card>
             <Card>
-              <CardHeader className="flex flex-row items-center justify-center gap-2 pb-2">
-                <CardTitle className="text-sm font-medium text-center">
-                  Llamadas Contestadas
-                </CardTitle>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  className="h-4 w-4 text-emerald-400"
-                >
-                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                  <polyline points="22,4 12,14.01 9,11.01" />
-                </svg>
-              </CardHeader>
-              <CardContent className="flex flex-col items-center justify-center text-center">
-                <div className="text-xl font-bold text-center">
-                  {(() => {
-                    const total =
-                      dashboardData?.dashboard_data?.metricas_generales
-                        ?.total_llamadas || 0;
-                    const efectivas =
-                      dashboardData?.dashboard_data?.metricas_generales
-                        ?.llamadas_efectivas || 0;
-                    if (total > 0) {
-                      return (
-                        <span className="font-bold">
-                          {((efectivas / total) * 100).toFixed(2)}%
-                        </span>
-                      );
-                    }
-                    return <span className="font-bold">0%</span>;
-                  })()}
-                </div>
-                <div className="text-xs text-slate-600 text-center">
-                  {dashboardData?.dashboard_data?.metricas_generales?.llamadas_efectivas?.toLocaleString() ||
-                    0}{" "}
-                  llamadas contestadas
-                </div>
-              </CardContent>
+              {hasFit ? (
+                <>
+                  <CardHeader className="flex flex-row items-center gap-1 pb-2 px-1 pt-4">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0 text-slate-500 hover:text-slate-900"
+                      aria-label="Vista anterior"
+                      onClick={() => setContestadasSlide((s) => (s === 0 ? 1 : 0))}
+                    >
+                      <ChevronLeft className="h-5 w-5" />
+                    </Button>
+                    <div className="flex flex-1 flex-col items-center justify-center gap-1 min-w-0 px-1">
+                      <div className="flex flex-row items-center justify-center gap-2">
+                        <CardTitle className="text-sm font-medium text-center leading-tight">
+                          {contestadasSlide === 0 ? "Llamadas Contestadas" : "Mensajes WhatsApp"}
+                        </CardTitle>
+                        {contestadasSlide === 0 ? (
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden>
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                            <polyline points="22,4 12,14.01 9,11.01" />
+                          </svg>
+                        ) : (
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" className="h-4 w-4 shrink-0 text-green-500" aria-hidden>
+                            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                          </svg>
+                        )}
+                      </div>
+                      <div className="flex flex-row gap-1.5" role="tablist">
+                        <span className={`h-1.5 w-1.5 rounded-full transition-colors ${contestadasSlide === 0 ? "bg-emerald-500" : "bg-slate-200"}`} />
+                        <span className={`h-1.5 w-1.5 rounded-full transition-colors ${contestadasSlide === 1 ? "bg-green-500" : "bg-slate-200"}`} />
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0 text-slate-500 hover:text-slate-900"
+                      aria-label="Vista siguiente"
+                      onClick={() => setContestadasSlide((s) => (s === 1 ? 0 : 1))}
+                    >
+                      <ChevronRight className="h-5 w-5" />
+                    </Button>
+                  </CardHeader>
+                  <CardContent className="flex flex-col items-center justify-center text-center min-h-[5.25rem] pb-4 pt-0">
+                    {contestadasSlide === 0 ? (
+                      <>
+                        <div className="text-2xl font-bold text-center text-emerald-600">
+                          {(() => {
+                            const total = dashboardData?.dashboard_data?.metricas_generales?.total_llamadas || 0;
+                            const efectivas = dashboardData?.dashboard_data?.metricas_generales?.llamadas_efectivas || 0;
+                            if (total > 0) return `${((efectivas / total) * 100).toFixed(2)}%`;
+                            return '0%';
+                          })()}
+                        </div>
+                        <div className="text-xs text-slate-500 text-center mt-0.5">
+                          {dashboardData?.dashboard_data?.metricas_generales?.llamadas_efectivas?.toLocaleString() || 0} llamadas contestadas
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-2xl font-bold text-center text-green-600">
+                          {whatsappMsgLoading ? (
+                            <span className="inline-block h-6 w-16 rounded bg-slate-100 animate-pulse" />
+                          ) : (
+                            whatsappMsgCount.toLocaleString()
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-500 text-center mt-0.5">mensajes enviados</div>
+                      </>
+                    )}
+                  </CardContent>
+                </>
+              ) : (
+                <>
+                  <CardHeader className="flex flex-row items-center justify-center gap-2 pb-2">
+                    <CardTitle className="text-sm font-medium text-center">
+                      Llamadas Contestadas
+                    </CardTitle>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      className="h-4 w-4 text-emerald-400"
+                    >
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                      <polyline points="22,4 12,14.01 9,11.01" />
+                    </svg>
+                  </CardHeader>
+                  <CardContent className="flex flex-col items-center justify-center text-center">
+                    <div className="text-xl font-bold text-center">
+                      {(() => {
+                        const total =
+                          dashboardData?.dashboard_data?.metricas_generales
+                            ?.total_llamadas || 0;
+                        const efectivas =
+                          dashboardData?.dashboard_data?.metricas_generales
+                            ?.llamadas_efectivas || 0;
+                        if (total > 0) {
+                          return (
+                            <span className="font-bold">
+                              {((efectivas / total) * 100).toFixed(2)}%
+                            </span>
+                          );
+                        }
+                        return <span className="font-bold">0%</span>;
+                      })()}
+                    </div>
+                    <div className="text-xs text-slate-600 text-center">
+                      {dashboardData?.dashboard_data?.metricas_generales?.llamadas_efectivas?.toLocaleString() ||
+                        0}{" "}
+                      llamadas contestadas
+                    </div>
+                  </CardContent>
+                </>
+              )}
             </Card>
             <Card>
               <CardHeader className="flex flex-row items-center justify-center gap-2 pb-2">
