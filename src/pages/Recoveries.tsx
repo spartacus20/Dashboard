@@ -8,6 +8,9 @@ import {
   RECOVERY_CODIGOS,
 } from '../services/api/calls';
 import { getAudioUrl } from '../api';
+import { getMadridMidnight, addDaysUTC, formatMadridDateYYYYMMDD, getMadridYmdParts } from '../lib/dateUtils';
+
+const MAX_CODE_LENGTH = 'Familiar/lo_conoce'.length;
 
 const CODE_COLORS: Record<string, string> = {
   TON: '#10b981',
@@ -51,6 +54,7 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
   const [loading, setLoading] = useState(false);
   const [loadingTable, setLoadingTable] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [timePeriod, setTimePeriod] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('today');
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -70,6 +74,30 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
   const [playbackRate, setPlaybackRate] = useState(1);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recordsPerPage = 50;
+
+  useEffect(() => {
+    const today = getMadridMidnight();
+    if (timePeriod === 'all') {
+      setDateFrom('');
+      setDateTo('');
+    } else if (timePeriod === 'today') {
+      const todayStr = formatMadridDateYYYYMMDD(today);
+      setDateFrom(todayStr);
+      setDateTo(todayStr);
+    } else if (timePeriod === 'week') {
+      const weekStart = addDaysUTC(today, -6);
+      setDateFrom(formatMadridDateYYYYMMDD(weekStart));
+      setDateTo(formatMadridDateYYYYMMDD(today));
+    } else if (timePeriod === 'month') {
+      const { year, month } = getMadridYmdParts();
+      const firstDay = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+      setDateFrom(formatMadridDateYYYYMMDD(firstDay));
+      setDateTo(formatMadridDateYYYYMMDD(today));
+    }
+    if (timePeriod !== 'custom') {
+      setCurrentPage(1);
+    }
+  }, [timePeriod]);
 
   const buildParams = useCallback(() => {
     const params: any = {
@@ -240,6 +268,7 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
 
   const hasActiveFilters = !!(dateFrom || dateTo || analisisCodigoFilter);
   const clearFilters = () => {
+    setTimePeriod('all');
     setDateFrom('');
     setDateTo('');
     setAnalisisCodigoFilter('');
@@ -280,7 +309,8 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
     }
   };
 
-  const countsToShow = counts.length > 0 ? counts : countsFromList;
+  const countsToShow = (counts.length > 0 ? counts : countsFromList)
+    .filter((c) => c.analisis_codigo.length <= MAX_CODE_LENGTH);
   const totalRegistros = countsToShow.reduce((acc, c) => acc + c.total, 0);
   const mayorCodigo = countsToShow[0];
   const mayorPorcentaje = totalRegistros > 0 && mayorCodigo ? Math.round((mayorCodigo.total / totalRegistros) * 100) : 0;
@@ -327,40 +357,82 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
         </div>
 
         {/* Filters */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
+          {/* Period selector + Código filter */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] uppercase font-bold text-slate-400 mr-1">Período:</span>
+              {([
+                { key: 'today', label: 'Hoy' },
+                { key: 'week', label: 'Última semana' },
+                { key: 'month', label: 'Este mes' },
+                { key: 'custom', label: 'Personalizado' },
+                { key: 'all', label: 'Todos' },
+              ] as const).map(({ key, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setTimePeriod(key)}
+                  className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors ${
+                    timePeriod === key
+                      ? 'bg-[#ec5b13] text-white border-[#ec5b13]'
+                      : 'bg-white text-slate-600 border-slate-200 hover:border-[#ec5b13]/50 hover:text-[#ec5b13]'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] uppercase font-bold text-slate-400">Código:</span>
+              <select
+                value={analisisCodigoFilter}
+                onChange={(e) => { setAnalisisCodigoFilter(e.target.value); setCurrentPage(1); }}
+                className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#ec5b13]/30 focus:border-[#ec5b13] cursor-pointer text-slate-700 bg-white"
+              >
+                <option value="">Todos</option>
+                {Object.keys(RECOVERY_CODIGOS).map((code) => (
+                  <option key={code} value={code}>{code}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           <div className="flex flex-col sm:flex-row sm:items-end gap-4 sm:gap-6 sm:justify-between">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-8">
-              <div className="flex flex-col min-w-[140px]">
-                <label className="text-[10px] uppercase font-bold text-slate-400 mb-1">Desde</label>
-                <input
-                  type="date"
-                  value={dateFrom}
-                  onChange={(e) => { setDateFrom(e.target.value); setCurrentPage(1); }}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#ec5b13]/30 focus:border-[#ec5b13] cursor-pointer text-slate-700"
-                />
-              </div>
-              <div className="flex flex-col min-w-[140px]">
-                <label className="text-[10px] uppercase font-bold text-slate-400 mb-1">Hasta</label>
-                <input
-                  type="date"
-                  value={dateTo}
-                  onChange={(e) => { setDateTo(e.target.value); setCurrentPage(1); }}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#ec5b13]/30 focus:border-[#ec5b13] cursor-pointer text-slate-700"
-                />
-              </div>
-              <div className="flex flex-col min-w-[140px]">
-                <label className="text-[10px] uppercase font-bold text-slate-400 mb-1">Código</label>
-                <select
-                  value={analisisCodigoFilter}
-                  onChange={(e) => { setAnalisisCodigoFilter(e.target.value); setCurrentPage(1); }}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#ec5b13]/30 focus:border-[#ec5b13] cursor-pointer text-slate-700 bg-white"
-                >
-                  <option value="">Todos</option>
-                  {Object.keys(RECOVERY_CODIGOS).map((code) => (
-                    <option key={code} value={code}>{code}</option>
-                  ))}
-                </select>
-              </div>
+              {timePeriod === 'custom' && (
+                <>
+                  <div className="flex flex-col min-w-[140px]">
+                    <label className="text-[10px] uppercase font-bold text-slate-400 mb-1">Desde</label>
+                    <input
+                      type="date"
+                      value={dateFrom}
+                      onChange={(e) => { setDateFrom(e.target.value); setCurrentPage(1); }}
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#ec5b13]/30 focus:border-[#ec5b13] cursor-pointer text-slate-700"
+                    />
+                  </div>
+                  <div className="flex flex-col min-w-[140px]">
+                    <label className="text-[10px] uppercase font-bold text-slate-400 mb-1">Hasta</label>
+                    <input
+                      type="date"
+                      value={dateTo}
+                      onChange={(e) => { setDateTo(e.target.value); setCurrentPage(1); }}
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#ec5b13]/30 focus:border-[#ec5b13] cursor-pointer text-slate-700"
+                    />
+                  </div>
+                </>
+              )}
+              {timePeriod !== 'custom' && (dateFrom || dateTo || timePeriod === 'all') && (
+                <div className="flex items-center gap-2 text-sm text-slate-500">
+                  <Calendar className="h-4 w-4 text-slate-400" />
+                  <span>
+                    {timePeriod === 'all' && 'Todos los registros'}
+                    {timePeriod === 'today' && `Hoy: ${dateFrom}`}
+                    {timePeriod === 'week' && `${dateFrom} → ${dateTo}`}
+                    {timePeriod === 'month' && `${dateFrom} → ${dateTo}`}
+                  </span>
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
               <Button
@@ -481,30 +553,36 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
               <div className="mb-6">
                 <h3 className="text-lg font-bold text-slate-900">Resumen Métricas</h3>
               </div>
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {countsToShow.map((c, i) => {
                   const color = getColorForCode(c.analisis_codigo, i);
+                  const badge = c.analisis_codigo.replace(/[^a-zA-Z0-9]/g, '').slice(0, 3).toUpperCase();
+                  const pct = totalRegistros > 0 ? ((c.total / totalRegistros) * 100).toFixed(1) : '0';
                   return (
                     <div
                       key={c.analisis_codigo}
-                      className="flex items-center justify-between p-3 rounded-xl border"
+                      className="flex items-center gap-3 p-3 rounded-xl border"
                       style={{
                         backgroundColor: `${color}10`,
                         borderColor: `${color}30`,
                       }}
                     >
-                      <div className="flex items-center gap-3">
-                        <div
-                          className="w-8 h-8 rounded-lg text-white flex items-center justify-center font-bold text-xs"
-                          style={{ backgroundColor: color }}
+                      <div
+                        className="w-9 h-9 shrink-0 rounded-lg text-white flex items-center justify-center font-bold text-[10px] tracking-tight"
+                        style={{ backgroundColor: color }}
+                      >
+                        {badge}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p
+                          className="text-sm font-semibold text-slate-700 truncate"
+                          title={c.analisis_codigo}
                         >
                           {c.analisis_codigo}
-                        </div>
-                        <span className="font-semibold text-slate-700">
-                          Llamadas {c.analisis_codigo}
-                        </span>
+                        </p>
+                        <p className="text-xs text-slate-400">{pct}% del total</p>
                       </div>
-                      <span className="text-lg font-bold" style={{ color }}>
+                      <span className="text-base font-bold shrink-0" style={{ color }}>
                         {c.total.toLocaleString()}
                       </span>
                     </div>
