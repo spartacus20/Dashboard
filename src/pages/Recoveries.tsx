@@ -55,8 +55,8 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
   const [loadingTable, setLoadingTable] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [timePeriod, setTimePeriod] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('today');
-  const [dateFrom, setDateFrom] = useState<string>('');
-  const [dateTo, setDateTo] = useState<string>('');
+  const [dateFrom, setDateFrom] = useState<string>(() => formatMadridDateYYYYMMDD(getMadridMidnight()));
+  const [dateTo, setDateTo] = useState<string>(() => formatMadridDateYYYYMMDD(getMadridMidnight()));
   const [currentPage, setCurrentPage] = useState(1);
   const [totalLlamadas, setTotalLlamadas] = useState(0);
   const [totalPaginas, setTotalPaginas] = useState(0);
@@ -75,29 +75,29 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recordsPerPage = 50;
 
-  useEffect(() => {
+  const applyPeriod = useCallback((period: 'all' | 'today' | 'week' | 'month' | 'custom') => {
     const today = getMadridMidnight();
-    if (timePeriod === 'all') {
+    if (period === 'all') {
       setDateFrom('');
       setDateTo('');
-    } else if (timePeriod === 'today') {
+    } else if (period === 'today') {
       const todayStr = formatMadridDateYYYYMMDD(today);
       setDateFrom(todayStr);
       setDateTo(todayStr);
-    } else if (timePeriod === 'week') {
+    } else if (period === 'week') {
       const weekStart = addDaysUTC(today, -6);
       setDateFrom(formatMadridDateYYYYMMDD(weekStart));
       setDateTo(formatMadridDateYYYYMMDD(today));
-    } else if (timePeriod === 'month') {
+    } else if (period === 'month') {
       const { year, month } = getMadridYmdParts();
       const firstDay = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
       setDateFrom(formatMadridDateYYYYMMDD(firstDay));
       setDateTo(formatMadridDateYYYYMMDD(today));
     }
-    if (timePeriod !== 'custom') {
+    if (period !== 'custom') {
       setCurrentPage(1);
     }
-  }, [timePeriod]);
+  }, []);
 
   const buildParams = useCallback(() => {
     const params: any = {
@@ -268,11 +268,9 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
 
   const hasActiveFilters = !!(dateFrom || dateTo || analisisCodigoFilter);
   const clearFilters = () => {
-    setTimePeriod('all');
-    setDateFrom('');
-    setDateTo('');
+    setTimePeriod('today');
+    applyPeriod('today');
     setAnalisisCodigoFilter('');
-    setCurrentPage(1);
   };
 
   const formatDate = (dateString: string) => {
@@ -372,7 +370,7 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
                 <button
                   key={key}
                   type="button"
-                  onClick={() => setTimePeriod(key)}
+                  onClick={() => { setTimePeriod(key); applyPeriod(key); }}
                   className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors ${
                     timePeriod === key
                       ? 'bg-[#ec5b13] text-white border-[#ec5b13]'
