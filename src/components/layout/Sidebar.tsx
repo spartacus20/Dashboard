@@ -525,7 +525,7 @@ export function Sidebar({
           </div>
         )}
 
-        <nav className="space-y-2 flex-1 min-h-0 overflow-y-auto pr-1">
+        <nav className="space-y-2 flex-1 min-h-0 overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#1e4a8a] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#2e5fa0]">
           <button
             onClick={() => {
               navigateWithParams("dashboard");

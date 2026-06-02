@@ -327,34 +327,29 @@ export const canAccessHydro = (): boolean => {
   return metadata?.hydro === true;
 };
 
-// Función para verificar si el usuario tiene acceso a una funcionalidad específica
-// Si tiene permissions definidos, usa permissions. Si no, permite todo (sin limitaciones)
+// Función para verificar si el usuario tiene acceso a una funcionalidad específica.
+// Aplica AND entre permissions del usuario y metadata del cliente activo:
+// - Si el usuario tiene permissions, debe tener el feature en true
+// - El metadata del cliente activo debe tener el feature en true (si está definido)
+// Esto permite que al cambiar de cliente, el acceso se ajuste al metadata de ese cliente.
 export const canAccess = (feature: 'agenda' | 'records' | 'num_tel' | 'callbacks' | 'sales' | 'launch' | 'dont_call' | 'campaign'): boolean => {
-  const permissions = getPermissions()
-  
-  // Si no hay permissions definidos (o está vacío), permitir acceso (sin limitaciones)
-  if (!hasPermissionsDefined()) {
-    return true
+  // Verificar permissions del usuario (solo si tiene permissions definidos)
+  if (hasPermissionsDefined()) {
+    const permissions = getPermissions()
+    if (permissions?.[feature] !== true) return false
   }
-  
-  // Si hay permissions definidos, verificar el permiso específico
-  return permissions != null && permissions[feature] === true
+
+  // Verificar metadata del cliente activo
+  const metadata = getMetadata()
+  if (metadata && feature in metadata) {
+    return metadata[feature] === true
+  }
+
+  return true
 }
 
-// Función para verificar si el usuario tiene permisos de lanzamiento (compatibilidad hacia atrás)
 export const hasLaunchPermissions = (): boolean => {
-  // Primero verificar permissions
-  if (hasPermissionsDefined()) {
-    return canAccess('launch')
-  }
-  
-  // Si no hay permissions, usar metadata (comportamiento anterior)
-  const metadata = getMetadata()
-  // console.log('🔍 Verificando permisos de lanzamiento:', {
-  //   metadata,
-  //   hasLaunch: metadata?.launch === true
-  // })
-  return metadata?.launch === true
+  return canAccess('launch')
 }
 
 // Función para limpiar todos los datos del sessionStorage
