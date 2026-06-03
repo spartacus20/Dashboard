@@ -20,6 +20,7 @@ import {
   Users,
   ChevronDown,
   Search,
+  PhoneForwarded,
 } from "lucide-react";
 import { useCallsContext } from "../../context/CallsContext";
 import { useAuth } from "../../context/AuthContext";
@@ -30,6 +31,7 @@ import {
   canAccessRecoveries,
   canAccessAssistantIA,
   canAccessHydro,
+  canAccessSeguimientos,
   hasPermissionsDefined,
   getClientTest,
   getClientIdFromSession,
@@ -116,6 +118,7 @@ export function Sidebar({
   const [recoveriesEnabled, setRecoveriesEnabled] = React.useState(() => canAccessRecoveries());
   const [assistantIAEnabled, setAssistantIAEnabled] = React.useState(() => canAccessAssistantIA());
   const [hydroEnabled, setHydroEnabled] = React.useState(() => canAccessHydro());
+  const [seguimientosEnabled, setSeguimientosEnabled] = React.useState(() => canAccessSeguimientos());
 
   // Revisar metadata cuando cambie (ej. al cambiar de cliente)
   React.useEffect(() => {
@@ -124,6 +127,7 @@ export function Sidebar({
       setRecoveriesEnabled(canAccessRecoveries());
       setAssistantIAEnabled(canAccessAssistantIA());
       setHydroEnabled(canAccessHydro());
+      setSeguimientosEnabled(canAccessSeguimientos());
     };
     update();
     window.addEventListener("metadataUpdated", update);
@@ -717,6 +721,19 @@ export function Sidebar({
             >
               <ClipboardList className="w-5 h-5" />
               Tickets
+            </button>
+          )}
+          {seguimientosEnabled && (
+            <button
+              onClick={() => navigateWithParams("seguimientos")}
+              className={`flex w-full items-center gap-2 px-4 py-2 ${
+                currentPage === "seguimientos"
+                  ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
+                  : "text-gray-300 hover:bg-[#0a2a5a]"
+              } rounded-lg`}
+            >
+              <PhoneForwarded className="w-5 h-5" />
+              Seguimientos
             </button>
           )}
           {assistantIAEnabled && (

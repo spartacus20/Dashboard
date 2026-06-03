@@ -327,6 +327,25 @@ export const canAccessHydro = (): boolean => {
   return metadata?.hydro === true;
 };
 
+// Función para verificar si el usuario tiene acceso a Seguimientos (desde metadata en sessionStorage)
+export const canAccessSeguimientos = (): boolean => {
+  const metadata = getMetadata();
+  return metadata?.seguimiento === true;
+};
+
+// Obtiene el role del usuario desde userData en sessionStorage
+export const getUserRole = (): string | null => {
+  try {
+    const userData = sessionStorage.getItem('userData');
+    if (!userData) return null;
+    return JSON.parse(userData)?.role || null;
+  } catch {
+    return null;
+  }
+};
+
+export const isAdmin = (): boolean => getUserRole() === 'admin';
+
 // Función para verificar si el usuario tiene acceso a una funcionalidad específica.
 // Aplica AND entre permissions del usuario y metadata del cliente activo:
 // - Si el usuario tiene permissions, debe tener el feature en true

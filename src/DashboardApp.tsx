@@ -14,6 +14,7 @@ import { Campaign } from './pages/Campaign';
 import { Tickets } from './pages/Tickets';
 import { Recoveries } from './pages/Recoveries';
 import { SoporteIA } from './pages/SoporteIA';
+import { Seguimientos } from './pages/Seguimientos';
 import { Interesados } from './pages/Interesados';
 import { useCallsContext } from './context/CallsContext';
 import {
@@ -1380,6 +1381,9 @@ function DashboardApp() {
         )}
         {currentPage === 'soporte-ia' && assistantIAEnabled && (
           <SoporteIA onNavigate={setCurrentPage as (page: string) => void} />
+        )}
+        {currentPage === 'seguimientos' && (
+          <Seguimientos onNavigate={setCurrentPage as (page: string) => void} />
         )}
       </div>
     </div>
