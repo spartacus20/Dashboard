@@ -729,8 +729,8 @@ export function Dashboard({
     setAppliedClienteFilter("");
   };
 
-  // Efecto para recargar datos cuando cambia el filtro de período, base de datos o cliente aplicado
-  React.useEffect(() => {
+  // Función para actualizar los datos del dashboard con el período y filtros actuales
+  const handleRefresh = React.useCallback(() => {
     if (!loadDashboardData) return;
 
     const bddFilter = appliedDatabaseFilter || undefined;
@@ -772,6 +772,18 @@ export function Dashboard({
     appliedClienteFilter,
     loadDashboardData,
   ]);
+
+  // Auto-fetch al cambiar período o filtros, pero NO en el primer render del componente
+  // (así al navegar de vuelta no se dispara automáticamente)
+  const hasMounted = React.useRef(false);
+  React.useEffect(() => {
+    if (!hasMounted.current) {
+      hasMounted.current = true;
+      return;
+    }
+    handleRefresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timePeriod, customStartDate, customEndDate, customStartTime, customEndTime, appliedDatabaseFilter, appliedClienteFilter]);
 
   // Cargar métricas de lanzamiento por región cuando el usuario tiene permiso y cambia el período
   React.useEffect(() => {
@@ -1797,23 +1809,35 @@ export function Dashboard({
             </Button>
           )}
 
-          <div className="text-xs text-slate-600">
-            {timePeriod === "all" && "Mostrando todos los datos disponibles"}
-            {timePeriod === "today" && "Mostrando datos de hoy"}
-            {timePeriod === "week" && "Mostrando datos de los últimos 7 días"}
-            {timePeriod === "month" && "Mostrando datos del último mes"}
-            {timePeriod === "custom" &&
-              customStartDate &&
-              customEndDate &&
-              `Mostrando datos del ${customStartDate} ${customStartTime} al ${customEndDate} ${customEndTime}`}
-            {timePeriod === "custom" &&
-              (!customStartDate || !customEndDate) &&
-              "Selecciona un rango de fechas personalizado"}
-            {appliedDatabaseFilter &&
-              ` | Filtrado por base de datos: ${appliedDatabaseFilter}`}
-            {appliedClienteFilter &&
-              ` | Filtrado por cliente: ${appliedClienteFilter}`}
-          </div>
+          <Button
+            onClick={handleRefresh}
+            disabled={loading}
+            title="Actualizar datos"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white p-2 h-9 w-9 flex items-center justify-center"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+          </Button>
+
+          {(appliedDatabaseFilter || appliedClienteFilter) && (
+            <div className="text-xs text-slate-600">
+              {appliedDatabaseFilter && `Base de datos: ${appliedDatabaseFilter}`}
+              {appliedDatabaseFilter && appliedClienteFilter && " | "}
+              {appliedClienteFilter && `Cliente: ${appliedClienteFilter}`}
+            </div>
+          )}
         </div>
       )}
 
