@@ -2528,16 +2528,20 @@ export function Dashboard({
                   <>
                     <div className="text-xl font-bold text-center">
                       {(() => {
-                        const min =
+                        const totalSeg =
                           dashboardData?.dashboard_data?.metricas_generales
-                            ?.promedio_duracion_efectivas_minutos ?? 0;
+                            ?.total_duration_seconds ?? 0;
+                        const efectivas =
+                          dashboardData?.dashboard_data?.metricas_generales
+                            ?.efectivas_con_duracion ?? 0;
+                        const seg = efectivas > 0 ? totalSeg / efectivas : 0;
                         return (
                           <span className="font-bold">
-                            {Number(min).toLocaleString("es-ES", {
-                              minimumFractionDigits: 1,
-                              maximumFractionDigits: 1,
+                            {Number(seg).toLocaleString("es-ES", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
                             })}{" "}
-                            min
+                            seg
                           </span>
                         );
                       })()}
