@@ -423,9 +423,13 @@ export function CallsProvider({ children }: CallsProviderProps) {
           
           // Recargar todos los datos en paralelo usando los valores del evento
           // Las funciones usarán los estados actualizados (clientId y apiKey) que acabamos de setear
+          let storedPeriod = 'today';
+          try {
+            storedPeriod = localStorage.getItem('dashboard_time_period') || 'today';
+          } catch {}
           await Promise.all([
             loadAllCalls(true), // Forzar refresh
-            loadDashboardData(undefined, undefined, 'today'), // Recargar dashboard
+            loadDashboardData(undefined, undefined, storedPeriod), // Recargar dashboard con período guardado
             loadPhoneNumbers(true), // Forzar refresh
             loadBatchCalls(true) // Forzar refresh
           ]);
@@ -827,13 +831,17 @@ export function CallsProvider({ children }: CallsProviderProps) {
     }
   }, [clientId, apiKey, disconnectionReasons.length, loadDisconnectionReasons]);
 
-  // Cargar datos del dashboard cuando tenemos clientId y apiKey disponibles
-  // Usa ref en vez de !dashboardData para que el fetch corra aunque haya datos stale pre-cargados
+  // Cargar datos del dashboard cuando tenemos clientId y apiKey disponibles.
+  // Usa el período guardado en localStorage para respetar la última selección del usuario.
   useEffect(() => {
     const hasApiKey = apiKey || (apiKeyTest && apiKeyTest.length > 0);
     if (clientId && hasApiKey && !dashboardInitialFetchDone.current && !loadingDashboardData) {
       dashboardInitialFetchDone.current = true;
-      loadDashboardData(undefined, undefined, 'today');
+      let storedPeriod = 'today';
+      try {
+        storedPeriod = localStorage.getItem('dashboard_time_period') || 'today';
+      } catch {}
+      loadDashboardData(undefined, undefined, storedPeriod);
     }
   }, [clientId, apiKey, apiKeyTest, loadingDashboardData, loadDashboardData]);
 
