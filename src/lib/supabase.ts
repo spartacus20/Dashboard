@@ -327,6 +327,12 @@ export const canAccessHydro = (): boolean => {
   return metadata?.hydro === true;
 };
 
+// Función para verificar si el usuario tiene acceso a Presupuesto (desde metadata en sessionStorage)
+export const canAccessBudget = (): boolean => {
+  const metadata = getMetadata();
+  return metadata?.budget === true;
+};
+
 // Función para verificar si el usuario tiene acceso a una funcionalidad específica.
 // Aplica AND entre permissions del usuario y metadata del cliente activo:
 // - Si el usuario tiene permissions, debe tener el feature en true
