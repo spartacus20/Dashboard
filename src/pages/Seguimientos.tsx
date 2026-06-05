@@ -23,6 +23,7 @@ import {
   cancelAllPending,
   getRetellConfig,
   updateRetellConfig,
+  listRetellPhoneNumbers,
   CallBackRecord,
 } from '../services/api/seguimientos';
 
@@ -92,6 +93,8 @@ export function Seguimientos({ onNavigate }: SeguimientosProps) {
   const [configError, setConfigError] = useState('');
   const [cancelling, setCancelling] = useState(false);
   const [cancelConfirm, setCancelConfirm] = useState(false);
+  const [availableNumbers, setAvailableNumbers] = useState<string[]>([]);
+  const [loadingNumbers, setLoadingNumbers] = useState(false);
 
   const PER_PAGE = 50;
   const webhookUrl = `${BASE_URL}/api/callback/webhook`;
@@ -174,6 +177,32 @@ export function Seguimientos({ onNavigate }: SeguimientosProps) {
   useEffect(() => {
     if (activeTab === 'configuracion') loadConfig();
   }, [activeTab, loadConfig]);
+
+  // Fetch available Retell phone numbers when tab opens or apiKey field changes
+  useEffect(() => {
+    if (activeTab !== 'configuracion') return;
+    if (!clientId) return;
+    // Only fetch if there's a stored key or a new key was typed
+    if (!apiKeySet && !apiKey.trim()) return;
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setLoadingNumbers(true);
+      try {
+        const nums = await listRetellPhoneNumbers(clientId, apiKey.trim() || undefined);
+        if (!cancelled) setAvailableNumbers(nums);
+      } catch {
+        if (!cancelled) setAvailableNumbers([]);
+      } finally {
+        if (!cancelled) setLoadingNumbers(false);
+      }
+    }, apiKey.trim() ? 600 : 0);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [activeTab, clientId, apiKeySet, apiKey]);
 
   // — Save config —
   const handleSaveConfig = async () => {
@@ -517,15 +546,34 @@ export function Seguimientos({ onNavigate }: SeguimientosProps) {
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Número de salida (From Number)
                   </label>
-                  <input
-                    type="text"
-                    value={fromNumber}
-                    onChange={(e) => setFromNumber(e.target.value)}
-                    placeholder="+34XXXXXXXXX"
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  {loadingNumbers ? (
+                    <div className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-400 bg-gray-50">
+                      Cargando números…
+                    </div>
+                  ) : availableNumbers.length > 0 ? (
+                    <select
+                      value={fromNumber}
+                      onChange={(e) => setFromNumber(e.target.value)}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    >
+                      <option value="">— Seleccionar número —</option>
+                      {availableNumbers.map((n) => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={fromNumber}
+                      onChange={(e) => setFromNumber(e.target.value)}
+                      placeholder="+34XXXXXXXXX"
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  )}
                   <p className="text-xs text-gray-400 mt-1">
-                    Número con prefijo internacional desde el que se hacen los reintentos.
+                    {availableNumbers.length > 0
+                      ? 'Números disponibles en tu cuenta Retell.'
+                      : 'Número con prefijo internacional desde el que se hacen los reintentos.'}
                   </p>
                 </div>
               </div>}

@@ -114,3 +114,17 @@ export async function updateRetellConfig(
   });
   if (!response.ok) throw new Error('Error al guardar configuración');
 }
+
+export async function listRetellPhoneNumbers(
+  clientId: string,
+  retellApiKey?: string
+): Promise<string[]> {
+  const response = await fetch(`${BASE_URL}/api/callback/phone-numbers`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ client_id: clientId, retell_api_key: retellApiKey || undefined }),
+  });
+  if (!response.ok) throw new Error('Error al obtener números de teléfono');
+  const data = await response.json();
+  return data.numbers ?? [];
+}
