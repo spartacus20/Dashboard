@@ -16,12 +16,14 @@ import { Recoveries } from './pages/Recoveries';
 import { SoporteIA } from './pages/SoporteIA';
 import { Seguimientos } from './pages/Seguimientos';
 import { Interesados } from './pages/Interesados';
+import { Presupuesto } from './pages/Presupuesto';
 import { useCallsContext } from './context/CallsContext';
 import {
   canAccessTickets,
   canAccessRecoveries,
   canAccessAssistantIA,
   canAccessHydro,
+  canAccessBudget,
 } from './lib/supabase';
 import { X, Upload, Phone, Info, Check, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 
@@ -114,12 +116,14 @@ function DashboardApp() {
     canAccessAssistantIA(),
   );
   const [hydroEnabled, setHydroEnabled] = React.useState(() => canAccessHydro());
+  const [budgetEnabled, setBudgetEnabled] = React.useState(() => canAccessBudget());
   React.useEffect(() => {
     const update = () => {
       setTicketsEnabled(canAccessTickets());
       setRecoveriesEnabled(canAccessRecoveries());
       setAssistantIAEnabled(canAccessAssistantIA());
       setHydroEnabled(canAccessHydro());
+      setBudgetEnabled(canAccessBudget());
     };
     update();
     window.addEventListener('metadataUpdated', update);
@@ -145,6 +149,11 @@ function DashboardApp() {
       setCurrentPage('dashboard');
     }
   }, [currentPage, assistantIAEnabled]);
+  React.useEffect(() => {
+    if (currentPage === 'presupuesto' && !budgetEnabled) {
+      setCurrentPage('dashboard');
+    }
+  }, [currentPage, budgetEnabled]);
   
   // Calculamos si la caché está activa
   const cacheStatus = lastUpdated 
@@ -1379,9 +1388,6 @@ function DashboardApp() {
         )}
         {currentPage === 'soporte-ia' && assistantIAEnabled && (
           <SoporteIA onNavigate={setCurrentPage as (page: string) => void} />
-        )}
-        {currentPage === 'seguimientos' && (
-          <Seguimientos onNavigate={setCurrentPage as (page: string) => void} />
         )}
       </div>
     </div>

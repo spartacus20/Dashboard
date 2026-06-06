@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   BarChart3,
+  Wallet,
   Mic,
   Menu,
   X,
@@ -32,6 +33,7 @@ import {
   canAccessAssistantIA,
   canAccessHydro,
   canAccessSeguimientos,
+  canAccessBudget,
   hasPermissionsDefined,
   getClientTest,
   getClientIdFromSession,
@@ -119,6 +121,7 @@ export function Sidebar({
   const [assistantIAEnabled, setAssistantIAEnabled] = React.useState(() => canAccessAssistantIA());
   const [hydroEnabled, setHydroEnabled] = React.useState(() => canAccessHydro());
   const [seguimientosEnabled, setSeguimientosEnabled] = React.useState(() => canAccessSeguimientos());
+  const [budgetEnabled, setBudgetEnabled] = React.useState(() => canAccessBudget());
 
   // Revisar metadata cuando cambie (ej. al cambiar de cliente)
   React.useEffect(() => {
@@ -128,6 +131,7 @@ export function Sidebar({
       setAssistantIAEnabled(canAccessAssistantIA());
       setHydroEnabled(canAccessHydro());
       setSeguimientosEnabled(canAccessSeguimientos());
+      setBudgetEnabled(canAccessBudget());
     };
     update();
     window.addEventListener("metadataUpdated", update);
@@ -749,6 +753,21 @@ export function Sidebar({
             >
               <BotMessageSquare className="w-5 h-5" />
               Soporte IA
+            </button>
+          )}
+          {budgetEnabled && (
+            <button
+              onClick={() => {
+                navigateWithParams("presupuesto");
+              }}
+              className={`flex w-full items-center gap-2 px-4 py-2 ${
+                currentPage === "presupuesto"
+                  ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
+                  : "text-gray-300 hover:bg-[#0a2a5a]"
+              } rounded-lg`}
+            >
+              <Wallet className="w-5 h-5" />
+              Presupuesto
             </button>
           )}
         </nav>
