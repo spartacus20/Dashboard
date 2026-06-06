@@ -1389,6 +1389,9 @@ function DashboardApp() {
         {currentPage === 'soporte-ia' && assistantIAEnabled && (
           <SoporteIA onNavigate={setCurrentPage as (page: string) => void} />
         )}
+        {currentPage === 'presupuesto' && budgetEnabled && (
+          <Presupuesto onNavigate={setCurrentPage as (page: string) => void} />
+        )}
       </div>
     </div>
   );
