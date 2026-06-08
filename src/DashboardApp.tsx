@@ -24,6 +24,7 @@ import {
   canAccessAssistantIA,
   canAccessHydro,
   canAccessBudget,
+  canAccessSeguimientos,
 } from './lib/supabase';
 import { X, Upload, Phone, Info, Check, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 
@@ -117,6 +118,7 @@ function DashboardApp() {
   );
   const [hydroEnabled, setHydroEnabled] = React.useState(() => canAccessHydro());
   const [budgetEnabled, setBudgetEnabled] = React.useState(() => canAccessBudget());
+  const [seguimientosEnabled, setSeguimientosEnabled] = React.useState(() => canAccessSeguimientos());
   React.useEffect(() => {
     const update = () => {
       setTicketsEnabled(canAccessTickets());
@@ -124,6 +126,7 @@ function DashboardApp() {
       setAssistantIAEnabled(canAccessAssistantIA());
       setHydroEnabled(canAccessHydro());
       setBudgetEnabled(canAccessBudget());
+      setSeguimientosEnabled(canAccessSeguimientos());
     };
     update();
     window.addEventListener('metadataUpdated', update);
@@ -154,6 +157,11 @@ function DashboardApp() {
       setCurrentPage('dashboard');
     }
   }, [currentPage, budgetEnabled]);
+  React.useEffect(() => {
+    if (currentPage === 'seguimientos' && !seguimientosEnabled) {
+      setCurrentPage('dashboard');
+    }
+  }, [currentPage, seguimientosEnabled]);
   
   // Calculamos si la caché está activa
   const cacheStatus = lastUpdated 
@@ -1391,6 +1399,9 @@ function DashboardApp() {
         )}
         {currentPage === 'presupuesto' && budgetEnabled && (
           <Presupuesto onNavigate={setCurrentPage as (page: string) => void} />
+        )}
+        {currentPage === 'seguimientos' && seguimientosEnabled && (
+          <Seguimientos onNavigate={setCurrentPage as (page: string) => void} />
         )}
       </div>
     </div>
