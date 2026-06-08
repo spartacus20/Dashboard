@@ -14,7 +14,7 @@ interface CreatePhoneCallParams {
 
 // Función para obtener números de teléfono de una sola API key
 async function fetchPhoneNumbersFromSingleApiKey(apiKey: string): Promise<RetellPhoneNumber[]> {
-  const response = await fetch('https://api.retellai.com/list-phone-numbers', {
+  const response = await fetch('https://api.retellai.com/v2/list-phone-numbers', {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
@@ -27,13 +27,10 @@ async function fetchPhoneNumbersFromSingleApiKey(apiKey: string): Promise<Retell
   }
 
   const data = await response.json();
-  
-  // La respuesta debería ser un array de números de teléfono
-  if (!Array.isArray(data)) {
-    throw new Error('Formato de respuesta inesperado');
-  }
-  
-  return data;
+
+  const items = Array.isArray(data.items) ? data.items : (Array.isArray(data) ? data : []);
+
+  return items;
 }
 
 
