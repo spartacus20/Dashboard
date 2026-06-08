@@ -111,12 +111,21 @@ export interface CallStats {
   averageDurationSeconds: number;
 }
 
+export interface RetellPhoneNumberAgent {
+  agent_id: string;
+  agent_version?: number;
+  weight: number;
+}
+
 export interface RetellPhoneNumber {
   phone_number: string;
   phone_number_type: string;
   phone_number_pretty: string;
-  inbound_agent_id: string;
-  outbound_agent_id: string;
+  inbound_agents?: RetellPhoneNumberAgent[];
+  outbound_agents?: RetellPhoneNumberAgent[];
+  // Campos legacy (deprecated por Retell desde 03/31/2026, mantenidos para compatibilidad)
+  inbound_agent_id?: string;
+  outbound_agent_id?: string;
   area_code: number;
   nickname?: string;
   inbound_webhook_url?: string;

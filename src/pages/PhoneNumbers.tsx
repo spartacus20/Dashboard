@@ -58,8 +58,9 @@ function CallModal({ phoneNumber, onClose, apiKey }: CallModalProps) {
         setAgents(agentsData);
         
         // Si hay un agente asignado al número, seleccionarlo por defecto
-        if (phoneNumber.inbound_agent_id) {
-          const defaultAgent = agentsData.find(agent => agent.agent_id === phoneNumber.inbound_agent_id);
+        const inboundAgentId = phoneNumber.inbound_agents?.[0]?.agent_id ?? phoneNumber.inbound_agent_id;
+        if (inboundAgentId) {
+          const defaultAgent = agentsData.find(agent => agent.agent_id === inboundAgentId);
           if (defaultAgent) {
             setSelectedAgent(defaultAgent);
             setOverrideAgentId(defaultAgent.agent_id);
@@ -74,7 +75,7 @@ function CallModal({ phoneNumber, onClose, apiKey }: CallModalProps) {
     };
 
     loadAgents();
-  }, [apiKey, phoneNumber.inbound_agent_id]);
+  }, [apiKey, phoneNumber.inbound_agents, phoneNumber.inbound_agent_id]);
 
   // Función para añadir un nuevo par de variable dinámica
   const addDynamicVariable = () => {
@@ -493,8 +494,8 @@ function AddPhoneModal({ onClose, onSuccess, workspaceOptions }: AddPhoneModalPr
     try {
       const phoneData: any = {
         phone_number: phoneNumber.trim(),
-        inbound_agent_id: selectedInboundAgent.agent_id,
-        outbound_agent_id: selectedOutboundAgent.agent_id,
+        inbound_agents: [{ agent_id: selectedInboundAgent.agent_id, weight: 1 }],
+        outbound_agents: [{ agent_id: selectedOutboundAgent.agent_id, weight: 1 }],
       };
 
       // Añadir campos opcionales solo si tienen valor
@@ -1832,35 +1833,41 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
                     </div>
                     <div>
                       <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Agente de entrada</p>
-                      {phone.inbound_agent_id ? (
-                        <a
-                          href={getAgentUrl(phone.inbound_agent_id)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm font-medium text-blue-600 hover:underline flex items-center gap-1"
-                        >
-                          {phone.inbound_agent_id.substring(0, 12)}...
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </a>
-                      ) : (
-                        <p className="text-sm font-medium">No asignado</p>
-                      )}
+                      {(() => {
+                        const agentId = phone.inbound_agents?.[0]?.agent_id ?? phone.inbound_agent_id;
+                        return agentId ? (
+                          <a
+                            href={getAgentUrl(agentId)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm font-medium text-blue-600 hover:underline flex items-center gap-1"
+                          >
+                            {agentId.substring(0, 12)}...
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        ) : (
+                          <p className="text-sm font-medium">No asignado</p>
+                        );
+                      })()}
                     </div>
                     <div>
                       <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Agente de salida</p>
-                      {phone.outbound_agent_id ? (
-                        <a
-                          href={getAgentUrl(phone.outbound_agent_id)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm font-medium text-blue-600 hover:underline flex items-center gap-1"
-                        >
-                          {phone.outbound_agent_id.substring(0, 12)}...
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </a>
-                      ) : (
-                        <p className="text-sm font-medium">No asignado</p>
-                      )}
+                      {(() => {
+                        const agentId = phone.outbound_agents?.[0]?.agent_id ?? phone.outbound_agent_id;
+                        return agentId ? (
+                          <a
+                            href={getAgentUrl(agentId)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm font-medium text-blue-600 hover:underline flex items-center gap-1"
+                          >
+                            {agentId.substring(0, 12)}...
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        ) : (
+                          <p className="text-sm font-medium">No asignado</p>
+                        );
+                      })()}
                     </div>
                     {phone.inbound_webhook_url && (
                       <div className="sm:col-span-2">
