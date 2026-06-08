@@ -1707,8 +1707,8 @@ export function Dashboard({
               <SelectContent>
                 <SelectItem value="all">Todos los datos</SelectItem>
                 <SelectItem value="today">Hoy</SelectItem>
-                <SelectItem value="week">Última semana</SelectItem>
-                <SelectItem value="month">Último mes</SelectItem>
+                <SelectItem value="week">Últimos 7 días</SelectItem>
+                <SelectItem value="month">Mes actual</SelectItem>
                 <SelectItem value="custom">Personalizado</SelectItem>
               </SelectContent>
             </Select>
