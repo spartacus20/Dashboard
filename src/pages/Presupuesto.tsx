@@ -25,6 +25,10 @@ interface AgendaStat {
   agendas_generadas: number;
   captadas_generadas: number;
   citas_revisadas: number;
+  placas_por_fecha: number;
+  baterias_por_fecha: number;
+  placas_generadas: number;
+  baterias_generadas: number;
 }
 
 interface TelefoniaRecord {
@@ -46,6 +50,10 @@ interface DayRow {
   agendas_generadas: number;
   captadas_generadas: number;
   citas_revisadas: number;
+  placas_por_fecha: number;
+  baterias_por_fecha: number;
+  placas_generadas: number;
+  baterias_generadas: number;
   isWeekend: boolean;
   weekLabel: string;
 }
@@ -67,12 +75,35 @@ const TABLE_COLS = [
   { key: 'captadas',           label: 'Captadas' },
   { key: 'coste-agenda',       label: 'Coste/Agenda (€)' },
   { key: 'coste-captada',      label: 'Coste/Captada (€)' },
-  { key: 'agendas-por-fecha',  label: 'Agendas (fecha cita)' },
-  { key: 'captadas-por-fecha', label: 'Captadas (fecha cita)' },
-  { key: 'agendas-generadas',  label: 'Agendas generadas' },
-  { key: 'captadas-generadas', label: 'Captadas generadas' },
-  { key: 'citas-revisadas',    label: 'Citas revisadas' },
+  { key: 'placas-por-fecha',   label: 'Placas' },
+  { key: 'baterias-por-fecha', label: 'Baterías' },
+  { key: 'total-agendado',     label: 'Total' },
+  { key: 'confirmadas',        label: 'Confirmadas' },
+  { key: 'placas-generadas',   label: 'Placas' },
+  { key: 'baterias-generadas', label: 'Baterías' },
+  { key: 'total-captado',      label: 'Total' },
+  { key: 'citas-revisadas',    label: 'Revisadas' },
 ];
+
+const COL_TOOLTIPS: Record<string, string> = {
+  'llamadas':            'Total de llamadas realizadas ese día',
+  'minutos':             'Duración total de las llamadas en minutos',
+  'gasto-usd':           'Costo de la IA en dólares — suma de cost en call_logs',
+  'gasto-eur':           'Costo de la IA en euros = Gasto $ × tipo de cambio USD/EUR',
+  'telefonia':           'Gasto de telefonía ingresado manualmente por día',
+  'agendas':             'Placas solares aprobadas creadas ese día (tipo = placas solares · aprobada = true · por created_at)',
+  'captadas':            'Total de agendamientos creados ese día, sin filtro de tipo ni estado (por created_at)',
+  'coste-agenda':        '(Gasto IA € + Telefonía) ÷ Agendas del día — solo se calcula cuando agendas > 0',
+  'coste-captada':       '(Gasto IA € + Telefonía) ÷ Captadas del día — solo se calcula cuando captadas > 0',
+  'placas-por-fecha':    'Citas tipo placas solares cuya fecha de visita cae en este día',
+  'baterias-por-fecha':  'Citas tipo batería cuya fecha de visita cae en este día',
+  'total-agendado':      'Placas + Baterías con visita pactada este día (calculado en frontend)',
+  'confirmadas':         'Placas solares aprobadas (aprobada = true) cuya visita cae en este día',
+  'placas-generadas':    'Citas tipo placas solares creadas este día (por created_at)',
+  'baterias-generadas':  'Citas tipo batería creadas este día (por created_at)',
+  'total-captado':       'Placas + Baterías generadas este día (calculado en frontend)',
+  'citas-revisadas':     'Citas con revisada = true creadas este día (por created_at)',
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -201,7 +232,7 @@ export function Presupuesto({ onNavigate }: PresupuestoProps) {
         .select('dia, num_llamadas, minutos, gasto_total')
         .gte('dia', firstDay).lte('dia', lastDay).order('dia'),
       supabase.from('mas_sol_agenda_stats')
-        .select('dia, agendas, captadas, agendas_por_fecha, captadas_por_fecha, agendas_generadas, captadas_generadas, citas_revisadas')
+        .select('dia, agendas, captadas, agendas_por_fecha, captadas_por_fecha, agendas_generadas, captadas_generadas, citas_revisadas, placas_por_fecha, baterias_por_fecha, placas_generadas, baterias_generadas')
         .gte('dia', firstDay).lte('dia', lastDay).order('dia'),
       supabase.from('mas_sol_daily_telefonia')
         .select('dia, gasto_telefonia')
@@ -321,6 +352,10 @@ export function Presupuesto({ onNavigate }: PresupuestoProps) {
         agendas_generadas:  agenda ? agenda.agendas_generadas  : 0,
         captadas_generadas: agenda ? agenda.captadas_generadas : 0,
         citas_revisadas:    agenda ? agenda.citas_revisadas    : 0,
+        placas_por_fecha:   agenda ? agenda.placas_por_fecha   : 0,
+        baterias_por_fecha: agenda ? agenda.baterias_por_fecha : 0,
+        placas_generadas:   agenda ? agenda.placas_generadas   : 0,
+        baterias_generadas: agenda ? agenda.baterias_generadas : 0,
         isWeekend:          checkIsWeekend(dia),
         weekLabel:          weekLabels[dia],
       };
@@ -354,6 +389,10 @@ export function Presupuesto({ onNavigate }: PresupuestoProps) {
       agendas_gen:  rows.reduce((s, r) => s + r.agendas_generadas,  0),
       captadas_gen: rows.reduce((s, r) => s + r.captadas_generadas, 0),
       citas_rev:    rows.reduce((s, r) => s + r.citas_revisadas,    0),
+      placas_pf:    rows.reduce((s, r) => s + r.placas_por_fecha,   0),
+      baterias_pf:  rows.reduce((s, r) => s + r.baterias_por_fecha, 0),
+      placas_gen:   rows.reduce((s, r) => s + r.placas_generadas,   0),
+      baterias_gen: rows.reduce((s, r) => s + r.baterias_generadas, 0),
       mediaAgenda:  agendas  > 0 && rows.length > 0 ? sumDiarioAgenda  / rows.length : null,
       mediaCaptada: captadas > 0 && rows.length > 0 ? sumDiarioCaptada / rows.length : null,
       llamadas:     rows.reduce((s, r) => s + r.llamadas, 0),
@@ -376,6 +415,10 @@ export function Presupuesto({ onNavigate }: PresupuestoProps) {
       agendas_gen: weekRows.reduce((s, r) => s + r.agendas_generadas,  0),
       cap_gen:     weekRows.reduce((s, r) => s + r.captadas_generadas, 0),
       citas_rev:   weekRows.reduce((s, r) => s + r.citas_revisadas,    0),
+      placas_pf:   weekRows.reduce((s, r) => s + r.placas_por_fecha,   0),
+      baterias_pf: weekRows.reduce((s, r) => s + r.baterias_por_fecha, 0),
+      placas_gen:  weekRows.reduce((s, r) => s + r.placas_generadas,   0),
+      bat_gen:     weekRows.reduce((s, r) => s + r.baterias_generadas, 0),
       llamadas:    weekRows.reduce((s, r) => s + r.llamadas, 0),
       minutos:     weekRows.reduce((s, r) => s + r.minutos,  0),
       mediaAgenda:  agendas  > 0 ? costoEnDiasConAgendas  / agendas  : null,
@@ -432,10 +475,22 @@ export function Presupuesto({ onNavigate }: PresupuestoProps) {
 
   const dash = <span className="text-gray-300">—</span>;
 
-  const ColTh = ({ colKey, children }: { colKey: string; children: React.ReactNode }) => (
-    <th className="px-3 py-3 text-center font-semibold whitespace-nowrap relative group/th">
+  const vB2 = (['placas-por-fecha','baterias-por-fecha','total-agendado','confirmadas'] as const).filter(showCol).length;
+  const vB3 = (['placas-generadas','baterias-generadas','total-captado','citas-revisadas'] as const).filter(showCol).length;
+  const vBase = (['llamadas','minutos','gasto-usd','gasto-eur','telefonia','agendas','captadas','coste-agenda','coste-captada'] as const).filter(showCol).length;
+
+  const ColTh = ({ colKey, tooltip, borderLeft, children }: { colKey: string; tooltip?: string; borderLeft?: boolean; children: React.ReactNode }) => (
+    <th className={`px-3 py-3 text-center font-semibold whitespace-nowrap relative group/th${borderLeft ? ' border-l-2 border-blue-400/40' : ''}`}>
       <div className="flex items-center justify-center gap-1">
-        <span>{children}</span>
+        <span className="relative group/tip">
+          <span className={tooltip ? 'cursor-help' : ''}>{children}</span>
+          {tooltip && (
+            <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 w-56 rounded-lg bg-gray-900 text-white text-[11px] px-3 py-2 opacity-0 group-hover/tip:opacity-100 pointer-events-none transition-opacity z-50 text-left font-normal leading-relaxed shadow-xl whitespace-normal">
+              <span className="absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent border-b-gray-900" />
+              {tooltip}
+            </span>
+          )}
+        </span>
         <button
           onClick={() => setHiddenColumns(prev => new Set(prev).add(colKey))}
           className="opacity-0 group-hover/th:opacity-60 hover:!opacity-100 w-4 h-4 rounded-full flex items-center justify-center bg-white/20 text-white hover:bg-white/40 transition-opacity flex-shrink-0"
@@ -545,48 +600,48 @@ export function Presupuesto({ onNavigate }: PresupuestoProps) {
           )}
 
           <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
-            <table className="min-w-full text-sm border-collapse">
+            <table className="w-max text-sm border-collapse">
               <thead>
+                {/* Fila de grupos */}
+                <tr className="bg-[#081f47] text-white text-[9px] uppercase tracking-wider">
+                  <th colSpan={2 + vBase} className="bg-[#081f47] border-b border-[#1a3570]" />
+                  {vB2 > 0 && <th colSpan={vB2} className="px-3 py-1.5 text-center font-bold border-l-2 border-blue-400/50 bg-[#0d3060]">Agendado <span className="text-blue-300 font-normal normal-case tracking-normal">/ fecha cita</span></th>}
+                  {vB3 > 0 && <th colSpan={vB3} className="px-3 py-1.5 text-center font-bold border-l-2 border-blue-400/50 bg-[#0a2a55]">Captado <span className="text-blue-300 font-normal normal-case tracking-normal">/ generado ese día</span></th>}
+                </tr>
+                {/* Fila de columnas */}
                 <tr className="bg-[#0a2a5a] text-white text-xs">
                   <th className="px-3 py-3 text-left font-semibold whitespace-nowrap w-20"></th>
                   <th className="px-3 py-3 text-center font-semibold whitespace-nowrap">Fecha</th>
-                  {showCol('llamadas')  && <ColTh colKey="llamadas">Llamadas</ColTh>}
-                  {showCol('minutos')   && <ColTh colKey="minutos">Minutos</ColTh>}
-                  {showCol('gasto-usd') && <ColTh colKey="gasto-usd">Gasto IA ($)</ColTh>}
-                  {showCol('gasto-eur') && <ColTh colKey="gasto-eur">Gasto IA (€)</ColTh>}
+                  {showCol('llamadas')  && <ColTh colKey="llamadas"  tooltip={COL_TOOLTIPS['llamadas']}>Llamadas</ColTh>}
+                  {showCol('minutos')   && <ColTh colKey="minutos"   tooltip={COL_TOOLTIPS['minutos']}>Minutos</ColTh>}
+                  {showCol('gasto-usd') && <ColTh colKey="gasto-usd" tooltip={COL_TOOLTIPS['gasto-usd']}>Gasto IA ($)</ColTh>}
+                  {showCol('gasto-eur') && <ColTh colKey="gasto-eur" tooltip={COL_TOOLTIPS['gasto-eur']}>Gasto IA (€)</ColTh>}
                   {showCol('telefonia') && (
                     <th className="px-3 py-3 text-center font-semibold whitespace-nowrap relative group/th">
                       <div className="flex items-center justify-center gap-1">
-                        <span>Gasto Telefonía <span className="text-blue-300 font-normal">(clic para editar)</span></span>
+                        <span className="relative group/tip cursor-help">
+                          <span>Telefonía <span className="text-blue-300 font-normal">(editar)</span></span>
+                          <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 w-56 rounded-lg bg-gray-900 text-white text-[11px] px-3 py-2 opacity-0 group-hover/tip:opacity-100 pointer-events-none transition-opacity z-50 text-left font-normal leading-relaxed shadow-xl whitespace-normal">
+                            <span className="absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent border-b-gray-900" />
+                            {COL_TOOLTIPS['telefonia']}
+                          </span>
+                        </span>
                         <button onClick={() => setHiddenColumns(prev => new Set(prev).add('telefonia'))} className="opacity-0 group-hover/th:opacity-60 hover:!opacity-100 w-4 h-4 rounded-full flex items-center justify-center bg-white/20 text-white hover:bg-white/40 transition-opacity" title="Ocultar columna"><XIcon /></button>
                       </div>
                     </th>
                   )}
-                  {showCol('agendas')      && <ColTh colKey="agendas">Agendas</ColTh>}
-                  {showCol('captadas')     && <ColTh colKey="captadas">Captadas</ColTh>}
-                  {showCol('coste-agenda') && <ColTh colKey="coste-agenda">Coste/Agenda (€)</ColTh>}
-                  {showCol('coste-captada')&& <ColTh colKey="coste-captada">Coste/Captada (€)</ColTh>}
-                  {showCol('agendas-por-fecha') && (
-                    <ColTh colKey="agendas-por-fecha">
-                      <span>Agendas<span className="block text-[9px] text-blue-300 font-normal">por fecha cita</span></span>
-                    </ColTh>
-                  )}
-                  {showCol('captadas-por-fecha') && (
-                    <ColTh colKey="captadas-por-fecha">
-                      <span>Captadas<span className="block text-[9px] text-blue-300 font-normal">por fecha cita</span></span>
-                    </ColTh>
-                  )}
-                  {showCol('agendas-generadas') && (
-                    <ColTh colKey="agendas-generadas">
-                      <span>Agendas<span className="block text-[9px] text-blue-300 font-normal">generadas</span></span>
-                    </ColTh>
-                  )}
-                  {showCol('captadas-generadas') && (
-                    <ColTh colKey="captadas-generadas">
-                      <span>Captadas<span className="block text-[9px] text-blue-300 font-normal">generadas</span></span>
-                    </ColTh>
-                  )}
-                  {showCol('citas-revisadas') && <ColTh colKey="citas-revisadas">Citas revisadas</ColTh>}
+                  {showCol('agendas')       && <ColTh colKey="agendas"       tooltip={COL_TOOLTIPS['agendas']}>Agendas</ColTh>}
+                  {showCol('captadas')      && <ColTh colKey="captadas"      tooltip={COL_TOOLTIPS['captadas']}>Captadas</ColTh>}
+                  {showCol('coste-agenda')  && <ColTh colKey="coste-agenda"  tooltip={COL_TOOLTIPS['coste-agenda']}>€/Agenda</ColTh>}
+                  {showCol('coste-captada') && <ColTh colKey="coste-captada" tooltip={COL_TOOLTIPS['coste-captada']}>€/Captada</ColTh>}
+                  {showCol('placas-por-fecha')   && <ColTh colKey="placas-por-fecha"   tooltip={COL_TOOLTIPS['placas-por-fecha']}   borderLeft>Placas</ColTh>}
+                  {showCol('baterias-por-fecha') && <ColTh colKey="baterias-por-fecha" tooltip={COL_TOOLTIPS['baterias-por-fecha']}>Baterías</ColTh>}
+                  {showCol('total-agendado')     && <ColTh colKey="total-agendado"     tooltip={COL_TOOLTIPS['total-agendado']}>Total</ColTh>}
+                  {showCol('confirmadas')        && <ColTh colKey="confirmadas"        tooltip={COL_TOOLTIPS['confirmadas']}>Confirmadas</ColTh>}
+                  {showCol('placas-generadas')   && <ColTh colKey="placas-generadas"   tooltip={COL_TOOLTIPS['placas-generadas']}   borderLeft>Placas</ColTh>}
+                  {showCol('baterias-generadas') && <ColTh colKey="baterias-generadas" tooltip={COL_TOOLTIPS['baterias-generadas']}>Baterías</ColTh>}
+                  {showCol('total-captado')      && <ColTh colKey="total-captado"      tooltip={COL_TOOLTIPS['total-captado']}>Total</ColTh>}
+                  {showCol('citas-revisadas')    && <ColTh colKey="citas-revisadas"    tooltip={COL_TOOLTIPS['citas-revisadas']}>Revisadas</ColTh>}
                 </tr>
               </thead>
 
@@ -640,11 +695,14 @@ export function Presupuesto({ onNavigate }: PresupuestoProps) {
                             {showCol('coste-agenda')  && <td className={`px-3 py-2 text-center font-medium ${row.isWeekend ? 'text-gray-400' : 'text-gray-700'}`}>{costePorAgenda  !== null ? fmtEUR(costePorAgenda)  : dash}</td>}
                             {showCol('coste-captada') && <td className={`px-3 py-2 text-center font-medium ${row.isWeekend ? 'text-gray-400' : 'text-gray-700'}`}>{costePorCaptada !== null ? fmtEUR(costePorCaptada) : dash}</td>}
 
-                            {showCol('agendas-por-fecha')   && <td className={`px-3 py-2 text-center ${wkColor}`}>{row.agendas_por_fecha   > 0 ? row.agendas_por_fecha   : dash}</td>}
-                            {showCol('captadas-por-fecha')  && <td className={`px-3 py-2 text-center ${wkColor}`}>{row.captadas_por_fecha  > 0 ? row.captadas_por_fecha  : dash}</td>}
-                            {showCol('agendas-generadas')   && <td className={`px-3 py-2 text-center ${wkColor}`}>{row.agendas_generadas   > 0 ? row.agendas_generadas   : dash}</td>}
-                            {showCol('captadas-generadas')  && <td className={`px-3 py-2 text-center ${wkColor}`}>{row.captadas_generadas  > 0 ? row.captadas_generadas  : dash}</td>}
-                            {showCol('citas-revisadas')     && <td className={`px-3 py-2 text-center ${wkColor}`}>{row.citas_revisadas     > 0 ? row.citas_revisadas     : dash}</td>}
+                            {showCol('placas-por-fecha')   && <td className={`px-3 py-2 text-center border-l-2 border-blue-100 ${wkColor}`}>{row.placas_por_fecha   > 0 ? row.placas_por_fecha   : dash}</td>}
+                            {showCol('baterias-por-fecha') && <td className={`px-3 py-2 text-center ${wkColor}`}>{row.baterias_por_fecha > 0 ? row.baterias_por_fecha : dash}</td>}
+                            {showCol('total-agendado')     && <td className={`px-3 py-2 text-center font-medium ${wkColor}`}>{(row.placas_por_fecha + row.baterias_por_fecha) > 0 ? (row.placas_por_fecha + row.baterias_por_fecha) : dash}</td>}
+                            {showCol('confirmadas')        && <td className={`px-3 py-2 text-center ${wkColor}`}>{row.agendas_por_fecha   > 0 ? row.agendas_por_fecha   : dash}</td>}
+                            {showCol('placas-generadas')   && <td className={`px-3 py-2 text-center border-l-2 border-blue-100 ${wkColor}`}>{row.placas_generadas   > 0 ? row.placas_generadas   : dash}</td>}
+                            {showCol('baterias-generadas') && <td className={`px-3 py-2 text-center ${wkColor}`}>{row.baterias_generadas > 0 ? row.baterias_generadas : dash}</td>}
+                            {showCol('total-captado')      && <td className={`px-3 py-2 text-center font-medium ${wkColor}`}>{(row.placas_generadas + row.baterias_generadas) > 0 ? (row.placas_generadas + row.baterias_generadas) : dash}</td>}
+                            {showCol('citas-revisadas')    && <td className={`px-3 py-2 text-center ${wkColor}`}>{row.citas_revisadas     > 0 ? row.citas_revisadas     : dash}</td>}
                           </tr>
                         );
                       })}
@@ -662,10 +720,13 @@ export function Presupuesto({ onNavigate }: PresupuestoProps) {
                         {showCol('captadas')           && <td className="px-3 py-2 text-center">{sub.captadas}</td>}
                         {showCol('coste-agenda')       && <td className="px-3 py-2 text-center">{sub.mediaAgenda  !== null ? fmtEUR(sub.mediaAgenda)  : <span className="opacity-40">—</span>}</td>}
                         {showCol('coste-captada')      && <td className="px-3 py-2 text-center">{sub.mediaCaptada !== null ? fmtEUR(sub.mediaCaptada) : <span className="opacity-40">—</span>}</td>}
-                        {showCol('agendas-por-fecha')  && <td className="px-3 py-2 text-center">{sub.agendas_pf}</td>}
-                        {showCol('captadas-por-fecha') && <td className="px-3 py-2 text-center">{sub.captadas_pf}</td>}
-                        {showCol('agendas-generadas')  && <td className="px-3 py-2 text-center">{sub.agendas_gen}</td>}
-                        {showCol('captadas-generadas') && <td className="px-3 py-2 text-center">{sub.cap_gen}</td>}
+                        {showCol('placas-por-fecha')   && <td className="px-3 py-2 text-center border-l-2 border-[#a8bce8]">{sub.placas_pf}</td>}
+                        {showCol('baterias-por-fecha') && <td className="px-3 py-2 text-center">{sub.baterias_pf}</td>}
+                        {showCol('total-agendado')     && <td className="px-3 py-2 text-center font-bold">{sub.placas_pf + sub.baterias_pf}</td>}
+                        {showCol('confirmadas')        && <td className="px-3 py-2 text-center">{sub.agendas_pf}</td>}
+                        {showCol('placas-generadas')   && <td className="px-3 py-2 text-center border-l-2 border-[#a8bce8]">{sub.placas_gen}</td>}
+                        {showCol('baterias-generadas') && <td className="px-3 py-2 text-center">{sub.bat_gen}</td>}
+                        {showCol('total-captado')      && <td className="px-3 py-2 text-center font-bold">{sub.placas_gen + sub.bat_gen}</td>}
                         {showCol('citas-revisadas')    && <td className="px-3 py-2 text-center">{sub.citas_rev}</td>}
                       </tr>
                     </React.Fragment>
@@ -684,10 +745,13 @@ export function Presupuesto({ onNavigate }: PresupuestoProps) {
                   {showCol('captadas')           && <td className="px-3 py-3 text-center">{totals.captadas}</td>}
                   {showCol('coste-agenda')       && <td className="px-3 py-3 text-center">{totals.mediaAgenda  !== null ? fmtEUR(totals.mediaAgenda)  : <span className="opacity-50">—</span>}</td>}
                   {showCol('coste-captada')      && <td className="px-3 py-3 text-center">{totals.mediaCaptada !== null ? fmtEUR(totals.mediaCaptada) : <span className="opacity-50">—</span>}</td>}
-                  {showCol('agendas-por-fecha')  && <td className="px-3 py-3 text-center">{totals.agendas_pf}</td>}
-                  {showCol('captadas-por-fecha') && <td className="px-3 py-3 text-center">{totals.captadas_pf}</td>}
-                  {showCol('agendas-generadas')  && <td className="px-3 py-3 text-center">{totals.agendas_gen}</td>}
-                  {showCol('captadas-generadas') && <td className="px-3 py-3 text-center">{totals.captadas_gen}</td>}
+                  {showCol('placas-por-fecha')   && <td className="px-3 py-3 text-center border-l-2 border-blue-400/40">{totals.placas_pf}</td>}
+                  {showCol('baterias-por-fecha') && <td className="px-3 py-3 text-center">{totals.baterias_pf}</td>}
+                  {showCol('total-agendado')     && <td className="px-3 py-3 text-center">{totals.placas_pf + totals.baterias_pf}</td>}
+                  {showCol('confirmadas')        && <td className="px-3 py-3 text-center">{totals.agendas_pf}</td>}
+                  {showCol('placas-generadas')   && <td className="px-3 py-3 text-center border-l-2 border-blue-400/40">{totals.placas_gen}</td>}
+                  {showCol('baterias-generadas') && <td className="px-3 py-3 text-center">{totals.baterias_gen}</td>}
+                  {showCol('total-captado')      && <td className="px-3 py-3 text-center">{totals.placas_gen + totals.baterias_gen}</td>}
                   {showCol('citas-revisadas')    && <td className="px-3 py-3 text-center">{totals.citas_rev}</td>}
                 </tr>
               </tbody>
