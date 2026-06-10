@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  INTERESADOS_MIN_DURATION_MS as MIN_DURATION_MS,
+  INTERESADOS_PAGE_SIZE as PER_PAGE,
+  INTERESADOS_EXPORT_PAGE_SIZE as EXPORT_PAGE_SIZE,
+} from '../lib/constants';
+import {
   RefreshCw,
   Search,
   X,
@@ -64,10 +69,6 @@ function parseMeta(raw: string | Record<string, any> | null | undefined): Record
   if (typeof raw === 'object') return raw;
   try { return JSON.parse(raw); } catch { return {}; }
 }
-
-const MIN_DURATION_MS = 60_000;
-const PER_PAGE = 50;
-const EXPORT_PAGE_SIZE = 100;
 
 function csvEscape(val: unknown): string {
   if (val == null) return '';

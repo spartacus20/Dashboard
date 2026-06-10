@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   BarChart3,
   Wallet,
@@ -21,6 +22,7 @@ import {
   Users,
   ChevronDown,
   Search,
+  PhoneForwarded,
 } from "lucide-react";
 import { useCallsContext } from "../../context/CallsContext";
 import { useAuth } from "../../context/AuthContext";
@@ -31,6 +33,7 @@ import {
   canAccessRecoveries,
   canAccessAssistantIA,
   canAccessHydro,
+  canAccessSeguimientos,
   canAccessBudget,
   hasPermissionsDefined,
   getClientTest,
@@ -118,6 +121,7 @@ export function Sidebar({
   const [recoveriesEnabled, setRecoveriesEnabled] = React.useState(() => canAccessRecoveries());
   const [assistantIAEnabled, setAssistantIAEnabled] = React.useState(() => canAccessAssistantIA());
   const [hydroEnabled, setHydroEnabled] = React.useState(() => canAccessHydro());
+  const [seguimientosEnabled, setSeguimientosEnabled] = React.useState(() => canAccessSeguimientos());
   const [budgetEnabled, setBudgetEnabled] = React.useState(() => canAccessBudget());
 
   // Revisar metadata cuando cambie (ej. al cambiar de cliente)
@@ -127,6 +131,7 @@ export function Sidebar({
       setRecoveriesEnabled(canAccessRecoveries());
       setAssistantIAEnabled(canAccessAssistantIA());
       setHydroEnabled(canAccessHydro());
+      setSeguimientosEnabled(canAccessSeguimientos());
       setBudgetEnabled(canAccessBudget());
     };
     update();
@@ -287,7 +292,7 @@ export function Sidebar({
 
       if (error) {
         // console.error("❌ Error al cambiar client_id:", error);
-        alert("Error al cambiar el client_id. Por favor, intenta nuevamente.");
+        toast.error("Error al cambiar el client_id. Por favor, intenta nuevamente.");
         return;
       }
 
@@ -301,7 +306,7 @@ export function Sidebar({
       // );
     } catch (err) {
       // console.error("❌ Error al refrescar datos:", err);
-      alert("Error al refrescar los datos. La página se recargará.");
+      toast.error("Error al refrescar los datos. La página se recargará.");
       window.location.reload();
     } finally {
       setIsChangingClient(false);
@@ -721,6 +726,19 @@ export function Sidebar({
             >
               <ClipboardList className="w-5 h-5" />
               Tickets
+            </button>
+          )}
+          {seguimientosEnabled && (
+            <button
+              onClick={() => navigateWithParams("seguimientos")}
+              className={`flex w-full items-center gap-2 px-4 py-2 ${
+                currentPage === "seguimientos"
+                  ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
+                  : "text-gray-300 hover:bg-[#0a2a5a]"
+              } rounded-lg`}
+            >
+              <PhoneForwarded className="w-5 h-5" />
+              Seguimientos
             </button>
           )}
           {assistantIAEnabled && (
