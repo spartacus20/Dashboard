@@ -320,28 +320,11 @@ export function Sidebar({
     setShowBatchCall(callType === "outbound");
   }, []);
 
-  // Función para mantener los parámetros URL al cambiar de página
+  // Cambiar de página. onPageChange (=navigateDashboard en DashboardApp) actualiza
+  // la URL a /dashboard/<page> conservando los query params; el render se deriva de ahí.
   const navigateWithParams = (page: string) => {
-    // Obtener y mantener los parámetros URL actuales
-    const currentUrl = new URL(window.location.href);
-    const searchParams = currentUrl.searchParams;
-
-    // Crear un objeto con todos los parámetros actuales
-    const params: Record<string, string> = {};
-    searchParams.forEach((value, key) => {
-      params[key] = value;
-    });
-
-    // Cambiar la página pero conservar los parámetros de URL
     onPageChange(page);
     setIsMobileMenuOpen(false);
-
-    // Actualizar la URL con los parámetros pero sin recargar la página
-    const newUrl = new URL(window.location.origin + window.location.pathname);
-    Object.entries(params).forEach(([key, value]) => {
-      newUrl.searchParams.append(key, value);
-    });
-    window.history.pushState({}, "", newUrl.toString());
   };
 
   // Truncar la API key para mostrarla de forma segura

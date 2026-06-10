@@ -2,6 +2,7 @@ import React from 'react';
 import { Play, Pause, Download, Clock, ChevronDown, ChevronUp, Search, X, Phone, ChevronLeft, ChevronRight, ListFilter, PhoneOff, RefreshCw, PhoneCall, Plus, User, Send, CalendarDays } from 'lucide-react';
 import type { DetailedRetellCall, FilterCriteria, RetellAgent, RetellPhoneNumber } from '../types';
 import { useCallsContext } from '../context/CallsContext';
+import { useDashboardRoute, navigateDashboard } from '../lib/dashboardRoute';
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { listCalls, exportCallsWithColumns, fetchAgents, createPhoneCall, getCallTranscript, getAudioUrl } from '../api';
@@ -552,6 +553,8 @@ function RecallModal({ call, onClose, apiKey, apiKeyTest, phoneNumbers }: Recall
 export function Recordings({ onNavigate }: RecordingsProps) {
 
   const [selectedCallModal, setSelectedCallModal] = React.useState<DetailedRetellCall | null>(null);
+  // Deep-linking: la grabación abierta vive en la URL (/dashboard/recordings/<call_id>)
+  const { detailId } = useDashboardRoute();
   const [recallCall, setRecallCall] = React.useState<DetailedRetellCall | null>(null);
   const [selectedCall, setSelectedCall] = React.useState<string | null>(null);
   const [playingId, setPlayingId] = React.useState<string | null>(null);
@@ -1132,8 +1135,18 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     }
   }, [selectedCallModal, modalCallForTransition]);
 
-  // Modal functionality
+  // Abrir/cerrar el modal navegando: la URL es la fuente de verdad y el efecto
+  // de abajo aplica el estado (applyCallModal) según el call_id de la URL.
   const openCallModal = (call: DetailedRetellCall) => {
+    navigateDashboard('recordings', call.call_id);
+  };
+
+  const closeCallModal = () => {
+    navigateDashboard('recordings');
+  };
+
+  // Lógica real de apertura (estado + reproductor de audio), disparada por la URL.
+  const applyCallModal = (call: DetailedRetellCall) => {
     setSelectedCallModal(call);
     setSelectedCall(call.call_id);
 
@@ -1180,10 +1193,19 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     }
   };
 
-  const closeCallModal = () => {
-    setSelectedCallModal(null);
-    setSelectedCall(null);
-  };
+  // Sincronizar el modal con la URL (deep-link, atrás/adelante, recarga)
+  React.useEffect(() => {
+    if (detailId) {
+      if (selectedCallModal?.call_id !== detailId) {
+        const call = filteredCalls.find((c) => c.call_id === detailId);
+        if (call) applyCallModal(call);
+      }
+    } else if (selectedCallModal) {
+      setSelectedCallModal(null);
+      setSelectedCall(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailId, filteredCalls]);
 
   const togglePlayPauseModal = () => {
     if (selectedCallModal) {

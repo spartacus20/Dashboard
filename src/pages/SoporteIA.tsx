@@ -33,6 +33,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { useDashboardRoute, navigateDashboard } from '../lib/dashboardRoute';
 
 type SeccionSoporteIA = 'incidencias' | 'fichas';
 
@@ -387,6 +388,8 @@ export function SoporteIA({ onNavigate: _onNavigate }: SoporteIAProps) {
   const [pagNum, setPagNum] = useState(1);
   const [selectedFila, setSelectedFila] = useState<ZinkeeRegistroFila | null>(null);
   const [detalleOpen, setDetalleOpen] = useState(false);
+  // Deep-linking: el registro abierto vive en la URL (/dashboard/soporte-ia/<id>)
+  const { detailId } = useDashboardRoute();
 
   const campoById = useMemo(() => {
     const m = new Map<number, ZinkeeCampo>();
@@ -469,10 +472,27 @@ export function SoporteIA({ onNavigate: _onNavigate }: SoporteIAProps) {
     }));
   }, [campoById, seccion]);
 
+  // Abrir navegando: la URL manda y el efecto de abajo aplica el estado.
   const abrirDetalle = (fila: ZinkeeRegistroFila) => {
-    setSelectedFila(fila);
-    setDetalleOpen(true);
+    navigateDashboard('soporte-ia', String(fila.id));
   };
+
+  // Sincronizar el detalle con la URL (deep-link, atrás/adelante, recarga)
+  useEffect(() => {
+    if (detailId) {
+      if (!selectedFila || String(selectedFila.id) !== detailId) {
+        const fila = filas.find((f) => String(f.id) === detailId);
+        if (fila) {
+          setSelectedFila(fila);
+          setDetalleOpen(true);
+        }
+      }
+    } else if (detalleOpen) {
+      setDetalleOpen(false);
+      setSelectedFila(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailId, filas]);
 
   return (
     <div className="w-full min-w-0 max-w-full">
@@ -683,8 +703,8 @@ export function SoporteIA({ onNavigate: _onNavigate }: SoporteIAProps) {
       <RegistroDetalleDialog
         open={detalleOpen}
         onOpenChange={(o) => {
-          setDetalleOpen(o);
-          if (!o) setSelectedFila(null);
+          // Cerrar quita el id de la URL; el efecto sincroniza el estado.
+          if (!o) navigateDashboard('soporte-ia');
         }}
         fila={selectedFila}
         campoById={campoById}

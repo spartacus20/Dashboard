@@ -11,6 +11,7 @@ import {
 } from "../api";
 import { Agenda } from "../types";
 import { useCallsContext } from "../context/CallsContext";
+import { useDashboardRoute, navigateDashboard } from "../lib/dashboardRoute";
 import { AGENDAS_PAGE_SIZE } from "../lib/constants";
 import { toast } from "sonner";
 import {
@@ -90,6 +91,8 @@ export function Agendas({ onNavigate }: AgendasProps) {
   >("list");
   const [selectedAgenda, setSelectedAgenda] = useState<Agenda | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  // Deep-linking: la agenda abierta vive en la URL (/dashboard/agendas/<id>)
+  const { detailId } = useDashboardRoute();
   const [exporting, setExporting] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [agendaToDelete, setAgendaToDelete] = useState<Agenda | null>(null);
@@ -624,17 +627,32 @@ export function Agendas({ onNavigate }: AgendasProps) {
     setSortOrder("DESC");
   };
 
-  // Abrir modal con agenda seleccionada
+  // Abrir/cerrar el modal navegando: la URL es la fuente de verdad y el efecto
+  // de abajo sincroniza el estado del modal con el id de la URL.
   const openAgendaModal = (agenda: Agenda) => {
-    setSelectedAgenda(agenda);
-    setModalOpen(true);
+    navigateDashboard("agendas", String(agenda.id));
   };
 
-  // Cerrar modal
   const closeAgendaModal = () => {
-    setModalOpen(false);
-    setSelectedAgenda(null);
+    navigateDashboard("agendas");
   };
+
+  // Sincronizar el modal con la URL (deep-link, atrás/adelante, recarga)
+  useEffect(() => {
+    if (detailId) {
+      if (!selectedAgenda || String(selectedAgenda.id) !== detailId) {
+        const agenda = agendas.find((a) => String(a.id) === detailId);
+        if (agenda) {
+          setSelectedAgenda(agenda);
+          setModalOpen(true);
+        }
+      }
+    } else if (modalOpen) {
+      setModalOpen(false);
+      setSelectedAgenda(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailId, agendas]);
 
   // Abrir modal de confirmación de eliminación
   const openDeleteModal = (agenda: Agenda, e?: React.MouseEvent) => {
