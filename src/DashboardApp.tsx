@@ -1,23 +1,26 @@
-import React, { useEffect, useState, useRef, ChangeEvent } from 'react';
+import React, { useEffect, useState, useRef, ChangeEvent, Suspense, lazy } from 'react';
 import { fetchCalls, fetchAllCalls, calculateStats, fetchBatchCalls, fetchBatchCallTasks, createBatchCall, fetchPhoneNumbers, deleteBatchCall } from './api';
 import type { RetellCall, CallStats, FilterCriteria, RetellBatchCall, BatchCallTask, RetellPhoneNumber } from './types';
 import { Sidebar } from './components/layout/Sidebar';
-import { Dashboard } from './pages/Dashboard';
-import { Recordings } from './pages/Recordings';
-import { PhoneNumbers } from './pages/PhoneNumbers';
-import { Agendas } from './pages/Agendas';
-import { Callbacks } from './pages/Callbacks';
-import { Ventas } from './pages/Ventas';
-import Lanzamiento from './pages/Lanzamiento';
-import NoLlamar from './pages/NoLlamar';
-import { Campaign } from './pages/Campaign';
-import { Tickets } from './pages/Tickets';
-import { Recoveries } from './pages/Recoveries';
-import { SoporteIA } from './pages/SoporteIA';
-import { Seguimientos } from './pages/Seguimientos';
-import { Interesados } from './pages/Interesados';
-import { Presupuesto } from './pages/Presupuesto';
+// Páginas cargadas de forma diferida (code-splitting): cada una genera su
+// propio chunk async y solo se descarga cuando el usuario la abre.
+const Dashboard = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })));
+const Recordings = lazy(() => import('./pages/Recordings').then((m) => ({ default: m.Recordings })));
+const PhoneNumbers = lazy(() => import('./pages/PhoneNumbers').then((m) => ({ default: m.PhoneNumbers })));
+const Agendas = lazy(() => import('./pages/Agendas').then((m) => ({ default: m.Agendas })));
+const Callbacks = lazy(() => import('./pages/Callbacks').then((m) => ({ default: m.Callbacks })));
+const Ventas = lazy(() => import('./pages/Ventas').then((m) => ({ default: m.Ventas })));
+const Lanzamiento = lazy(() => import('./pages/Lanzamiento'));
+const NoLlamar = lazy(() => import('./pages/NoLlamar'));
+const Campaign = lazy(() => import('./pages/Campaign').then((m) => ({ default: m.Campaign })));
+const Tickets = lazy(() => import('./pages/Tickets').then((m) => ({ default: m.Tickets })));
+const Recoveries = lazy(() => import('./pages/Recoveries').then((m) => ({ default: m.Recoveries })));
+const SoporteIA = lazy(() => import('./pages/SoporteIA').then((m) => ({ default: m.SoporteIA })));
+const Seguimientos = lazy(() => import('./pages/Seguimientos').then((m) => ({ default: m.Seguimientos })));
+const Interesados = lazy(() => import('./pages/Interesados').then((m) => ({ default: m.Interesados })));
+const Presupuesto = lazy(() => import('./pages/Presupuesto').then((m) => ({ default: m.Presupuesto })));
 import { useCallsContext } from './context/CallsContext';
+import { toast } from 'sonner';
 import {
   canAccessTickets,
   canAccessRecoveries,
@@ -862,36 +865,7 @@ function DashboardApp() {
         
         // Si llegamos aquí, la eliminación fue exitosa (incluso con 204)
         
-        // Crear notificación de éxito
-        const notification = document.createElement('div');
-        notification.style.position = 'fixed';
-        notification.style.top = '16px';
-        notification.style.right = '16px';
-        notification.style.backgroundColor = 'rgba(6, 78, 59, 0.9)'; // bg-green-900 con transparencia
-        notification.style.color = 'white';
-        notification.style.padding = '8px 16px';
-        notification.style.borderRadius = '8px';
-        notification.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.1)';
-        notification.style.zIndex = '9999';
-        notification.style.opacity = '0';
-        notification.style.transition = 'opacity 0.3s ease-in-out';
-        notification.textContent = 'Batch call eliminado correctamente';
-        document.body.appendChild(notification);
-        
-        // Mostrar la notificación
-        setTimeout(() => {
-          notification.style.opacity = '1';
-        }, 10);
-        
-        // Eliminar la notificación después de 3 segundos
-        setTimeout(() => {
-          notification.style.opacity = '0';
-          setTimeout(() => {
-            if (document.body.contains(notification)) {
-              document.body.removeChild(notification);
-            }
-          }, 300);
-        }, 3000);
+        toast.success('Batch call eliminado correctamente');
         
         // Actualizar la lista después de eliminar usando el contexto
         refreshBatchCalls();
@@ -1327,6 +1301,13 @@ function DashboardApp() {
       />
 
       <div className="md:ml-64 p-4 md:p-8 transition-all">
+        <Suspense
+          fallback={
+            <div className="flex items-center justify-center py-24">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-[#05163b]" />
+            </div>
+          }
+        >
         {currentPage === 'dashboard' && (
           <Dashboard
             stats={stats || { total: 0, completed: 0, failed: 0, averageDuration: '0:00', averageDurationSeconds: 0 }}
@@ -1403,6 +1384,7 @@ function DashboardApp() {
         {currentPage === 'seguimientos' && seguimientosEnabled && (
           <Seguimientos onNavigate={setCurrentPage as (page: string) => void} />
         )}
+        </Suspense>
       </div>
     </div>
   );

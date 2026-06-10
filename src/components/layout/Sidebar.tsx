@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   BarChart3,
   Wallet,
@@ -291,7 +292,7 @@ export function Sidebar({
 
       if (error) {
         // console.error("❌ Error al cambiar client_id:", error);
-        alert("Error al cambiar el client_id. Por favor, intenta nuevamente.");
+        toast.error("Error al cambiar el client_id. Por favor, intenta nuevamente.");
         return;
       }
 
@@ -305,7 +306,7 @@ export function Sidebar({
       // );
     } catch (err) {
       // console.error("❌ Error al refrescar datos:", err);
-      alert("Error al refrescar los datos. La página se recargará.");
+      toast.error("Error al refrescar los datos. La página se recargará.");
       window.location.reload();
     } finally {
       setIsChangingClient(false);
