@@ -5,6 +5,7 @@ import { useCallsContext } from '../context/CallsContext';
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { listCalls, exportCallsWithColumns, fetchAgents, createPhoneCall, getCallTranscript, getAudioUrl } from '../api';
+import { RECORDINGS_PAGE_SIZE, RECORDINGS_PAGE_SIZE_OPTIONS } from '../lib/constants';
 
 // Componentes UI simplificados
 const Input = ({ className = "", ...props }: { className?: string; [key: string]: any }) => (
@@ -607,8 +608,8 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   
   // Estados para la paginación - usar estado local para la página actual
   const [currentPage, setCurrentPage] = React.useState(1);
-  const [itemsPerPage, setItemsPerPage] = React.useState(25);
-  const [itemsPerPageOptions] = React.useState([25, 50, 100]);
+  const [itemsPerPage, setItemsPerPage] = React.useState(RECORDINGS_PAGE_SIZE);
+  const [itemsPerPageOptions] = React.useState(RECORDINGS_PAGE_SIZE_OPTIONS);
   
   // Estados para los dropdowns
   const [showItemsPerPageDropdown, setShowItemsPerPageDropdown] = React.useState(false);

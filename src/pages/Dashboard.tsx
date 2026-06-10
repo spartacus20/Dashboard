@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { IDENTIDAD_COLORS } from "../lib/constants";
 import type { CallStats, FilterCriteria } from "../types";
 import { Button } from "../components/ui/button";
 import {
@@ -2851,7 +2852,6 @@ export function Dashboard({
               const identidadData: { identidad: string; cantidad: number }[] =
                 dashboardData?.dashboard_data?.identidad || [];
               const total = identidadData.reduce((sum, item) => sum + (item.cantidad || 0), 0);
-              const IDENTIDAD_COLORS = ["#10b981","#ef4444","#3b82f6","#f59e0b","#8b5cf6","#ec4899","#14b8a6"];
               const pieData = identidadData.map((item, i) => ({
                 name: item.identidad,
                 value: item.cantidad,

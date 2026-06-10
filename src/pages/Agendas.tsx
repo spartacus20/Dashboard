@@ -11,6 +11,8 @@ import {
 } from "../api";
 import { Agenda } from "../types";
 import { useCallsContext } from "../context/CallsContext";
+import { AGENDAS_PAGE_SIZE } from "../lib/constants";
+import { toast } from "sonner";
 import {
   Calendar,
   Clock,
@@ -105,7 +107,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
   const [hasFiltroSolar, setHasFiltroSolar] = useState(false);
   // Cliente FIT: agendas vienen por llamada (con call_id) o por WhatsApp (sin call_id)
   const [hasFit, setHasFit] = useState(false);
-  const itemsPerPage = 10;
+  const itemsPerPage = AGENDAS_PAGE_SIZE;
   const [listViewMode, setListViewMode] = useState<"list" | "grouped">("list");
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
   const [showUnifiedFiltersDropdown, setShowUnifiedFiltersDropdown] =
@@ -671,34 +673,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
       // Cerrar modal
       closeDeleteModal();
 
-      // Mostrar notificación de éxito
-      const notification = document.createElement("div");
-      notification.style.position = "fixed";
-      notification.style.top = "16px";
-      notification.style.right = "16px";
-      notification.style.backgroundColor = "rgba(6, 78, 59, 0.9)";
-      notification.style.color = "white";
-      notification.style.padding = "12px 20px";
-      notification.style.borderRadius = "8px";
-      notification.style.boxShadow = "0 4px 6px rgba(0, 0, 0, 0.1)";
-      notification.style.zIndex = "9999";
-      notification.style.opacity = "0";
-      notification.style.transition = "opacity 0.3s ease-in-out";
-      notification.textContent = "✅ Agenda eliminada exitosamente";
-      document.body.appendChild(notification);
-
-      setTimeout(() => {
-        notification.style.opacity = "1";
-      }, 10);
-
-      setTimeout(() => {
-        notification.style.opacity = "0";
-        setTimeout(() => {
-          if (document.body.contains(notification)) {
-            document.body.removeChild(notification);
-          }
-        }, 300);
-      }, 3000);
+      toast.success("Agenda eliminada exitosamente");
     } catch (err) {
       // console.error("Error al eliminar agenda:", err);
       setError(
@@ -767,8 +742,8 @@ export function Agendas({ onNavigate }: AgendasProps) {
       // );
 
       // Mostrar mensaje de éxito
-      alert(
-        `✅ Exportación completada exitosamente!\n\nSe exportaron ${allAgendas.length} agendas al archivo:\n${filename}`,
+      toast.success(
+        `Exportación completada: ${allAgendas.length} agendas exportadas a ${filename}`,
       );
     } catch (err) {
       // console.error("Error al exportar agendas:", err);
