@@ -5,15 +5,8 @@ import { createPhoneCall, fetchAgents, importPhoneNumber, deletePhoneNumber, fet
 import { fetchPhoneNumbers } from '../services/api/telephony';
 import { useCallsContext } from '../context/CallsContext';
 import { getUserData } from '../lib/supabase';
-
-const PHONES_PER_PAGE = 25;
-
-const DEFAULT_TERMINATION_URIS = [
-  'livekit.netelip.com',
-  'livekit2.netelip.com',
-  'livekit3.netelip.com',
-  'livekit4.netelip.com',
-];
+import { PHONES_PAGE_SIZE as PHONES_PER_PAGE, DEFAULT_TERMINATION_URIS } from '../lib/constants';
+import { toast } from 'sonner';
 
 interface PhoneNumbersProps {
   onNavigate: (page: 'dashboard' | 'recordings' | 'phones') => void;
@@ -850,36 +843,7 @@ function DeletePhoneModal({ phoneNumber, onClose, onSuccess, apiKey }: DeletePho
     try {
       await deletePhoneNumber(effectiveApiKey, phoneNumber.phone_number);
       
-      // Crear notificación de éxito
-      const notification = document.createElement('div');
-      notification.style.position = 'fixed';
-      notification.style.top = '16px';
-      notification.style.right = '16px';
-      notification.style.backgroundColor = 'rgba(6, 78, 59, 0.9)'; // bg-green-900 con transparencia
-      notification.style.color = 'white';
-      notification.style.padding = '8px 16px';
-      notification.style.borderRadius = '8px';
-      notification.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.1)';
-      notification.style.zIndex = '9999';
-      notification.style.opacity = '0';
-      notification.style.transition = 'opacity 0.3s ease-in-out';
-      notification.textContent = 'Número de teléfono eliminado correctamente';
-      document.body.appendChild(notification);
-      
-      // Mostrar la notificación
-      setTimeout(() => {
-        notification.style.opacity = '1';
-      }, 10);
-      
-      // Eliminar la notificación después de 3 segundos
-      setTimeout(() => {
-        notification.style.opacity = '0';
-        setTimeout(() => {
-          if (document.body.contains(notification)) {
-            document.body.removeChild(notification);
-          }
-        }, 300);
-      }, 3000);
+      toast.success('Número de teléfono eliminado correctamente');
       
       // Notificar éxito al componente padre
       onSuccess();
@@ -1045,15 +1009,7 @@ function DeleteMultiplePhoneModal({
         await deletePhoneNumber(effectiveApiKey, phone.phone_number);
       }
 
-      const notification = document.createElement('div');
-      notification.style.cssText = 'position:fixed;top:16px;right:16px;background:rgba(6,78,59,0.9);color:white;padding:8px 16px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,0.1);z-index:9999;opacity:0;transition:opacity 0.3s;';
-      notification.textContent = `${selectedPhones.length} número(s) eliminado(s) correctamente`;
-      document.body.appendChild(notification);
-      setTimeout(() => (notification.style.opacity = '1'), 10);
-      setTimeout(() => {
-        notification.style.opacity = '0';
-        setTimeout(() => notification.remove(), 300);
-      }, 3000);
+      toast.success(`${selectedPhones.length} número(s) eliminado(s) correctamente`);
 
       onSuccess();
       onClose();

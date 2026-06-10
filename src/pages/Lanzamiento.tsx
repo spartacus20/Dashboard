@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Phone, PhoneCall, PhoneOff, Link, MousePointer, Ban, RefreshCw, Calendar, TrendingUp, Globe, CalendarDays, Lock, Activity, ChevronLeft, ChevronRight, Check, ChevronDown, Download, X } from 'lucide-react';
 import { fetchLanzamientoMetricsToday, fetchLanzamientoMetricsCustom, fetchAsistenciaFunnelMetrics, fetchLanzamientoMetricsDailyRange, type DailyLanzamientoMetric } from '../api';
+import { REGION_OPTIONS, REGION_PAISES, COUNTRY_FLAGS } from '../lib/constants';
 import {
   AreaChart,
   Area,
@@ -81,65 +82,11 @@ interface FunnelMetrics {
   no_match_records: NoMatchRecord[];
 }
 
-const REGION_OPTIONS = [
-  { region: 'España' },
-  { region: 'Europa' },
-  { region: 'Latam' },
-];
-
-const REGION_PAISES: { region: string; paises: string }[] = [
-  { region: 'España', paises: 'España' },
-  { region: 'Europa', paises: 'no_detectado' },
-  {
-    region: 'Latam',
-    paises:
-      'Argentina, Bolivia, Brasil, Chile, Colombia, Costa Rica, Cuba, Ecuador, El Salvador, México, Nicaragua, Panamá, Paraguay, Perú, República Dominicana, Uruguay, USA / Canadá, Venezuela',
-  },
-];
-
 function getPaisesByRegion(region: string): string[] {
   const item = REGION_PAISES.find((r) => r.region === region);
   if (!item) return [];
   return item.paises.split(', ').map((p) => p.trim());
 }
-
-const COUNTRY_FLAGS: Record<string, string> = {
-  España: '🇪🇸',
-  Argentina: '🇦🇷',
-  México: '🇲🇽',
-  Colombia: '🇨🇴',
-  Chile: '🇨🇱',
-  Perú: '🇵🇪',
-  Brasil: '🇧🇷',
-  Venezuela: '🇻🇪',
-  Ecuador: '🇪🇨',
-  'República Dominicana': '🇩🇴',
-  Uruguay: '🇺🇾',
-  Paraguay: '🇵🇾',
-  Bolivia: '🇧🇴',
-  'Costa Rica': '🇨🇷',
-  Panamá: '🇵🇦',
-  Nicaragua: '🇳🇮',
-  'El Salvador': '🇸🇻',
-  Guatemala: '🇬🇹',
-  Honduras: '🇭🇳',
-  Cuba: '🇨🇺',
-  Haití: '🇭🇹',
-  Curazao: '🇨🇼',
-  Guyana: '🇬🇾',
-  Surinam: '🇸🇷',
-  'Guayana Francesa': '🇬🇫',
-  'USA / Canadá': '🇺🇸',
-  'Reino Unido': '🇬🇧',
-  Alemania: '🇩🇪',
-  Francia: '🇫🇷',
-  Italia: '🇮🇹',
-  Irlanda: '🇮🇪',
-  Portugal: '🇵🇹',
-  'Países Bajos': '🇳🇱',
-  Bélgica: '🇧🇪',
-  no_detectado: '🌐',
-};
 
 const isApplePlatform = () => {
   if (typeof navigator === 'undefined') return false;

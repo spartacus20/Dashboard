@@ -6,6 +6,7 @@ import {
   RefreshCw, Download,
 } from 'lucide-react';
 import { Card, CardContent } from '../components/ui/card';
+import { EXCHANGE_RATE_FALLBACK, EXCHANGE_RATE_TIMEOUT_MS } from '../lib/constants';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -180,7 +181,7 @@ export function Presupuesto({ onNavigate }: PresupuestoProps) {
   const [year,  setYear]  = useState(today.getFullYear());
 
   // Exchange rate
-  const [exchangeRate, setExchangeRate] = useState(0.92);
+  const [exchangeRate, setExchangeRate] = useState(EXCHANGE_RATE_FALLBACK);
   const [rateDate,     setRateDate]     = useState<string | null>(null);
   const [fetchingRate, setFetchingRate] = useState(false);
   const [rateFallback, setRateFallback] = useState(false);
@@ -277,7 +278,7 @@ export function Presupuesto({ onNavigate }: PresupuestoProps) {
     for (const api of APIS) {
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 6000);
+        const timeout = setTimeout(() => controller.abort(), EXCHANGE_RATE_TIMEOUT_MS);
         const res = await fetch(api.url, { signal: controller.signal });
         clearTimeout(timeout);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -435,7 +436,12 @@ export function Presupuesto({ onNavigate }: PresupuestoProps) {
     lines.push(`uMindsIA — Costes de llamadas — ${MONTH_NAMES[month - 1]} ${year}`);
     lines.push(`Tipo de cambio USD/EUR${S}${n(exchangeRate, 4)}`);
     lines.push('');
-    lines.push(['Semana','Fecha','Llamadas','Minutos','Gasto IA ($)','Gasto IA (€)','Gasto Telefonía','Agendas','Captadas','Coste/Agenda (€)','Coste/Captada (€)','Agendas (fecha cita)','Captadas (fecha cita)','Agendas generadas','Captadas generadas','Citas revisadas'].join(S));
+    
+    // Fila 1: Agrupación de secciones
+    lines.push(['', '', '', '', '', '', '', '', '', '', '', 'Agendado / fecha cita', '', '', '', 'Captado / generado ese día', '', '', ''].join(S));
+    
+    // Fila 2: Columnas individuales
+    lines.push(['Semana','Fecha','Llamadas','Minutos','Gasto IA ($)','Gasto IA (€)','Gasto Telefonía','Agendas','Captadas','Coste/Agenda (€)','Coste/Captada (€)','Placas','Baterías','Total','Confirmadas','Placas','Baterías','Total','Revisadas'].join(S));
 
     for (const group of weekGroups) {
       group.rows.forEach((row, idx) => {
@@ -443,20 +449,71 @@ export function Presupuesto({ onNavigate }: PresupuestoProps) {
         const cpa = row.agendas  > 0 ? totalCosto / row.agendas  : null;
         const cpc = row.captadas > 0 ? totalCosto / row.captadas : null;
         lines.push([
-          idx === 0 ? group.label : '', fmtDate(row.dia),
-          row.llamadas, row.minutos, n(row.gastoUSD), n(row.gastoEUR),
+          idx === 0 ? group.label : '',
+          fmtDate(row.dia),
+          row.llamadas || '',
+          row.minutos || '',
+          n(row.gastoUSD),
+          n(row.gastoEUR),
           row.telefonia !== null ? n(row.telefonia) : '',
-          row.agendas || '', row.captadas || '',
-          cpa !== null ? n(cpa) : '', cpc !== null ? n(cpc) : '',
-          row.agendas_por_fecha  || '', row.captadas_por_fecha || '',
-          row.agendas_generadas  || '', row.captadas_generadas || '',
-          row.citas_revisadas    || '',
+          row.agendas || '',
+          row.captadas || '',
+          cpa !== null ? n(cpa) : '',
+          cpc !== null ? n(cpc) : '',
+          row.placas_por_fecha || '',
+          row.baterias_por_fecha || '',
+          (row.placas_por_fecha + row.baterias_por_fecha) || '',
+          row.agendas_por_fecha || '',
+          row.placas_generadas || '',
+          row.baterias_generadas || '',
+          (row.placas_generadas + row.baterias_generadas) || '',
+          row.citas_revisadas || '',
         ].join(S));
       });
       const sub = weekSub(group.rows);
-      lines.push(['SUBTOTAL', group.label, sub.llamadas, sub.minutos, n(sub.gastoUSD), n(sub.gastoEUR), sub.telefonia > 0 ? n(sub.telefonia) : '', sub.agendas, sub.captadas, sub.mediaAgenda !== null ? n(sub.mediaAgenda) : '', sub.mediaCaptada !== null ? n(sub.mediaCaptada) : '', sub.agendas_pf, sub.captadas_pf, sub.agendas_gen, sub.cap_gen, sub.citas_rev].join(S));
+      lines.push([
+        'SUBTOTAL',
+        group.label,
+        sub.llamadas,
+        sub.minutos,
+        n(sub.gastoUSD),
+        n(sub.gastoEUR),
+        sub.telefonia > 0 ? n(sub.telefonia) : '',
+        sub.agendas,
+        sub.captadas,
+        sub.mediaAgenda !== null ? n(sub.mediaAgenda) : '',
+        sub.mediaCaptada !== null ? n(sub.mediaCaptada) : '',
+        sub.placas_pf || 0,
+        sub.baterias_pf || 0,
+        (sub.placas_pf + sub.baterias_pf) || 0,
+        sub.agendas_pf || 0,
+        sub.placas_gen || 0,
+        sub.bat_gen || 0,
+        (sub.placas_gen + sub.bat_gen) || 0,
+        sub.citas_rev || 0,
+      ].join(S));
     }
-    lines.push(['TOTAL','',totals.llamadas,totals.minutos,n(totals.gastoUSD),n(totals.gastoEUR),totals.telefonia>0?n(totals.telefonia):'',totals.agendas,totals.captadas,totals.mediaAgenda!==null?n(totals.mediaAgenda):'',totals.mediaCaptada!==null?n(totals.mediaCaptada):'',totals.agendas_pf,totals.captadas_pf,totals.agendas_gen,totals.captadas_gen,totals.citas_rev].join(S));
+    lines.push([
+      'TOTAL',
+      '',
+      totals.llamadas,
+      totals.minutos,
+      n(totals.gastoUSD),
+      n(totals.gastoEUR),
+      totals.telefonia > 0 ? n(totals.telefonia) : '',
+      totals.agendas,
+      totals.captadas,
+      totals.mediaAgenda !== null ? n(totals.mediaAgenda) : '',
+      totals.mediaCaptada !== null ? n(totals.mediaCaptada) : '',
+      totals.placas_pf || 0,
+      totals.baterias_pf || 0,
+      (totals.placas_pf + totals.baterias_pf) || 0,
+      totals.agendas_pf || 0,
+      totals.placas_gen || 0,
+      totals.baterias_gen || 0,
+      (totals.placas_gen + totals.baterias_gen) || 0,
+      totals.citas_rev || 0,
+    ].join(S));
     lines.push('');
     lines.push(['Gasto $ Total','Gasto € Total','Total Telefonía','Gasto Total (€)','Total Agendas','Total Captadas','Media €/Agenda','Media €/Captada'].join(S));
     lines.push([n(totals.gastoUSD),n(totals.gastoEUR),n(totals.telefonia),n(totals.costoTotal),totals.agendas,totals.captadas,totals.mediaAgenda!==null?n(totals.mediaAgenda):'',totals.mediaCaptada!==null?n(totals.mediaCaptada):''].join(S));

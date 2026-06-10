@@ -6,6 +6,7 @@ import {
 } from "../api";
 import { Callback } from "../types";
 import { useCallsContext } from "../context/CallsContext";
+import { CALLBACKS_PAGE_SIZE } from "../lib/constants";
 import {
   Phone,
   Calendar,
@@ -38,7 +39,7 @@ export function Callbacks({}: CallbacksProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMoreCallbacks, setHasMoreCallbacks] = useState(false);
   const [totalCallbacks, setTotalCallbacks] = useState(0);
-  const itemsPerPage = 25;
+  const itemsPerPage = CALLBACKS_PAGE_SIZE;
 
   // Estados para filtros de fecha
   const [filterStartDate, setFilterStartDate] = useState("");

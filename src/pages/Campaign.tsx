@@ -5,8 +5,7 @@ import { fetchBatchCalls, fetchFolders, deleteBatchCall } from '../api';
 import { useCallsContext } from '../context/CallsContext';
 import { BatchCallingTab } from './campaign/BatchCallingTab';
 import { Button } from '../components/ui/button';
-
-const ITEMS_PER_PAGE = 50;
+import { CAMPAIGN_PAGE_SIZE as ITEMS_PER_PAGE } from '../lib/constants';
 
 interface BatchCallWithWorkspace extends RetellBatchCall {
   workspace_api_key: string;
