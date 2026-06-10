@@ -736,6 +736,10 @@ export async function acquireAgendaLock(
   userName: string,
   clientId: string,
 ): Promise<AgendaLock | null> {
+  // Limpiar locks abandonados (más de 30 min) antes de intentar adquirir
+  const ttlCutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  await supabase.from('agenda_locks').delete().lt('locked_at', ttlCutoff);
+
   const { error } = await supabase
     .from('agenda_locks')
     .insert({ agenda_id: agendaId, locked_by_email: userEmail, locked_by_name: userName, client_id: clientId });

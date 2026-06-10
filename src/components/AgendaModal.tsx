@@ -36,6 +36,9 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange, isAuditor
   const [lockedByName, setLockedByName] = useState<string | null>(null);
   const hasChangesRef = useRef(false);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Refs siempre actualizados — necesarios para cleanup en efectos y beforeunload
+  const lockAcquiredRef = useRef(false);
+  const currentAgendaIdRef = useRef<number | null>(null);
 
   // Sincronizar estados locales cuando cambia la agenda (null/undefined = false)
   useEffect(() => {
@@ -54,11 +57,13 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange, isAuditor
     }
   }, [agenda]);
 
-  // Auditor: adquirir lock y arrancar polling cuando se abre el modal
+  // Auditor: adquirir lock, arrancar polling y registrar beforeunload
   useEffect(() => {
     if (!isOpen || !agenda || !isAuditor || !auditorEmail || !auditorName || !clientId) return;
 
     hasChangesRef.current = false;
+    lockAcquiredRef.current = false;
+    currentAgendaIdRef.current = agenda.id;
     setLockAcquired(false);
     setLockedByName(null);
 
@@ -69,6 +74,7 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange, isAuditor
       if (cancelled) return;
 
       if (existingLock === null) {
+        lockAcquiredRef.current = true;
         setLockAcquired(true);
       } else {
         setLockedByName(existingLock.locked_by_name);
@@ -85,39 +91,36 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange, isAuditor
       if (cancelled) return;
 
       if (!lock) {
-        // No hay lock: o lo liberaron o todavía no se insertó el nuestro
         setLockedByName(null);
       } else if (lock.locked_by_email === auditorEmail) {
-        // Es nuestro lock — todo bien
         setLockedByName(null);
       } else {
-        // Otro auditor tiene el lock
         setLockedByName(lock.locked_by_name);
       }
     }, 4000);
 
+    // Liberar lock si el usuario cierra el tab o navega fuera
+    const handleUnload = () => {
+      if (lockAcquiredRef.current && currentAgendaIdRef.current) {
+        releaseAgendaLock(currentAgendaIdRef.current);
+      }
+    };
+    window.addEventListener('beforeunload', handleUnload);
+
     return () => {
       cancelled = true;
+      window.removeEventListener('beforeunload', handleUnload);
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
         pollIntervalRef.current = null;
+      }
+      // Liberar lock al desmontar / cerrar modal (cubre navegación SPA)
+      if (lockAcquiredRef.current && currentAgendaIdRef.current) {
+        releaseAgendaLock(currentAgendaIdRef.current);
+        lockAcquiredRef.current = false;
       }
     };
   }, [isOpen, agenda?.id, isAuditor, auditorEmail, auditorName, clientId]);
-
-  // Auditor: liberar lock y detener polling al cerrar
-  useEffect(() => {
-    if (!isOpen) {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
-      }
-      if (lockAcquired && agenda) {
-        setLockAcquired(false);
-        releaseAgendaLock(agenda.id);
-      }
-    }
-  }, [isOpen]);
 
   // Cargar transcript y recordings bajo demanda al abrir el modal
   useEffect(() => {
@@ -300,11 +303,12 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange, isAuditor
   const handleClose = async () => {
     await persistStatusChanges();
 
-    if (isAuditor && lockAcquired && agenda) {
+    if (isAuditor && lockAcquiredRef.current && agenda) {
       if (hasChangesRef.current && auditorEmail && auditorName && clientId) {
         await recordAgendaAudit(agenda.id, auditorEmail, auditorName, clientId);
       }
       await releaseAgendaLock(agenda.id);
+      lockAcquiredRef.current = false;
       setLockAcquired(false);
     }
 
