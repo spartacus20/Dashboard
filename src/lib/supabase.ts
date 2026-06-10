@@ -372,6 +372,19 @@ export const hasLaunchPermissions = (): boolean => {
   return canAccess('launch')
 }
 
+export const isAuditor = (): boolean => {
+  const permissions = getPermissions()
+  if (permissions?.auditor !== true) return false
+  const metadata = getMetadata()
+  return metadata?.filtro_solar === true
+}
+
+export const getCurrentUserInfo = (): { email: string; name: string } => {
+  const email = sessionStorage.getItem('email') ?? ''
+  const name = sessionStorage.getItem('fullName') || email
+  return { email, name }
+}
+
 // Función para limpiar todos los datos del sessionStorage
 export const clearSessionData = () => {
   sessionStorage.removeItem('userData')

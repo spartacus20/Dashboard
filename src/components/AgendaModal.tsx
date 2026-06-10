@@ -1,19 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Agenda, CallsByPhoneResponse } from '../types';
-import { X, Play, Volume2, Calendar, Phone, MapPin, User, Clock, RefreshCw, AlertCircle, ExternalLink } from 'lucide-react';
+import { X, Play, Volume2, Calendar, Phone, MapPin, User, Clock, RefreshCw, AlertCircle, ExternalLink, Lock } from 'lucide-react';
 import { getCallsByPhone, updateAgendaStatus, getCallTranscript } from '../api';
+import { acquireAgendaLock, releaseAgendaLock, recordAgendaAudit, getAgendaLock } from '../services/api/agendas';
 
 interface AgendaModalProps {
   agenda: Agenda | null;
   isOpen: boolean;
   onClose: () => void;
   onStatusChange?: () => void;
+  isAuditor?: boolean;
+  auditorEmail?: string;
+  auditorName?: string;
+  clientId?: string;
 }
 
 const normalizeBool = (v: unknown): boolean =>
   v === true || v === 'true' || v === 1 || (typeof v === 'string' && v.toLowerCase() === 'true');
 
-export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaModalProps) {
+export function AgendaModal({ agenda, isOpen, onClose, onStatusChange, isAuditor, auditorEmail, auditorName, clientId }: AgendaModalProps) {
   const [callsData, setCallsData] = useState<CallsByPhoneResponse | null>(null);
   const [loadingCalls, setLoadingCalls] = useState(false);
   const [errorCalls, setErrorCalls] = useState<string | null>(null);
@@ -25,6 +30,12 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
   const [localDetails, setLocalDetails] = useState<string>('');
   const [localMotivoRechazo, setLocalMotivoRechazo] = useState<'Edad' | 'Pago mensual bajo' | 'Otros' | 'Ubicacion fuera alcance' | 'Casco historico' | 'No interesado' | 'Detecta IA' | 'Tiene bateria' | 'Incidencia' | null>(null);
   const [localUrlMaps, setLocalUrlMaps] = useState<string>('');
+
+  // Auditor: lock state
+  const [lockAcquired, setLockAcquired] = useState(false);
+  const [lockedByName, setLockedByName] = useState<string | null>(null);
+  const hasChangesRef = useRef(false);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Sincronizar estados locales cuando cambia la agenda (null/undefined = false)
   useEffect(() => {
@@ -42,6 +53,71 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
       setLocalUrlMaps('');
     }
   }, [agenda]);
+
+  // Auditor: adquirir lock y arrancar polling cuando se abre el modal
+  useEffect(() => {
+    if (!isOpen || !agenda || !isAuditor || !auditorEmail || !auditorName || !clientId) return;
+
+    hasChangesRef.current = false;
+    setLockAcquired(false);
+    setLockedByName(null);
+
+    let cancelled = false;
+
+    const setupLock = async () => {
+      const existingLock = await acquireAgendaLock(agenda.id, auditorEmail, auditorName, clientId);
+      if (cancelled) return;
+
+      if (existingLock === null) {
+        setLockAcquired(true);
+      } else {
+        setLockedByName(existingLock.locked_by_name);
+      }
+    };
+
+    setupLock();
+
+    // Polling cada 4s para detectar cambios en el lock (sin Realtime)
+    const agendaId = agenda.id;
+    pollIntervalRef.current = setInterval(async () => {
+      if (cancelled) return;
+      const lock = await getAgendaLock(agendaId);
+      if (cancelled) return;
+
+      if (!lock) {
+        // No hay lock: o lo liberaron o todavía no se insertó el nuestro
+        setLockedByName(null);
+      } else if (lock.locked_by_email === auditorEmail) {
+        // Es nuestro lock — todo bien
+        setLockedByName(null);
+      } else {
+        // Otro auditor tiene el lock
+        setLockedByName(lock.locked_by_name);
+      }
+    }, 4000);
+
+    return () => {
+      cancelled = true;
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, [isOpen, agenda?.id, isAuditor, auditorEmail, auditorName, clientId]);
+
+  // Auditor: liberar lock y detener polling al cerrar
+  useEffect(() => {
+    if (!isOpen) {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+      if (lockAcquired && agenda) {
+        setLockAcquired(false);
+        releaseAgendaLock(agenda.id);
+      }
+    }
+  }, [isOpen]);
 
   // Cargar transcript y recordings bajo demanda al abrir el modal
   useEffect(() => {
@@ -159,6 +235,7 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
     field: 'aprobada' | 'revisada',
     value: 'true' | 'false'
   ) => {
+    hasChangesRef.current = true;
     if (field === 'aprobada') {
       setLocalApproved(value === 'true');
     } else {
@@ -190,6 +267,7 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
 
     if (localDetails !== originalDetails) {
       payload.detalles = localDetails;
+      hasChangesRef.current = true;
     }
 
     if (localMotivoRechazo !== originalMotivoRechazo) {
@@ -198,36 +276,38 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
 
     if (localUrlMaps !== originalUrlMaps) {
       payload.url_maps = localUrlMaps.trim() || null;
+      hasChangesRef.current = true;
     }
 
-    // Si no hay cambios, no llamamos a la API
-    if (
+    const noChanges =
       typeof payload.aprobada === 'undefined' &&
       typeof payload.revisada === 'undefined' &&
       typeof payload.detalles === 'undefined' &&
       typeof payload.motivo_rechazo === 'undefined' &&
-      typeof payload.url_maps === 'undefined'
-    ) {
-      return;
-    }
+      typeof payload.url_maps === 'undefined';
+
+    if (noChanges) return;
 
     try {
       await updateAgendaStatus(payload as any);
-
-      if (onStatusChange) {
-        onStatusChange();
-      }
-    } catch (error) {
-      // console.error(
-        // 'Error al actualizar estado de agenda desde el modal:',
-        // error
-      // );
+      if (onStatusChange) onStatusChange();
+    } catch {
+      // silencioso
     }
   };
 
-  // Cierre del modal: primero persiste cambios y luego ejecuta onClose
+  // Cierre del modal: persiste cambios, registra auditoría si aplica, libera lock
   const handleClose = async () => {
     await persistStatusChanges();
+
+    if (isAuditor && lockAcquired && agenda) {
+      if (hasChangesRef.current && auditorEmail && auditorName && clientId) {
+        await recordAgendaAudit(agenda.id, auditorEmail, auditorName, clientId);
+      }
+      await releaseAgendaLock(agenda.id);
+      setLockAcquired(false);
+    }
+
     onClose();
   };
 
@@ -262,6 +342,16 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
             <X className="w-5 h-5" />
           </button>
         </header>
+
+        {/* Banner: agenda bloqueada por otro auditor */}
+        {isAuditor && lockedByName && (
+          <div className="flex items-center gap-3 px-8 py-3 bg-amber-50 border-b border-amber-200 text-amber-800">
+            <Lock className="w-4 h-4 shrink-0 text-amber-500" />
+            <span className="text-sm font-medium">
+              Esta agenda está siendo auditada por <span className="font-bold">{lockedByName}</span>. Solo lectura hasta que quede libre.
+            </span>
+          </div>
+        )}
 
         {/* Contenido principal */}
         <div className="flex-1 overflow-y-auto px-8 py-6 space-y-8">
@@ -315,9 +405,10 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
                       <input
                         type="url"
                         value={localUrlMaps}
-                        onChange={(e) => setLocalUrlMaps(e.target.value)}
+                        onChange={(e) => { hasChangesRef.current = true; setLocalUrlMaps(e.target.value); }}
+                        disabled={isAuditor && !!lockedByName}
                         placeholder="https://maps.google.com/..."
-                        className="flex-1 min-w-0 px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-slate-50 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="flex-1 min-w-0 px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-slate-50 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
                       />
                       {localUrlMaps.trim() && (
                         <a
@@ -401,8 +492,9 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
                 </label>
                 <textarea
                   value={localDetails}
-                  onChange={(e) => setLocalDetails(e.target.value)}
-                  className="w-full min-h-[80px] max-h-40 px-3 py-2 text-sm rounded-xl border border-slate-200 bg-slate-50 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-vertical"
+                  onChange={(e) => { hasChangesRef.current = true; setLocalDetails(e.target.value); }}
+                  disabled={isAuditor && !!lockedByName}
+                  className="w-full min-h-[80px] max-h-40 px-3 py-2 text-sm rounded-xl border border-slate-200 bg-slate-50 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-vertical disabled:opacity-60 disabled:cursor-not-allowed"
                   placeholder="Añade aquí cualquier comentario relevante sobre la llamada..."
                 />
               </div>
@@ -423,7 +515,8 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
                         e.target.value as 'true' | 'false'
                       )
                     }
-                    className={`w-full appearance-none px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 pr-9 ${getStatusTextClass(
+                    disabled={isAuditor && !!lockedByName}
+                    className={`w-full appearance-none px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 pr-9 disabled:opacity-60 disabled:cursor-not-allowed ${getStatusTextClass(
                       localApproved
                     )}`}
                   >
@@ -447,7 +540,8 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
                         e.target.value as 'true' | 'false'
                       )
                     }
-                    className={`w-full appearance-none px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pr-9 ${getStatusTextClass(
+                    disabled={isAuditor && !!lockedByName}
+                    className={`w-full appearance-none px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pr-9 disabled:opacity-60 disabled:cursor-not-allowed ${getStatusTextClass(
                       localReviewed
                     )}`}
                   >
@@ -468,13 +562,12 @@ export function AgendaModal({ agenda, isOpen, onClose, onStatusChange }: AgendaM
                     onChange={(e) => {
                       const val = e.target.value;
                       const motivo = val === '' ? null : val as 'Edad' | 'Pago mensual bajo' | 'Otros' | 'Ubicacion fuera alcance' | 'Casco historico' | 'No interesado' | 'Detecta IA' | 'Tiene bateria' | 'Incidencia';
+                      hasChangesRef.current = true;
                       setLocalMotivoRechazo(motivo);
-                      // Al seleccionar un motivo de rechazo, marcar automáticamente como No aprobada
-                      if (motivo !== null) {
-                        setLocalApproved(false);
-                      }
+                      if (motivo !== null) setLocalApproved(false);
                     }}
-                    className="w-full appearance-none px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 pr-9 text-slate-600"
+                    disabled={isAuditor && !!lockedByName}
+                    className="w-full appearance-none px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 pr-9 text-slate-600 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <option value="">— Sin motivo —</option>
                     <option value="Edad">Edad</option>
