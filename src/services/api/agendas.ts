@@ -707,6 +707,103 @@ export async function fetchMotivosRechazo(
 }
 
 // Obtener agendas filtradas por fecha de visita (fecha_agendamiento) — mes a mes para el calendario de visitas
+// ─── Auditor: lock en tiempo real y registro de auditoría ───────────────────
+
+export interface AgendaLock {
+  agenda_id: number;
+  locked_by_email: string;
+  locked_by_name: string;
+  client_id: string;
+  locked_at: string;
+}
+
+export interface AgendaAudit {
+  id: number;
+  agenda_id: number;
+  audited_by_email: string;
+  audited_by_name: string;
+  client_id: string;
+  audited_at: string;
+}
+
+/**
+ * Intenta adquirir el lock de una agenda.
+ * Retorna null si lo adquirió, o el lock existente si ya está tomado por otro.
+ */
+export async function acquireAgendaLock(
+  agendaId: number,
+  userEmail: string,
+  userName: string,
+  clientId: string,
+): Promise<AgendaLock | null> {
+  // Limpiar locks abandonados (más de 30 min) antes de intentar adquirir
+  const ttlCutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  await supabase.from('agenda_locks').delete().lt('locked_at', ttlCutoff);
+
+  const { error } = await supabase
+    .from('agenda_locks')
+    .insert({ agenda_id: agendaId, locked_by_email: userEmail, locked_by_name: userName, client_id: clientId });
+
+  if (!error) return null; // Lock adquirido
+
+  // El insert falló (duplicate PK u otro error): verificar si hay lock activo
+  const { data } = await supabase
+    .from('agenda_locks')
+    .select('*')
+    .eq('agenda_id', agendaId)
+    .single();
+
+  return (data as AgendaLock) ?? null;
+}
+
+export async function releaseAgendaLock(agendaId: number): Promise<void> {
+  await supabase.from('agenda_locks').delete().eq('agenda_id', agendaId);
+}
+
+export async function getAgendaLock(agendaId: number): Promise<AgendaLock | null> {
+  const { data } = await supabase
+    .from('agenda_locks')
+    .select('*')
+    .eq('agenda_id', agendaId)
+    .maybeSingle();
+  return (data as AgendaLock) ?? null;
+}
+
+export async function recordAgendaAudit(
+  agendaId: number,
+  auditorEmail: string,
+  auditorName: string,
+  clientId: string,
+): Promise<void> {
+  await supabase.from('agenda_audits').insert({
+    agenda_id: agendaId,
+    audited_by_email: auditorEmail,
+    audited_by_name: auditorName,
+    client_id: clientId,
+  });
+}
+
+/** Retorna un mapa agenda_id → último auditor para el client_id dado. */
+export async function fetchLastAuditsMap(
+  clientId: string,
+): Promise<Record<number, { name: string; at: string }>> {
+  const { data } = await supabase
+    .from('agenda_audits')
+    .select('agenda_id, audited_by_name, audited_at')
+    .eq('client_id', clientId)
+    .order('audited_at', { ascending: false });
+
+  if (!data) return {};
+
+  const map: Record<number, { name: string; at: string }> = {};
+  for (const row of data as { agenda_id: number; audited_by_name: string; audited_at: string }[]) {
+    if (!(row.agenda_id in map)) {
+      map[row.agenda_id] = { name: row.audited_by_name, at: row.audited_at };
+    }
+  }
+  return map;
+}
+
 export async function fetchAgendasByScheduledDate(
   clientId: string,
   year: number,

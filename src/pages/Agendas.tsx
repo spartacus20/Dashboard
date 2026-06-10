@@ -9,6 +9,8 @@ import {
   MOTIVO_RECHAZO_FILTRO_SIN,
   MOTIVOS_RECHAZO_AGENDA_FILTRO,
 } from "../api";
+import { fetchLastAuditsMap } from "../services/api/agendas";
+import { isAuditor as checkIsAuditor, getCurrentUserInfo } from "../lib/supabase";
 import { Agenda } from "../types";
 import { useCallsContext } from "../context/CallsContext";
 import { useDashboardRoute, navigateDashboard } from "../lib/dashboardRoute";
@@ -110,6 +112,11 @@ export function Agendas({ onNavigate }: AgendasProps) {
   const [hasFiltroSolar, setHasFiltroSolar] = useState(false);
   // Cliente FIT: agendas vienen por llamada (con call_id) o por WhatsApp (sin call_id)
   const [hasFit, setHasFit] = useState(false);
+  // Auditor: permiso y datos del usuario actual
+  const [isAuditorUser, setIsAuditorUser] = useState(false);
+  const [auditorInfo, setAuditorInfo] = useState<{ email: string; name: string }>({ email: '', name: '' });
+  // Mapa agenda_id → último auditor { name, at }
+  const [auditMap, setAuditMap] = useState<Record<number, { name: string; at: string }>>({});
   const itemsPerPage = AGENDAS_PAGE_SIZE;
   const [listViewMode, setListViewMode] = useState<"list" | "grouped">("list");
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
@@ -179,6 +186,15 @@ export function Agendas({ onNavigate }: AgendasProps) {
 
       setAgendas(validAgendas);
       setFilteredAgendas(validAgendas);
+
+      // Cargar mapa de auditorías para cualquier usuario con filtro_solar
+      if (clientId) {
+        const meta = sessionStorage.getItem("metadata");
+        const hasSolar = meta ? JSON.parse(meta)?.filtro_solar === true : false;
+        if (hasSolar) {
+          fetchLastAuditsMap(clientId).then(setAuditMap).catch(() => {});
+        }
+      }
     } catch (err) {
       // console.error("Error al cargar agendas:", err);
       setError(err instanceof Error ? err.message : "Error al cargar agendas");
@@ -204,12 +220,14 @@ export function Agendas({ onNavigate }: AgendasProps) {
           setHasFit(false);
         }
       } catch (error) {
-        // console.error(
-          // "Error al leer metadata del sessionStorage en Agendas:",
-          // error,
-        // );
         setHasFiltroSolar(false);
         setHasFit(false);
+      }
+      // Auditor: leer desde permissions (independiente de metadata)
+      const auditor = checkIsAuditor();
+      setIsAuditorUser(auditor);
+      if (auditor) {
+        setAuditorInfo(getCurrentUserInfo());
       }
     };
 
@@ -2110,6 +2128,29 @@ export function Agendas({ onNavigate }: AgendasProps) {
                                         {agenda.call_id ? "Llamada" : "WhatsApp"}
                                       </span>
                                     )}
+                                    {hasFiltroSolar && auditMap[agenda.id] && (
+                                      <div className="relative group ml-auto">
+                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold border flex items-center gap-1 bg-violet-100 text-violet-700 border-violet-200 cursor-default">
+                                          <span className="w-1.5 h-1.5 rounded-full bg-violet-500 shrink-0" />
+                                          {auditMap[agenda.id].name}
+                                        </span>
+                                        <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block z-50 pointer-events-none">
+                                          <div className="bg-slate-800 text-white rounded-xl px-3 py-2.5 shadow-2xl whitespace-nowrap min-w-[160px]">
+                                            <p className="flex items-center gap-1.5 text-violet-400 font-bold text-[9px] uppercase tracking-wider mb-1.5">
+                                              <Clock className="w-3 h-3" />
+                                              Última auditoría
+                                            </p>
+                                            <p className="text-white font-semibold text-xs">
+                                              {new Date(auditMap[agenda.id].at).toLocaleDateString("es-ES", { day: "2-digit", month: "long", year: "numeric" })}
+                                            </p>
+                                            <p className="text-slate-400 text-[11px] mt-0.5">
+                                              {new Date(auditMap[agenda.id].at).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
+                                            </p>
+                                            <div className="absolute top-full right-3 border-4 border-transparent border-t-slate-800" />
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               ))}
@@ -2360,6 +2401,31 @@ export function Agendas({ onNavigate }: AgendasProps) {
                               <span>{agenda.call_id ? "Llamada" : "WhatsApp"}</span>
                             </div>
                           )}
+
+                          {/* Badge de auditoría — solo si fue auditada */}
+                          {hasFiltroSolar && auditMap[agenda.id] && (
+                            <div className="relative group ml-auto">
+                              <div className="px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 cursor-default bg-violet-100 text-violet-800 border-violet-300">
+                                <span className="w-2 h-2 rounded-full bg-violet-500 shrink-0" />
+                                <span>Auditada por {auditMap[agenda.id].name}</span>
+                              </div>
+                              <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block z-50 pointer-events-none">
+                                <div className="bg-slate-800 text-white rounded-xl px-3 py-2.5 shadow-2xl whitespace-nowrap min-w-[170px]">
+                                  <p className="flex items-center gap-1.5 text-violet-400 font-bold text-[9px] uppercase tracking-wider mb-1.5">
+                                    <Clock className="w-3 h-3" />
+                                    Última auditoría
+                                  </p>
+                                  <p className="text-white font-semibold text-xs">
+                                    {new Date(auditMap[agenda.id].at).toLocaleDateString("es-ES", { day: "2-digit", month: "long", year: "numeric" })}
+                                  </p>
+                                  <p className="text-slate-400 text-[11px] mt-0.5">
+                                    {new Date(auditMap[agenda.id].at).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
+                                  </p>
+                                  <div className="absolute top-full right-3 border-4 border-transparent border-t-slate-800" />
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -2544,6 +2610,10 @@ export function Agendas({ onNavigate }: AgendasProps) {
           isOpen={modalOpen}
           onClose={closeAgendaModal}
           onStatusChange={handleStatusUpdated}
+          isAuditor={isAuditorUser}
+          auditorEmail={auditorInfo.email}
+          auditorName={auditorInfo.name}
+          clientId={clientId ?? undefined}
         />
 
         {/* Modal de confirmación de eliminación */}

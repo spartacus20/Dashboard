@@ -303,40 +303,37 @@ export const hasPermissionsDefined = (): boolean => {
   return keys.length > 0
 }
 
-// Función para verificar si el usuario tiene acceso a Tickets (desde metadata en sessionStorage)
-export const canAccessTickets = (): boolean => {
-  const metadata = getMetadata();
-  return metadata?.tickets === true;
-};
+// Helper interno: aplica AND entre permissions del usuario y metadata del cliente
+// para features que no están en el union type de canAccess()
+const canAccessFeature = (feature: string): boolean => {
+  if (hasPermissionsDefined()) {
+    const permissions = getPermissions()
+    if (permissions?.[feature] !== true) return false
+  }
+  const metadata = getMetadata()
+  if (metadata && feature in metadata) {
+    return metadata[feature] === true
+  }
+  return false
+}
 
-// Función para verificar si el usuario tiene acceso a Recoveries (desde metadata en sessionStorage)
-export const canAccessRecoveries = (): boolean => {
-  const metadata = getMetadata();
-  return metadata?.recoveries === true;
-};
+// Función para verificar si el usuario tiene acceso a Tickets
+export const canAccessTickets = (): boolean => canAccessFeature('tickets');
 
-// Función para verificar si el usuario tiene acceso a Soporte IA (desde metadata en sessionStorage)
-export const canAccessAssistantIA = (): boolean => {
-  const metadata = getMetadata();
-  return metadata?.asistant_ia === true;
-};
+// Función para verificar si el usuario tiene acceso a Recoveries
+export const canAccessRecoveries = (): boolean => canAccessFeature('recoveries');
 
-// Función para verificar si el usuario tiene acceso a Interesados (desde metadata en sessionStorage)
-export const canAccessHydro = (): boolean => {
-  const metadata = getMetadata();
-  return metadata?.hydro === true;
-};
-// Función para verificar si el usuario tiene acceso a Seguimientos (desde metadata en sessionStorage)
-export const canAccessSeguimientos = (): boolean => {
-  const metadata = getMetadata();
-  return metadata?.seguimiento === true;
-};
+// Función para verificar si el usuario tiene acceso a Soporte IA
+export const canAccessAssistantIA = (): boolean => canAccessFeature('asistant_ia');
 
-// Función para verificar si el usuario tiene acceso a Presupuesto (desde metadata en sessionStorage)
-export const canAccessBudget = (): boolean => {
-  const metadata = getMetadata();
-  return metadata?.budget === true;
-};
+// Función para verificar si el usuario tiene acceso a Interesados
+export const canAccessHydro = (): boolean => canAccessFeature('hydro');
+
+// Función para verificar si el usuario tiene acceso a Seguimientos
+export const canAccessSeguimientos = (): boolean => canAccessFeature('seguimiento');
+
+// Función para verificar si el usuario tiene acceso a Presupuesto
+export const canAccessBudget = (): boolean => canAccessFeature('budget');
 
 // Obtiene el role del usuario desde userData en sessionStorage
 export const getUserRole = (): string | null => {
@@ -373,6 +370,19 @@ export const canAccess = (feature: 'agenda' | 'records' | 'num_tel' | 'callbacks
 
 export const hasLaunchPermissions = (): boolean => {
   return canAccess('launch')
+}
+
+export const isAuditor = (): boolean => {
+  const permissions = getPermissions()
+  if (permissions?.auditor !== true) return false
+  const metadata = getMetadata()
+  return metadata?.filtro_solar === true
+}
+
+export const getCurrentUserInfo = (): { email: string; name: string } => {
+  const email = sessionStorage.getItem('email') ?? ''
+  const name = sessionStorage.getItem('fullName') || email
+  return { email, name }
 }
 
 // Función para limpiar todos los datos del sessionStorage
