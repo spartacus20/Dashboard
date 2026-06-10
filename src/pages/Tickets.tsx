@@ -2,6 +2,7 @@
 import { createTicket, deleteTicket, fetchTickets, updateTicket } from '../api';
 import { Ticket } from '../types';
 import { useCallsContext } from '../context/CallsContext';
+import { useDashboardRoute, navigateDashboard } from '../lib/dashboardRoute';
 import { AlertCircle, ClipboardList, Pencil, RefreshCw, Send, Trash2 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 
@@ -17,6 +18,8 @@ export function Tickets({ onNavigate: _onNavigate }: TicketsProps) {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [deleteConfirmTicket, setDeleteConfirmTicket] = useState<Ticket | null>(null);
   const [editingTicket, setEditingTicket] = useState<Ticket | null>(null);
+  // Deep-linking: el ticket abierto vive en la URL (/dashboard/tickets/<id>)
+  const { detailId } = useDashboardRoute();
   const [editForm, setEditForm] = useState({ title: '', description: '', responsible: '', state: '' });
   const [savingId, setSavingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -102,20 +105,36 @@ export function Tickets({ onNavigate: _onNavigate }: TicketsProps) {
     }
   };
 
+  // Abrir/cerrar navegando: la URL manda y el efecto de abajo aplica el estado.
   const handleEditOpen = (ticket: Ticket) => {
-    setEditingTicket(ticket);
-    setEditForm({
-      title: ticket.title,
-      description: ticket.description,
-      responsible: ticket.responsible,
-      state: ticket.state || 'Pendiente',
-    });
+    navigateDashboard('tickets', String(ticket.id));
   };
 
   const handleEditClose = () => {
-    setEditingTicket(null);
-    setEditForm({ title: '', description: '', responsible: '', state: '' });
+    navigateDashboard('tickets');
   };
+
+  // Sincronizar el modal de edición con la URL (deep-link, atrás/adelante, recarga)
+  useEffect(() => {
+    if (detailId) {
+      if (!editingTicket || String(editingTicket.id) !== detailId) {
+        const ticket = tickets.find((t) => String(t.id) === detailId);
+        if (ticket) {
+          setEditingTicket(ticket);
+          setEditForm({
+            title: ticket.title,
+            description: ticket.description,
+            responsible: ticket.responsible,
+            state: ticket.state || 'Pendiente',
+          });
+        }
+      }
+    } else if (editingTicket) {
+      setEditingTicket(null);
+      setEditForm({ title: '', description: '', responsible: '', state: '' });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailId, tickets]);
 
   const handleEditSave = async (e: FormEvent) => {
     e.preventDefault();

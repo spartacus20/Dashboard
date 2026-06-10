@@ -30,9 +30,13 @@ import {
   canAccessSeguimientos,
 } from './lib/supabase';
 import { X, Upload, Phone, Info, Check, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
+import { useDashboardRoute, navigateDashboard } from './lib/dashboardRoute';
 
 function DashboardApp() {
-  const [currentPage, setCurrentPage] = React.useState<string>('dashboard');
+  // La URL es la fuente de verdad de la navegación (/dashboard/<page>[/<detailId>]).
+  const { page: currentPage, detailId } = useDashboardRoute();
+  // Navegar a una página equivale a cambiar la URL; el render se deriva de currentPage.
+  const goToPage = React.useCallback((p: string) => navigateDashboard(p), []);
   const [calls, setCalls] = React.useState<RetellCall[]>([]);
   const [filteredCalls, setFilteredCalls] = React.useState<RetellCall[]>([]);
   const [stats, setStats] = React.useState<CallStats | null>(null);
@@ -85,7 +89,7 @@ function DashboardApp() {
   React.useEffect(() => {
     if (currentPage === 'agendas' && !agendaEnabled) {
       // console.log('Agenda deshabilitada, redirigiendo al dashboard');
-      setCurrentPage('dashboard');
+      navigateDashboard('dashboard', undefined, { replace: true });
     }
   }, [currentPage, agendaEnabled]);
   
@@ -93,7 +97,7 @@ function DashboardApp() {
   React.useEffect(() => {
     if (currentPage === 'lanzamiento' && !launchEnabled) {
       // console.log('Sin permisos de lanzamiento, redirigiendo al dashboard');
-      setCurrentPage('dashboard');
+      navigateDashboard('dashboard', undefined, { replace: true });
     }
   }, [currentPage, launchEnabled]);
   
@@ -101,7 +105,7 @@ function DashboardApp() {
   React.useEffect(() => {
     if (currentPage === 'no-llamar' && !dontCallEnabled) {
       // console.log('Sin permisos de no-llamar, redirigiendo al dashboard');
-      setCurrentPage('dashboard');
+      navigateDashboard('dashboard', undefined, { replace: true });
     }
   }, [currentPage, dontCallEnabled]);
 
@@ -109,7 +113,7 @@ function DashboardApp() {
   React.useEffect(() => {
     if (currentPage === 'campaign' && !campaignEnabled) {
       // console.log('Sin permisos de campaña, redirigiendo al dashboard');
-      setCurrentPage('dashboard');
+      navigateDashboard('dashboard', undefined, { replace: true });
     }
   }, [currentPage, campaignEnabled]);
 
@@ -137,32 +141,32 @@ function DashboardApp() {
   }, []);
   React.useEffect(() => {
     if (currentPage === 'tickets' && !ticketsEnabled) {
-      setCurrentPage('dashboard');
+      navigateDashboard('dashboard', undefined, { replace: true });
     }
   }, [currentPage, ticketsEnabled]);
   React.useEffect(() => {
     if (currentPage === 'recoveries' && !recoveriesEnabled) {
-      setCurrentPage('dashboard');
+      navigateDashboard('dashboard', undefined, { replace: true });
     }
   }, [currentPage, recoveriesEnabled]);
   React.useEffect(() => {
     if (currentPage === 'interesados' && !hydroEnabled) {
-      setCurrentPage('dashboard');
+      navigateDashboard('dashboard', undefined, { replace: true });
     }
   }, [currentPage, hydroEnabled]);
   React.useEffect(() => {
     if (currentPage === 'soporte-ia' && !assistantIAEnabled) {
-      setCurrentPage('dashboard');
+      navigateDashboard('dashboard', undefined, { replace: true });
     }
   }, [currentPage, assistantIAEnabled]);
   React.useEffect(() => {
     if (currentPage === 'presupuesto' && !budgetEnabled) {
-      setCurrentPage('dashboard');
+      navigateDashboard('dashboard', undefined, { replace: true });
     }
   }, [currentPage, budgetEnabled]);
   React.useEffect(() => {
     if (currentPage === 'seguimientos' && !seguimientosEnabled) {
-      setCurrentPage('dashboard');
+      navigateDashboard('dashboard', undefined, { replace: true });
     }
   }, [currentPage, seguimientosEnabled]);
   
@@ -809,7 +813,10 @@ function DashboardApp() {
     const [loadingTasks, setLoadingTasks] = React.useState<boolean>(false);
     const [tasksError, setTasksError] = React.useState<string | null>(null);
     const [showTasksModal, setShowTasksModal] = React.useState<boolean>(false);
-    
+
+    // Deep-linking: el id del batch abierto vive en la URL (/dashboard/batch-call/<batch_call_id>)
+    const { detailId: batchDetailId } = useDashboardRoute();
+
     // Estado para el modal de confirmación de eliminación
     const [deleteConfirmModalOpen, setDeleteConfirmModalOpen] = React.useState<boolean>(false);
     const [batchToDelete, setBatchToDelete] = React.useState<RetellBatchCall | null>(null);
@@ -888,10 +895,24 @@ function DashboardApp() {
       setDeleteError(null);
     }, []);
     
-    // Función para cerrar el modal de tareas
+    // Función para cerrar el modal de tareas (quita el id de la URL; el efecto cierra el modal)
     const closeTasksModal = React.useCallback(() => {
-      setShowTasksModal(false);
+      navigateDashboard('batch-call');
     }, []);
+
+    // Sincronizar el modal de tareas con la URL (deep-link, atrás/adelante, recarga)
+    React.useEffect(() => {
+      if (batchDetailId && batchCallsLoaded) {
+        if (!selectedBatch || selectedBatch.batch_call_id !== batchDetailId) {
+          const batch = batchCalls.find((b) => b.batch_call_id === batchDetailId);
+          if (batch) loadBatchTasks(batch);
+        }
+      } else if (!batchDetailId && showTasksModal) {
+        setShowTasksModal(false);
+        setSelectedBatch(null);
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [batchDetailId, batchCallsLoaded, batchCalls]);
 
     // Función para formatear timestamp a fecha legible
     const formatDate = React.useCallback((timestamp: number) => {
@@ -1075,7 +1096,7 @@ function DashboardApp() {
                       <tr 
                         key={batch.batch_call_id} 
                         className="border-b border-gray-800 hover:bg-gray-800/50 cursor-pointer"
-                        onClick={() => loadBatchTasks(batch)}
+                        onClick={() => navigateDashboard('batch-call', batch.batch_call_id)}
                       >
                         <td className="p-3 text-white font-medium">{batch.name}</td>
                         <td className="p-3">
@@ -1295,7 +1316,7 @@ function DashboardApp() {
     <div className="min-h-screen bg-gray-50">
       <Sidebar 
         currentPage={currentPage} 
-        onPageChange={setCurrentPage} 
+        onPageChange={goToPage}
         cacheStatus={cacheStatus}
         isLoading={loading || loadingAllCalls}
       />
@@ -1327,29 +1348,29 @@ function DashboardApp() {
         )}
         {currentPage === 'recordings' && (
           <Recordings 
-            onNavigate={setCurrentPage as (page: 'dashboard' | 'recordings') => void}
+            onNavigate={goToPage}
           />
         )}
         {currentPage === 'phones' && (
           <PhoneNumbers
-            onNavigate={setCurrentPage as (page: 'dashboard' | 'recordings' | 'phones') => void}
+            onNavigate={goToPage}
           />
         )}
         {currentPage === 'agendas' && agendaEnabled && (
           <Agendas
-            onNavigate={setCurrentPage as (page: string) => void}
+            onNavigate={goToPage}
           />
         )}
         {currentPage === 'callbacks' && (
           <Callbacks
-            onNavigate={setCurrentPage as (page: string) => void}
+            onNavigate={goToPage}
           />
         )}
         {currentPage === 'batch-call' && (
-          <BatchCall onNavigate={setCurrentPage as (page: string) => void} />
+          <BatchCall onNavigate={goToPage} />
         )}
         {currentPage === 'ventas' && (
-          <Ventas onNavigate={setCurrentPage as (page: string) => void} />
+          <Ventas onNavigate={goToPage} />
         )}
         {currentPage === 'lanzamiento' && (
           <Lanzamiento />
@@ -1358,16 +1379,16 @@ function DashboardApp() {
           <NoLlamar />
         )}
         {currentPage === 'tickets' && ticketsEnabled && (
-          <Tickets onNavigate={setCurrentPage as (page: string) => void} />
+          <Tickets onNavigate={goToPage} />
         )}
         {currentPage === 'recoveries' && recoveriesEnabled && (
-          <Recoveries onNavigate={setCurrentPage as (page: string) => void} />
+          <Recoveries onNavigate={goToPage} />
         )}
         {currentPage === 'interesados' && hydroEnabled && (
-          <Interesados onNavigate={setCurrentPage as (page: string) => void} />
+          <Interesados onNavigate={goToPage} />
         )}
         {currentPage === 'campaign' && campaignEnabled && (
-          <Campaign onNavigate={setCurrentPage as (page: string) => void} />
+          <Campaign onNavigate={goToPage} />
         )}
         {currentPage === 'soporte-ia' && !assistantIAEnabled && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-6 text-center text-amber-900 text-sm max-w-md">
@@ -1376,13 +1397,13 @@ function DashboardApp() {
           </div>
         )}
         {currentPage === 'soporte-ia' && assistantIAEnabled && (
-          <SoporteIA onNavigate={setCurrentPage as (page: string) => void} />
+          <SoporteIA onNavigate={goToPage} />
         )}
         {currentPage === 'presupuesto' && budgetEnabled && (
-          <Presupuesto onNavigate={setCurrentPage as (page: string) => void} />
+          <Presupuesto onNavigate={goToPage} />
         )}
         {currentPage === 'seguimientos' && seguimientosEnabled && (
-          <Seguimientos onNavigate={setCurrentPage as (page: string) => void} />
+          <Seguimientos onNavigate={goToPage} />
         )}
         </Suspense>
       </div>
