@@ -56,7 +56,7 @@ export function parseRoute(pathname: string): DashboardRoute {
 
 // Construye /dashboard/<page>[/<detailId>] conservando el query string actual.
 export function buildPath(page: string, detailId?: string | null): string {
-  let path = `/dashboard/${page}`;
+  let path = page === 'dashboard' ? '/dashboard' : `/dashboard/${page}`;
   if (detailId != null && detailId !== '') {
     path += `/${encodeURIComponent(detailId)}`;
   }
