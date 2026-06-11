@@ -135,6 +135,7 @@ export const getClientId = async (email: string): Promise<string | null> => {
             if (permissionsKeys.length > 0) {
               // Si tiene al menos una propiedad, guardarlo
               sessionStorage.setItem('permissions', JSON.stringify(userData.permissions))
+              window.dispatchEvent(new CustomEvent('permissionsUpdated', { detail: { permissions: userData.permissions } }))
               // console.log('✅ Permissions guardados:', userData.permissions)
             } else {
               // Si es un objeto vacío, no guardar nada (o guardar null para indicar que no hay permissions)
@@ -285,6 +286,14 @@ export const getClientTest = () => {
   }
   
   return safeJsonParse(clientTest)
+}
+
+// Bloquea el Dashboard SOLO si permissions tiene dashboard=false explícitamente.
+// Sin clave (o dashboard=true) → se muestra.
+export const canAccessDashboard = (): boolean => {
+  const permissions = getPermissions()
+  if (!permissions) return true
+  return permissions['dashboard'] !== false
 }
 
 // Función para verificar si el usuario tiene permissions definidos (no vacío)
