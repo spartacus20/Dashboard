@@ -21,6 +21,18 @@ export interface CallBackRecord {
   contesto: boolean;
   status: 'pending' | 'answered' | 'exhausted' | 'cancelled';
   Llamado: string | null;
+  batch_call_id: string | null;
+}
+
+export interface CampaignSummary {
+  batch_call_id: string | null;
+  total: number;
+  pending: number;
+  answered: number;
+  exhausted: number;
+  cancelled: number;
+  first_created: string;
+  last_updated: string | null;
 }
 
 export interface CallBackListResponse {
@@ -44,6 +56,7 @@ export async function listSeguimientos(
     status?: string;
     fecha_inicio?: string;
     fecha_fin?: string;
+    batch_call_id?: string | null;
     page?: number;
     per_page?: number;
   }
@@ -113,6 +126,30 @@ export async function updateRetellConfig(
     body: JSON.stringify({ client_id: clientId, ...data }),
   });
   if (!response.ok) throw new Error('Error al guardar configuración');
+}
+
+export async function getCampaignsSummary(clientId: string): Promise<CampaignSummary[]> {
+  const response = await fetch(`${BASE_URL}/api/callback/campaigns-summary`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ client_id: clientId }),
+  });
+  if (!response.ok) throw new Error('Error al cargar resumen de campañas');
+  const data = await response.json();
+  return data.data;
+}
+
+export async function saveBatchCallSettings(
+  batchCallId: string,
+  clientId: string,
+  seguimiento: boolean
+): Promise<void> {
+  const response = await fetch(`${BASE_URL}/api/callback/batch-settings/save`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ batch_call_id: batchCallId, client_id: clientId, seguimiento }),
+  });
+  if (!response.ok) throw new Error('Error al guardar configuración de seguimiento');
 }
 
 export async function listRetellPhoneNumbers(

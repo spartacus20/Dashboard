@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   PhoneCall,
   Settings,
@@ -13,9 +13,16 @@ import {
   Copy,
   CalendarDays,
   StopCircle,
+  LayoutGrid,
+  ChevronLeft,
+  Users,
+  PhoneIncoming,
+  PhoneMissed,
+  PhoneOff,
+  TrendingUp,
 } from 'lucide-react';
 import { useCallsContext } from '../context/CallsContext';
-import { isAdmin } from '../lib/supabase';
+import { isAdmin, canAccessSeguimientos } from '../lib/supabase';
 import { BASE_URL } from '../services/api/config';
 import {
   listSeguimientos,
@@ -24,7 +31,9 @@ import {
   getRetellConfig,
   updateRetellConfig,
   listRetellPhoneNumbers,
+  getCampaignsSummary,
   CallBackRecord,
+  CampaignSummary,
 } from '../services/api/seguimientos';
 
 type Tab = 'registros' | 'configuracion';
@@ -61,13 +70,30 @@ function formatDate(dateStr: string | null): string {
   });
 }
 
+function truncateBatchId(id: string): string {
+  if (id.length <= 16) return id;
+  return `${id.slice(0, 8)}…${id.slice(-6)}`;
+}
+
+function getContactName(r: CallBackRecord): string {
+  const direct = [r.nombre, r.last_name].filter(Boolean).join(' ');
+  if (direct) return direct;
+  const datos = (r.metadata as any)?.datos;
+  if (datos) {
+    const metaName = [datos.name, datos.last_name].filter(Boolean).join(' ');
+    if (metaName) return metaName;
+  }
+  return '—';
+}
+
 interface SeguimientosProps {
   onNavigate: (page: string) => void;
 }
 
-export function Seguimientos({ onNavigate }: SeguimientosProps) {
+export function Seguimientos({ onNavigate: _onNavigate }: SeguimientosProps) {
   const { clientId } = useCallsContext();
   const [activeTab, setActiveTab] = useState<Tab>('registros');
+  const isCampaignMode = canAccessSeguimientos();
 
   // — Registros state —
   const [records, setRecords] = useState<CallBackRecord[]>([]);
@@ -79,6 +105,11 @@ export function Seguimientos({ onNavigate }: SeguimientosProps) {
   const [loadingRecords, setLoadingRecords] = useState(false);
   const [errorRecords, setErrorRecords] = useState('');
 
+  // — Campaign state (solo cuando isCampaignMode) —
+  // undefined = mostrando grid de campañas | null = registros sin campaña | string = campaña específica
+  const [campaigns, setCampaigns] = useState<CampaignSummary[]>([]);
+  const [selectedBatchId, setSelectedBatchId] = useState<string | null | undefined>(undefined);
+  const [loadingCampaigns, setLoadingCampaigns] = useState(false);
 
   // — Config state —
   const [apiKey, setApiKey] = useState('');
@@ -100,15 +131,22 @@ export function Seguimientos({ onNavigate }: SeguimientosProps) {
   const webhookUrl = `${BASE_URL}/api/callback/webhook`;
   const userIsAdmin = isAdmin();
 
-  // Devuelve inicio y fin del día de hoy en ISO (zona local)
+  const globalMetrics = useMemo(() => {
+    const total = campaigns.reduce((s, c) => s + Number(c.total || 0), 0);
+    const answered = campaigns.reduce((s, c) => s + Number(c.answered || 0), 0);
+    const pending = campaigns.reduce((s, c) => s + Number(c.pending || 0), 0);
+    const exhausted = campaigns.reduce((s, c) => s + Number(c.exhausted || 0), 0);
+    const cancelled = campaigns.reduce((s, c) => s + Number(c.cancelled || 0), 0);
+    const contactRate = total > 0 ? Math.round((answered / total) * 100) : 0;
+    const noContact = exhausted + cancelled;
+    return { total, answered, pending, exhausted, cancelled, contactRate, noContact };
+  }, [campaigns]);
+
   function getTodayRange() {
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
-    return {
-      start: start.toISOString(),
-      end: end.toISOString(),
-    };
+    return { start: start.toISOString(), end: end.toISOString() };
   }
 
   function applyTodayFilter() {
@@ -124,6 +162,20 @@ export function Seguimientos({ onNavigate }: SeguimientosProps) {
     setPage(1);
   }
 
+  // — Load campaigns summary —
+  const loadCampaignsSummary = useCallback(async () => {
+    if (!clientId) return;
+    setLoadingCampaigns(true);
+    try {
+      const data = await getCampaignsSummary(clientId);
+      setCampaigns(data);
+    } catch {
+      // fallo silencioso — grid queda vacío
+    } finally {
+      setLoadingCampaigns(false);
+    }
+  }, [clientId]);
+
   // — Load records —
   const loadRecords = useCallback(async () => {
     if (!clientId) return;
@@ -131,13 +183,22 @@ export function Seguimientos({ onNavigate }: SeguimientosProps) {
     setErrorRecords('');
     try {
       const { start, end } = fechaInicio
-        ? { start: new Date(fechaInicio).toISOString(), end: fechaFin ? new Date(new Date(fechaFin).getTime() + 86400000).toISOString() : '' }
+        ? {
+            start: new Date(fechaInicio).toISOString(),
+            end: fechaFin ? new Date(new Date(fechaFin).getTime() + 86400000).toISOString() : '',
+          }
         : { start: '', end: '' };
+
+      const batchFilter =
+        isCampaignMode && selectedBatchId !== undefined
+          ? { batch_call_id: selectedBatchId }
+          : {};
 
       const res = await listSeguimientos(clientId, {
         status: statusFilter || undefined,
         fecha_inicio: start || undefined,
         fecha_fin: end || undefined,
+        ...batchFilter,
         page,
         per_page: PER_PAGE,
       });
@@ -148,11 +209,16 @@ export function Seguimientos({ onNavigate }: SeguimientosProps) {
     } finally {
       setLoadingRecords(false);
     }
-  }, [clientId, statusFilter, fechaInicio, fechaFin, page]);
+  }, [clientId, statusFilter, fechaInicio, fechaFin, page, isCampaignMode, selectedBatchId]);
 
   useEffect(() => {
-    if (activeTab === 'registros') loadRecords();
-  }, [activeTab, loadRecords]);
+    if (activeTab !== 'registros') return;
+    if (isCampaignMode && selectedBatchId === undefined) {
+      loadCampaignsSummary();
+    } else {
+      loadRecords();
+    }
+  }, [activeTab, loadRecords, loadCampaignsSummary, isCampaignMode, selectedBatchId]);
 
   // — Load config —
   const loadConfig = useCallback(async () => {
@@ -178,11 +244,9 @@ export function Seguimientos({ onNavigate }: SeguimientosProps) {
     if (activeTab === 'configuracion') loadConfig();
   }, [activeTab, loadConfig]);
 
-  // Fetch available Retell phone numbers when tab opens or apiKey field changes
   useEffect(() => {
     if (activeTab !== 'configuracion') return;
     if (!clientId) return;
-    // Only fetch if there's a stored key or a new key was typed
     if (!apiKeySet && !apiKey.trim()) return;
 
     let cancelled = false;
@@ -211,7 +275,12 @@ export function Seguimientos({ onNavigate }: SeguimientosProps) {
     setConfigMsg('');
     setConfigError('');
     try {
-      const data: { retell_api_key?: string; retell_from_number?: string; retell_delays?: number[] } = {};
+      const data: {
+        retell_api_key?: string;
+        retell_from_number?: string;
+        retell_delays?: number[];
+        retell_active_hours?: number;
+      } = {};
       if (apiKey.trim()) data.retell_api_key = apiKey.trim();
       if (fromNumber.trim()) data.retell_from_number = fromNumber.trim();
       data.retell_delays = delays;
@@ -244,23 +313,34 @@ export function Seguimientos({ onNavigate }: SeguimientosProps) {
     }
   };
 
-  // — Cancel a record —
   const handleCancel = async (id: number) => {
     await updateSeguimiento(id, { status: 'cancelled' });
     loadRecords();
   };
 
-  // — Reset a record to pending —
   const handleReset = async (id: number) => {
     await updateSeguimiento(id, { status: 'pending' });
     loadRecords();
   };
 
-  const copyWebhook = () => {
-    navigator.clipboard.writeText(webhookUrl);
-  };
+  const copyWebhook = () => navigator.clipboard.writeText(webhookUrl);
 
   const totalPages = Math.ceil(total / PER_PAGE);
+
+  // — Campaign helpers —
+  function handleSelectCampaign(batchId: string | null) {
+    setSelectedBatchId(batchId);
+    setPage(1);
+    setStatusFilter('');
+    setFechaInicio('');
+    setFechaFin('');
+  }
+
+  function handleBackToCampaigns() {
+    setSelectedBatchId(undefined);
+    setRecords([]);
+    setTotal(0);
+  }
 
   return (
     <div className="space-y-6">
@@ -299,177 +379,282 @@ export function Seguimientos({ onNavigate }: SeguimientosProps) {
       {/* ── TAB: REGISTROS ── */}
       {activeTab === 'registros' && (
         <div className="space-y-4">
-          {/* Filtros */}
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Filtro rápido Hoy */}
-            <button
-              onClick={applyTodayFilter}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium border transition-colors ${
-                fechaInicio === new Date().toISOString().slice(0, 10)
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              <CalendarDays className="w-4 h-4" />
-              Hoy
-            </button>
 
-            {/* Rango de fecha personalizado */}
-            <input
-              type="date"
-              value={fechaInicio}
-              onChange={(e) => { setFechaInicio(e.target.value); setPage(1); }}
-              className="text-sm border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <span className="text-sm text-gray-400">—</span>
-            <input
-              type="date"
-              value={fechaFin}
-              onChange={(e) => { setFechaFin(e.target.value); setPage(1); }}
-              className="text-sm border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            {(fechaInicio || fechaFin) && (
-              <button onClick={clearDateFilter} className="text-xs text-gray-400 hover:text-red-500 transition-colors">
-                <XCircle className="w-4 h-4" />
-              </button>
-            )}
+          {/* ── MODO CAMPAÑA: grid de cards ── */}
+          {isCampaignMode && selectedBatchId === undefined && (
+            <>
+              {loadingCampaigns ? (
+                <div className="flex items-center justify-center py-16 text-gray-400 text-sm">
+                  <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+                  Cargando campañas…
+                </div>
+              ) : campaigns.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+                  <LayoutGrid className="w-10 h-10 mb-3 opacity-30" />
+                  <p className="text-sm">No hay campañas con seguimientos</p>
+                </div>
+              ) : (
+                <>
+                  {/* Métricas globales */}
+                  {campaigns.length > 0 && (
+                    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-2">
+                      {[
+                        { label: 'Total contactos', value: globalMetrics.total, icon: Users, color: 'text-gray-700', bg: 'bg-gray-50', border: 'border-gray-200' },
+                        { label: 'Contestaron', value: globalMetrics.answered, icon: PhoneIncoming, color: 'text-green-700', bg: 'bg-green-50', border: 'border-green-200' },
+                        { label: 'Pendientes', value: globalMetrics.pending, icon: Clock, color: 'text-yellow-700', bg: 'bg-yellow-50', border: 'border-yellow-200' },
+                        { label: 'Sin contestar', value: globalMetrics.exhausted, icon: PhoneMissed, color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200' },
+                        { label: 'Cancelados', value: globalMetrics.cancelled, icon: PhoneOff, color: 'text-gray-500', bg: 'bg-gray-50', border: 'border-gray-200' },
+                        { label: 'Tasa contactación', value: `${globalMetrics.contactRate}%`, icon: TrendingUp, color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200' },
+                      ].map(({ label, value, icon: Icon, color, bg, border }) => (
+                        <div key={label} className={`${bg} border ${border} rounded-xl p-4 flex flex-col gap-1`}>
+                          <div className="flex items-center gap-1.5">
+                            <Icon className={`w-3.5 h-3.5 ${color}`} />
+                            <span className="text-xs text-gray-500">{label}</span>
+                          </div>
+                          <span className={`text-2xl font-bold ${color}`}>{value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
-            <div className="w-px h-6 bg-gray-200" />
+                <div className="flex flex-col gap-4">
+                  {campaigns.map((c) => {
+                    const tot = Number(c.total) || 0;
+                    const answered = Number(c.answered) || 0;
+                    const pending = Number(c.pending) || 0;
+                    const exhausted = Number(c.exhausted) || 0;
+                    const cancelled = Number(c.cancelled) || 0;
+                    const isSinCampana = c.batch_call_id === null;
 
-            <select
-              value={statusFilter}
-              onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-              className="text-sm border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Todos los estados</option>
-              {Object.entries(STATUS_LABELS).map(([val, label]) => (
-                <option key={val} value={val}>{label}</option>
-              ))}
-            </select>
-            <button
-              onClick={loadRecords}
-              className="flex items-center gap-2 text-sm text-gray-600 hover:text-blue-600 transition-colors"
-            >
-              <RefreshCw className="w-4 h-4" />
-              Actualizar
-            </button>
-            <span className="text-sm text-gray-400 ml-auto">{total} registros</span>
-          </div>
+                    return (
+                      <div
+                        key={c.batch_call_id ?? '__sin_campana__'}
+                        className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-4 hover:shadow-md transition-shadow"
+                      >
+                        {/* Header de la card */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className={`font-semibold text-sm truncate ${isSinCampana ? 'italic text-gray-400' : 'text-gray-900'}`}>
+                              {isSinCampana ? 'Sin campaña asignada' : truncateBatchId(c.batch_call_id!)}
+                            </p>
+                            <p className="text-xs text-gray-400 mt-0.5">
+                              {c.first_created ? formatDate(c.first_created) : '—'}
+                            </p>
+                          </div>
+                          <span className="shrink-0 text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                            {tot} total
+                          </span>
+                        </div>
 
+                        {/* Barra de progreso por estado */}
+                        {tot > 0 && (
+                          <div className="space-y-1.5">
+                            <div className="flex h-2 rounded-full overflow-hidden bg-gray-100">
+                              {answered > 0 && (
+                                <div className="bg-green-500" style={{ width: `${(answered / tot) * 100}%` }} title={`Contestó: ${answered}`} />
+                              )}
+                              {pending > 0 && (
+                                <div className="bg-yellow-400" style={{ width: `${(pending / tot) * 100}%` }} title={`Pendiente: ${pending}`} />
+                              )}
+                              {exhausted > 0 && (
+                                <div className="bg-red-400" style={{ width: `${(exhausted / tot) * 100}%` }} title={`Agotado: ${exhausted}`} />
+                              )}
+                              {cancelled > 0 && (
+                                <div className="bg-gray-300" style={{ width: `${(cancelled / tot) * 100}%` }} title={`Cancelado: ${cancelled}`} />
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500">
+                              {answered > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />{answered} contestó</span>}
+                              {pending > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-400 inline-block" />{pending} pendiente</span>}
+                              {exhausted > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" />{exhausted} agotado</span>}
+                              {cancelled > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-300 inline-block" />{cancelled} cancelado</span>}
+                            </div>
+                          </div>
+                        )}
 
-          {/* Error */}
-          {errorRecords && (
-            <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-              {errorRecords}
-            </div>
+                        <button
+                          onClick={() => handleSelectCampaign(c.batch_call_id)}
+                          className="w-full text-sm text-blue-600 hover:text-blue-800 font-medium text-right transition-colors"
+                        >
+                          Ver registros →
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+                </>
+              )}
+            </>
           )}
 
-          {/* Tabla */}
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-            {loadingRecords ? (
-              <div className="flex items-center justify-center py-16 text-gray-400 text-sm">
-                <RefreshCw className="w-5 h-5 animate-spin mr-2" />
-                Cargando…
-              </div>
-            ) : records.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-                <PhoneCall className="w-10 h-10 mb-3 opacity-30" />
-                <p className="text-sm">No hay registros</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      {['Contacto', 'Teléfono', 'Intentos', 'Estado', 'Última actualización', 'Acciones'].map(h => (
-                        <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {records.map((r) => (
-                      <tr key={r.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3 font-medium text-gray-900">
-                          {[r.nombre, r.last_name].filter(Boolean).join(' ') || '—'}
-                        </td>
-                        <td className="px-4 py-3 text-gray-600 font-mono text-xs">
-                          {r.phone_number}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-1">
-                            <span className="font-semibold text-gray-800">{r.intento_actual}</span>
-                            <span className="text-gray-400">/</span>
-                            <span className="text-gray-500">{r.max_intentos}</span>
-                          </div>
-                          <div className="w-full bg-gray-200 rounded-full h-1 mt-1">
-                            <div
-                              className="bg-blue-500 h-1 rounded-full"
-                              style={{ width: `${Math.min(100, (r.intento_actual / r.max_intentos) * 100)}%` }}
-                            />
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${STATUS_COLORS[r.status] || STATUS_COLORS.pending}`}>
-                            {STATUS_ICON[r.status]}
-                            {STATUS_LABELS[r.status] || r.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-gray-500 text-xs">
-                          {formatDate(r.updated_at || r.created_at)}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            {r.status === 'pending' && (
-                              <button
-                                onClick={() => handleCancel(r.id)}
-                                className="text-xs text-red-500 hover:text-red-700 transition-colors"
-                                title="Cancelar"
-                              >
-                                <XCircle className="w-4 h-4" />
-                              </button>
-                            )}
-                            {(r.status === 'exhausted' || r.status === 'cancelled') && (
-                              <button
-                                onClick={() => handleReset(r.id)}
-                                className="text-xs text-blue-500 hover:text-blue-700 transition-colors"
-                                title="Reactivar"
-                              >
-                                <RefreshCw className="w-4 h-4" />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          {/* ── TABLA DE REGISTROS (modo normal, o modo campaña con campaña seleccionada) ── */}
+          {(!isCampaignMode || selectedBatchId !== undefined) && (
+            <>
+              {/* Back button — solo en modo campaña */}
+              {isCampaignMode && selectedBatchId !== undefined && (
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleBackToCampaigns}
+                    className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                    Volver a campañas
+                  </button>
+                  <span className="text-gray-300">|</span>
+                  <span className="text-sm font-medium text-gray-700">
+                    {selectedBatchId === null ? 'Sin campaña asignada' : truncateBatchId(selectedBatchId)}
+                  </span>
+                </div>
+              )}
 
-          {/* Paginación */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-2">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="px-3 py-1.5 text-sm border border-gray-300 rounded-md disabled:opacity-40 hover:bg-gray-50"
-              >
-                Anterior
-              </button>
-              <span className="text-sm text-gray-600">
-                Página {page} de {totalPages}
-              </span>
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-                className="px-3 py-1.5 text-sm border border-gray-300 rounded-md disabled:opacity-40 hover:bg-gray-50"
-              >
-                Siguiente
-              </button>
-            </div>
+              {/* Filtros */}
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  onClick={applyTodayFilter}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium border transition-colors ${
+                    fechaInicio === new Date().toISOString().slice(0, 10)
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <CalendarDays className="w-4 h-4" />
+                  Hoy
+                </button>
+
+                <input
+                  type="date"
+                  value={fechaInicio}
+                  onChange={(e) => { setFechaInicio(e.target.value); setPage(1); }}
+                  className="text-sm border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-400">—</span>
+                <input
+                  type="date"
+                  value={fechaFin}
+                  onChange={(e) => { setFechaFin(e.target.value); setPage(1); }}
+                  className="text-sm border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {(fechaInicio || fechaFin) && (
+                  <button onClick={clearDateFilter} className="text-xs text-gray-400 hover:text-red-500 transition-colors">
+                    <XCircle className="w-4 h-4" />
+                  </button>
+                )}
+
+                <div className="w-px h-6 bg-gray-200" />
+
+                <select
+                  value={statusFilter}
+                  onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+                  className="text-sm border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Todos los estados</option>
+                  {Object.entries(STATUS_LABELS).map(([val, label]) => (
+                    <option key={val} value={val}>{label}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={loadRecords}
+                  className="flex items-center gap-2 text-sm text-gray-600 hover:text-blue-600 transition-colors"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Actualizar
+                </button>
+                <span className="text-sm text-gray-400 ml-auto">{total} registros</span>
+              </div>
+
+              {/* Error */}
+              {errorRecords && (
+                <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+                  {errorRecords}
+                </div>
+              )}
+
+              {/* Tabla */}
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                {loadingRecords ? (
+                  <div className="flex items-center justify-center py-16 text-gray-400 text-sm">
+                    <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+                    Cargando…
+                  </div>
+                ) : records.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+                    <PhoneCall className="w-10 h-10 mb-3 opacity-30" />
+                    <p className="text-sm">No hay registros</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          {['Contacto', 'Teléfono', 'Intentos', 'Estado', 'Última llamada'].map(h => (
+                            <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {records.map((r) => (
+                          <tr key={r.id} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-4 py-3 font-medium text-gray-900">
+                              {getContactName(r)}
+                            </td>
+                            <td className="px-4 py-3 text-gray-600 font-mono text-xs">
+                              {r.phone_number}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-1">
+                                <span className="font-semibold text-gray-800">{r.intento_actual}</span>
+                                <span className="text-gray-400">/</span>
+                                <span className="text-gray-500">{r.max_intentos}</span>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-1 mt-1">
+                                <div
+                                  className="bg-blue-500 h-1 rounded-full"
+                                  style={{ width: `${Math.min(100, (r.intento_actual / r.max_intentos) * 100)}%` }}
+                                />
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${STATUS_COLORS[r.status] || STATUS_COLORS.pending}`}>
+                                {STATUS_ICON[r.status]}
+                                {STATUS_LABELS[r.status] || r.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-gray-500 text-xs">
+                              {formatDate(r.updated_at || r.created_at)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Paginación */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2">
+                  <button
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="px-3 py-1.5 text-sm border border-gray-300 rounded-md disabled:opacity-40 hover:bg-gray-50"
+                  >
+                    Anterior
+                  </button>
+                  <span className="text-sm text-gray-600">
+                    Página {page} de {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                    className="px-3 py-1.5 text-sm border border-gray-300 rounded-md disabled:opacity-40 hover:bg-gray-50"
+                  >
+                    Siguiente
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -512,7 +697,6 @@ export function Seguimientos({ onNavigate }: SeguimientosProps) {
                   Credenciales Retell AI
                 </h2>
 
-                {/* API Key */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     API Key de Retell
@@ -541,7 +725,6 @@ export function Seguimientos({ onNavigate }: SeguimientosProps) {
                   </div>
                 </div>
 
-                {/* From Number */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Número de salida (From Number)
@@ -578,14 +761,13 @@ export function Seguimientos({ onNavigate }: SeguimientosProps) {
                 </div>
               </div>}
 
-              {/* Ventana activa y delays — visible para todos */}
+              {/* Ventana activa y delays */}
               <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-5">
                 <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
                   <Settings className="w-4 h-4 text-gray-500" />
                   Configuración de rellamadas
                 </h2>
 
-                {/* Ventana activa */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Ventana de rellamadas (horas)
@@ -608,7 +790,6 @@ export function Seguimientos({ onNavigate }: SeguimientosProps) {
                   </p>
                 </div>
 
-                {/* Delays */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Tiempos entre reintentos (minutos)
@@ -688,7 +869,6 @@ export function Seguimientos({ onNavigate }: SeguimientosProps) {
                   )}
                 </div>
 
-                {/* Feedback */}
                 {configMsg && (
                   <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-2">
                     <CheckCircle2 className="w-4 h-4" />
@@ -707,11 +887,7 @@ export function Seguimientos({ onNavigate }: SeguimientosProps) {
                   disabled={savingConfig}
                   className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors"
                 >
-                  {savingConfig ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Save className="w-4 h-4" />
-                  )}
+                  {savingConfig ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                   {savingConfig ? 'Guardando…' : 'Guardar configuración'}
                 </button>
               </div>

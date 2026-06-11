@@ -262,6 +262,7 @@ export interface ClientData {
     num_tel?: boolean;
     records?: boolean;
     callbacks?: boolean;
+    seguimiento?: boolean;
     [key: string]: any;
   };
   // Objeto de metadata específico para llamadas
