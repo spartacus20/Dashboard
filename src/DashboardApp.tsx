@@ -28,6 +28,7 @@ import {
   canAccessHydro,
   canAccessBudget,
   canAccessSeguimientos,
+  canAccessDashboard,
 } from './lib/supabase';
 import { X, Upload, Phone, Info, Check, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 import { useDashboardRoute, navigateDashboard } from './lib/dashboardRoute';
@@ -118,6 +119,15 @@ function DashboardApp() {
   }, [currentPage, campaignEnabled]);
 
   // Tickets: visible solo si metadata.tickets === true (sessionStorage)
+  const [dashboardEnabled, setDashboardEnabled] = React.useState(() => canAccessDashboard());
+
+  // Actualiza dashboardEnabled cuando las permissions se cargan desde el servidor
+  React.useEffect(() => {
+    const update = () => setDashboardEnabled(canAccessDashboard());
+    window.addEventListener('permissionsUpdated', update);
+    return () => window.removeEventListener('permissionsUpdated', update);
+  }, []);
+
   const [ticketsEnabled, setTicketsEnabled] = React.useState(() => canAccessTickets());
   const [recoveriesEnabled, setRecoveriesEnabled] = React.useState(() => canAccessRecoveries());
   const [assistantIAEnabled, setAssistantIAEnabled] = React.useState(() =>
@@ -1329,7 +1339,14 @@ function DashboardApp() {
             </div>
           }
         >
-        {currentPage === 'dashboard' && (
+        {currentPage === 'dashboard' && !dashboardEnabled && (
+          <div className="flex items-center justify-center h-64">
+            <p className="text-muted-foreground text-lg">
+              No tienes acceso al Dashboard.
+            </p>
+          </div>
+        )}
+        {currentPage === 'dashboard' && dashboardEnabled && (
           <Dashboard
             stats={stats || { total: 0, completed: 0, failed: 0, averageDuration: '0:00', averageDurationSeconds: 0 }}
             loading={loading || loadingAllCalls || loadingDashboardData}
