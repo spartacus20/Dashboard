@@ -1,7 +1,9 @@
 import React, { useState, useRef, ChangeEvent } from "react";
-import { Phone, Upload, Check, Info, RefreshCw } from "lucide-react";
+import { Phone, Upload, Check, Info, RefreshCw, Bell, BellOff } from "lucide-react";
 import { createBatchCall } from "../../api";
 import type { RetellPhoneNumber } from "../../types";
+import { canAccessSeguimientos, getStoredClientId } from "../../lib/supabase";
+import { saveBatchCallSettings } from "../../services/api/seguimientos";
 
 export // Componente para crear nuevas campañas de llamadas en lote
 interface CreateBatchCallFormProps {
@@ -32,6 +34,8 @@ export function CreateBatchCallForm({
     [key: string]: number;
   }>({});
   const [useManualNumber, setUseManualNumber] = useState(false);
+  const hasSeguimientos = canAccessSeguimientos();
+  const [enableSeguimiento, setEnableSeguimiento] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -238,6 +242,13 @@ export function CreateBatchCallForm({
         campaignName,
       );
 
+      if (hasSeguimientos && result.batch_call_id) {
+        const clientId = getStoredClientId();
+        if (clientId) {
+          await saveBatchCallSettings(result.batch_call_id, clientId, enableSeguimiento);
+        }
+      }
+
       setSuccess(
         `Campaña creada con éxito. ID: ${result.batch_call_id || "N/A"}`,
       );
@@ -250,6 +261,7 @@ export function CreateBatchCallForm({
       setPhoneColumnIndex(-1);
       setColumnMappings({});
       setVariables([]);
+      setEnableSeguimiento(false);
 
       // Resetear el input de archivo
       if (fileInputRef.current) {
@@ -372,6 +384,33 @@ export function CreateBatchCallForm({
             )}
           </p>
         </div>
+
+        {hasSeguimientos && (
+          <div className="md:col-span-2">
+            <label className="block text-gray-400 mb-1">Seguimiento automático</label>
+            <button
+              type="button"
+              onClick={() => setEnableSeguimiento((v) => !v)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                enableSeguimiento
+                  ? "bg-purple-700/30 border-purple-600 text-purple-300 hover:bg-purple-700/50"
+                  : "bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700"
+              }`}
+            >
+              {enableSeguimiento ? (
+                <Bell className="w-4 h-4" />
+              ) : (
+                <BellOff className="w-4 h-4" />
+              )}
+              {enableSeguimiento ? "Activado" : "Desactivado"}
+            </button>
+            <p className="text-xs text-gray-500 mt-1">
+              {enableSeguimiento
+                ? "Los contactos que no contesten serán reintentados automáticamente"
+                : "Esta campaña no generará reintentos automáticos"}
+            </p>
+          </div>
+        )}
 
         <div>
           <label className="block text-gray-400 mb-1">

@@ -64,27 +64,7 @@ interface WeekGroup {
   rows: DayRow[];
 }
 
-// ─── Column config ─────────────────────────────────────────────────────────────
-
-const TABLE_COLS = [
-  { key: 'llamadas',           label: 'Llamadas' },
-  { key: 'minutos',            label: 'Minutos' },
-  { key: 'gasto-usd',          label: 'Gasto IA ($)' },
-  { key: 'gasto-eur',          label: 'Gasto IA (€)' },
-  { key: 'telefonia',          label: 'Gasto Telefonía' },
-  { key: 'agendas',            label: 'Agendas' },
-  { key: 'captadas',           label: 'Captadas' },
-  { key: 'coste-agenda',       label: 'Coste/Agenda (€)' },
-  { key: 'coste-captada',      label: 'Coste/Captada (€)' },
-  { key: 'placas-por-fecha',   label: 'Placas' },
-  { key: 'baterias-por-fecha', label: 'Baterías' },
-  { key: 'total-agendado',     label: 'Total' },
-  { key: 'confirmadas',        label: 'Confirmadas' },
-  { key: 'placas-generadas',   label: 'Placas' },
-  { key: 'baterias-generadas', label: 'Baterías' },
-  { key: 'total-captado',      label: 'Total' },
-  { key: 'citas-revisadas',    label: 'Revisadas' },
-];
+// ─── Column tooltips ──────────────────────────────────────────────────────────
 
 const COL_TOOLTIPS: Record<string, string> = {
   'llamadas':            'Total de llamadas realizadas ese día',
@@ -92,10 +72,6 @@ const COL_TOOLTIPS: Record<string, string> = {
   'gasto-usd':           'Costo de la IA en dólares — suma de cost en call_logs',
   'gasto-eur':           'Costo de la IA en euros = Gasto $ × tipo de cambio USD/EUR',
   'telefonia':           'Gasto de telefonía ingresado manualmente por día',
-  'agendas':             'Placas solares aprobadas creadas ese día (tipo = placas solares · aprobada = true · por created_at)',
-  'captadas':            'Total de agendamientos creados ese día, sin filtro de tipo ni estado (por created_at)',
-  'coste-agenda':        '(Gasto IA € + Telefonía) ÷ Agendas del día — solo se calcula cuando agendas > 0',
-  'coste-captada':       '(Gasto IA € + Telefonía) ÷ Captadas del día — solo se calcula cuando captadas > 0',
   'placas-por-fecha':    'Citas tipo placas solares cuya fecha de visita cae en este día',
   'baterias-por-fecha':  'Citas tipo batería cuya fecha de visita cae en este día',
   'total-agendado':      'Placas + Baterías con visita pactada este día (calculado en frontend)',
@@ -154,8 +130,6 @@ function fmtUSD(v: number): string {
 function fmtNum(v: number): string { return v.toLocaleString('es-ES'); }
 function fmtDate(dia: string): string { return dia.split('-').reverse().join('/'); }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
 const MONTH_NAMES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
@@ -175,12 +149,11 @@ interface PresupuestoProps {
   onNavigate: (page: string) => void;
 }
 
-export function Presupuesto({ onNavigate }: PresupuestoProps) {
+export function Presupuesto({ onNavigate: _onNavigate }: PresupuestoProps) {
   const today = new Date();
   const [month, setMonth] = useState(today.getMonth() + 1);
   const [year,  setYear]  = useState(today.getFullYear());
 
-  // Exchange rate
   const [exchangeRate, setExchangeRate] = useState(EXCHANGE_RATE_FALLBACK);
   const [rateDate,     setRateDate]     = useState<string | null>(null);
   const [fetchingRate, setFetchingRate] = useState(false);
@@ -188,25 +161,19 @@ export function Presupuesto({ onNavigate }: PresupuestoProps) {
   const [rateApiError, setRateApiError] = useState<string | null>(null);
   const [rateSource,   setRateSource]   = useState<string>('');
 
-  // Data
   const [callStats,     setCallStats]     = useState<CallStat[]>([]);
   const [agendaStats,   setAgendaStats]   = useState<AgendaStat[]>([]);
   const [telefoniaData, setTelefoniaData] = useState<TelefoniaRecord[]>([]);
   const [loading,       setLoading]       = useState(true);
   const [error,         setError]         = useState<string | null>(null);
 
-  // Cards visibility
   const [hiddenCards,   setHiddenCards]   = useState<Set<string>>(new Set());
-  // Columns visibility
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
   const showCol = (key: string) => !hiddenColumns.has(key);
 
-  // Inline telefonía editing
   const [editingDia, setEditingDia] = useState<string | null>(null);
   const [editingVal, setEditingVal] = useState('');
   const [savingDia,  setSavingDia]  = useState<string | null>(null);
-
-  // ── Month navigation ────────────────────────────────────────────────────────
 
   const isCurrentMonth = year === today.getFullYear() && month === today.getMonth() + 1;
 
@@ -405,12 +372,8 @@ export function Presupuesto({ onNavigate }: PresupuestoProps) {
     const gastoUSD  = weekRows.reduce((s, r) => s + r.gastoUSD,           0);
     const gastoEUR  = weekRows.reduce((s, r) => s + r.gastoEUR,           0);
     const telefonia = weekRows.reduce((s, r) => s + (r.telefonia ?? 0),   0);
-    const agendas   = weekRows.reduce((s, r) => s + r.agendas,            0);
-    const captadas  = weekRows.reduce((s, r) => s + r.captadas,           0);
-    const costoEnDiasConAgendas  = weekRows.filter(r => r.agendas  > 0).reduce((s, r) => s + r.gastoEUR + (r.telefonia ?? 0), 0);
-    const costoEnDiasConCaptadas = weekRows.filter(r => r.captadas > 0).reduce((s, r) => s + r.gastoEUR + (r.telefonia ?? 0), 0);
     return {
-      gastoUSD, gastoEUR, telefonia, agendas, captadas,
+      gastoUSD, gastoEUR, telefonia,
       agendas_pf:  weekRows.reduce((s, r) => s + r.agendas_por_fecha,  0),
       captadas_pf: weekRows.reduce((s, r) => s + r.captadas_por_fecha, 0),
       agendas_gen: weekRows.reduce((s, r) => s + r.agendas_generadas,  0),
@@ -422,8 +385,6 @@ export function Presupuesto({ onNavigate }: PresupuestoProps) {
       bat_gen:     weekRows.reduce((s, r) => s + r.baterias_generadas, 0),
       llamadas:    weekRows.reduce((s, r) => s + r.llamadas, 0),
       minutos:     weekRows.reduce((s, r) => s + r.minutos,  0),
-      mediaAgenda:  agendas  > 0 ? costoEnDiasConAgendas  / agendas  : null,
-      mediaCaptada: captadas > 0 ? costoEnDiasConCaptadas / captadas : null,
     };
   }
 
@@ -436,83 +397,50 @@ export function Presupuesto({ onNavigate }: PresupuestoProps) {
     lines.push(`uMindsIA — Costes de llamadas — ${MONTH_NAMES[month - 1]} ${year}`);
     lines.push(`Tipo de cambio USD/EUR${S}${n(exchangeRate, 4)}`);
     lines.push('');
-    
-    // Fila 1: Agrupación de secciones
-    lines.push(['', '', '', '', '', '', '', '', '', '', '', 'Agendado / fecha cita', '', '', '', 'Captado / generado ese día', '', '', ''].join(S));
-    
-    // Fila 2: Columnas individuales
-    lines.push(['Semana','Fecha','Llamadas','Minutos','Gasto IA ($)','Gasto IA (€)','Gasto Telefonía','Agendas','Captadas','Coste/Agenda (€)','Coste/Captada (€)','Placas','Baterías','Total','Confirmadas','Placas','Baterías','Total','Revisadas'].join(S));
+    lines.push(['', '', '', '', '', '', '', 'Agendado / fecha cita', '', '', '', 'Captado / generado ese día', '', '', ''].join(S));
+    lines.push(['Semana','Fecha','Llamadas','Minutos','Gasto IA ($)','Gasto IA (€)','Gasto Telefonía','Placas','Baterías','Total','Confirmadas','Placas','Baterías','Total','Revisadas'].join(S));
 
     for (const group of weekGroups) {
       group.rows.forEach((row, idx) => {
-        const totalCosto = row.gastoEUR + (row.telefonia ?? 0);
-        const cpa = row.agendas  > 0 ? totalCosto / row.agendas  : null;
-        const cpc = row.captadas > 0 ? totalCosto / row.captadas : null;
         lines.push([
           idx === 0 ? group.label : '',
           fmtDate(row.dia),
           row.llamadas || '',
-          row.minutos || '',
+          row.minutos  || '',
           n(row.gastoUSD),
           n(row.gastoEUR),
           row.telefonia !== null ? n(row.telefonia) : '',
-          row.agendas || '',
-          row.captadas || '',
-          cpa !== null ? n(cpa) : '',
-          cpc !== null ? n(cpc) : '',
-          row.placas_por_fecha || '',
+          row.placas_por_fecha   || '',
           row.baterias_por_fecha || '',
           (row.placas_por_fecha + row.baterias_por_fecha) || '',
-          row.agendas_por_fecha || '',
-          row.placas_generadas || '',
+          row.agendas_por_fecha  || '',
+          row.placas_generadas   || '',
           row.baterias_generadas || '',
           (row.placas_generadas + row.baterias_generadas) || '',
-          row.citas_revisadas || '',
+          row.citas_revisadas    || '',
         ].join(S));
       });
       const sub = weekSub(group.rows);
       lines.push([
-        'SUBTOTAL',
-        group.label,
-        sub.llamadas,
-        sub.minutos,
-        n(sub.gastoUSD),
-        n(sub.gastoEUR),
+        'SUBTOTAL', group.label,
+        sub.llamadas, sub.minutos,
+        n(sub.gastoUSD), n(sub.gastoEUR),
         sub.telefonia > 0 ? n(sub.telefonia) : '',
-        sub.agendas,
-        sub.captadas,
-        sub.mediaAgenda !== null ? n(sub.mediaAgenda) : '',
-        sub.mediaCaptada !== null ? n(sub.mediaCaptada) : '',
-        sub.placas_pf || 0,
-        sub.baterias_pf || 0,
-        (sub.placas_pf + sub.baterias_pf) || 0,
+        sub.placas_pf  || 0, sub.baterias_pf || 0, (sub.placas_pf + sub.baterias_pf) || 0,
         sub.agendas_pf || 0,
-        sub.placas_gen || 0,
-        sub.bat_gen || 0,
-        (sub.placas_gen + sub.bat_gen) || 0,
-        sub.citas_rev || 0,
+        sub.placas_gen || 0, sub.bat_gen     || 0, (sub.placas_gen + sub.bat_gen)     || 0,
+        sub.citas_rev  || 0,
       ].join(S));
     }
     lines.push([
-      'TOTAL',
-      '',
-      totals.llamadas,
-      totals.minutos,
-      n(totals.gastoUSD),
-      n(totals.gastoEUR),
+      'TOTAL', '',
+      totals.llamadas, totals.minutos,
+      n(totals.gastoUSD), n(totals.gastoEUR),
       totals.telefonia > 0 ? n(totals.telefonia) : '',
-      totals.agendas,
-      totals.captadas,
-      totals.mediaAgenda !== null ? n(totals.mediaAgenda) : '',
-      totals.mediaCaptada !== null ? n(totals.mediaCaptada) : '',
-      totals.placas_pf || 0,
-      totals.baterias_pf || 0,
-      (totals.placas_pf + totals.baterias_pf) || 0,
+      totals.placas_pf  || 0, totals.baterias_pf || 0, (totals.placas_pf + totals.baterias_pf) || 0,
       totals.agendas_pf || 0,
-      totals.placas_gen || 0,
-      totals.baterias_gen || 0,
-      (totals.placas_gen + totals.baterias_gen) || 0,
-      totals.citas_rev || 0,
+      totals.placas_gen || 0, totals.baterias_gen || 0, (totals.placas_gen + totals.baterias_gen) || 0,
+      totals.citas_rev  || 0,
     ].join(S));
     lines.push('');
     lines.push(['Gasto $ Total','Gasto € Total','Total Telefonía','Gasto Total (€)','Total Agendas','Total Captadas','Media €/Agenda','Media €/Captada'].join(S));
@@ -532,9 +460,9 @@ export function Presupuesto({ onNavigate }: PresupuestoProps) {
 
   const dash = <span className="text-gray-300">—</span>;
 
-  const vB2 = (['placas-por-fecha','baterias-por-fecha','total-agendado','confirmadas'] as const).filter(showCol).length;
-  const vB3 = (['placas-generadas','baterias-generadas','total-captado','citas-revisadas'] as const).filter(showCol).length;
-  const vBase = (['llamadas','minutos','gasto-usd','gasto-eur','telefonia','agendas','captadas','coste-agenda','coste-captada'] as const).filter(showCol).length;
+  const vB2   = (['placas-por-fecha','baterias-por-fecha','total-agendado','confirmadas'] as const).filter(showCol).length;
+  const vB3   = (['placas-generadas','baterias-generadas','total-captado','citas-revisadas'] as const).filter(showCol).length;
+  const vBase = (['llamadas','minutos','gasto-usd','gasto-eur','telefonia'] as const).filter(showCol).length;
 
   const ColTh = ({ colKey, tooltip, borderLeft, children }: { colKey: string; tooltip?: string; borderLeft?: boolean; children: React.ReactNode }) => (
     <th className={`px-3 py-3 text-center font-semibold whitespace-nowrap relative group/th${borderLeft ? ' border-l-2 border-blue-400/40' : ''}`}>
@@ -613,14 +541,14 @@ export function Presupuesto({ onNavigate }: PresupuestoProps) {
           )}
           <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${8 - hiddenCards.size}, 1fr)` }}>
             {[
-              { key: 'gasto-usd',    icon: <DollarSign className="w-4 h-4 text-green-500" />,  label: 'Gasto IA ($)',    value: fmtUSD(totals.gastoUSD),                                            accent: false },
-              { key: 'gasto-eur',    icon: <Euro       className="w-4 h-4 text-blue-500" />,    label: 'Gasto IA (€)',    value: fmtEUR(totals.gastoEUR),                                            accent: false },
-              { key: 'telefonia',    icon: <Phone      className="w-4 h-4 text-purple-500" />,  label: 'Total Telefonía', value: totals.telefonia > 0 ? fmtEUR(totals.telefonia) : '—',             accent: false },
-              { key: 'gasto-total',  icon: <BarChart3  className="w-4 h-4 text-orange-500" />,  label: 'Gasto Total (€)', value: fmtEUR(totals.costoTotal),                                          accent: true  },
-              { key: 'agendas',      icon: <Users      className="w-4 h-4 text-teal-500" />,    label: 'Total Agendas',   value: String(totals.agendas),                                             accent: false },
-              { key: 'captadas',     icon: <TrendingUp className="w-4 h-4 text-indigo-500" />,  label: 'Total Captadas',  value: String(totals.captadas),                                            accent: false },
-              { key: 'media-agenda', icon: <Euro       className="w-4 h-4 text-rose-500" />,    label: 'Media €/Agenda',  value: totals.mediaAgenda  !== null ? fmtEUR(totals.mediaAgenda)  : '—',  accent: false },
-              { key: 'media-captada',icon: <Euro       className="w-4 h-4 text-amber-500" />,   label: 'Media €/Captada', value: totals.mediaCaptada !== null ? fmtEUR(totals.mediaCaptada) : '—',  accent: false },
+              { key: 'gasto-usd',     icon: <DollarSign className="w-4 h-4 text-green-500" />,  label: 'Gasto IA ($)',    value: fmtUSD(totals.gastoUSD),                                           accent: false },
+              { key: 'gasto-eur',     icon: <Euro       className="w-4 h-4 text-blue-500" />,    label: 'Gasto IA (€)',    value: fmtEUR(totals.gastoEUR),                                           accent: false },
+              { key: 'telefonia',     icon: <Phone      className="w-4 h-4 text-purple-500" />,  label: 'Total Telefonía', value: totals.telefonia > 0 ? fmtEUR(totals.telefonia) : '—',            accent: false },
+              { key: 'gasto-total',   icon: <BarChart3  className="w-4 h-4 text-orange-500" />,  label: 'Gasto Total (€)', value: fmtEUR(totals.costoTotal),                                         accent: true  },
+              { key: 'agendas',       icon: <Users      className="w-4 h-4 text-teal-500" />,    label: 'Total Agendas',   value: String(totals.agendas),                                            accent: false },
+              { key: 'captadas',      icon: <TrendingUp className="w-4 h-4 text-indigo-500" />,  label: 'Total Captadas',  value: String(totals.captadas),                                           accent: false },
+              { key: 'media-agenda',  icon: <Euro       className="w-4 h-4 text-rose-500" />,    label: 'Media €/Agenda',  value: totals.mediaAgenda  !== null ? fmtEUR(totals.mediaAgenda)  : '—', accent: false },
+              { key: 'media-captada', icon: <Euro       className="w-4 h-4 text-amber-500" />,   label: 'Media €/Captada', value: totals.mediaCaptada !== null ? fmtEUR(totals.mediaCaptada) : '—', accent: false },
             ].filter(card => !hiddenCards.has(card.key)).map(card => (
               <div key={card.key} className="relative group">
                 <button onClick={() => setHiddenCards(prev => new Set(prev).add(card.key))}
@@ -656,16 +584,14 @@ export function Presupuesto({ onNavigate }: PresupuestoProps) {
             </div>
           )}
 
-          <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
-            <table className="w-max text-sm border-collapse">
+          <div className="rounded-xl border border-gray-200 shadow-sm">
+            <table className="w-full text-sm border-collapse">
               <thead>
-                {/* Fila de grupos */}
                 <tr className="bg-[#081f47] text-white text-[9px] uppercase tracking-wider">
                   <th colSpan={2 + vBase} className="bg-[#081f47] border-b border-[#1a3570]" />
                   {vB2 > 0 && <th colSpan={vB2} className="px-3 py-1.5 text-center font-bold border-l-2 border-blue-400/50 bg-[#0d3060]">Agendado <span className="text-blue-300 font-normal normal-case tracking-normal">/ fecha cita</span></th>}
                   {vB3 > 0 && <th colSpan={vB3} className="px-3 py-1.5 text-center font-bold border-l-2 border-blue-400/50 bg-[#0a2a55]">Captado <span className="text-blue-300 font-normal normal-case tracking-normal">/ generado ese día</span></th>}
                 </tr>
-                {/* Fila de columnas */}
                 <tr className="bg-[#0a2a5a] text-white text-xs">
                   <th className="px-3 py-3 text-left font-semibold whitespace-nowrap w-20"></th>
                   <th className="px-3 py-3 text-center font-semibold whitespace-nowrap">Fecha</th>
@@ -687,10 +613,6 @@ export function Presupuesto({ onNavigate }: PresupuestoProps) {
                       </div>
                     </th>
                   )}
-                  {showCol('agendas')       && <ColTh colKey="agendas"       tooltip={COL_TOOLTIPS['agendas']}>Agendas</ColTh>}
-                  {showCol('captadas')      && <ColTh colKey="captadas"      tooltip={COL_TOOLTIPS['captadas']}>Captadas</ColTh>}
-                  {showCol('coste-agenda')  && <ColTh colKey="coste-agenda"  tooltip={COL_TOOLTIPS['coste-agenda']}>€/Agenda</ColTh>}
-                  {showCol('coste-captada') && <ColTh colKey="coste-captada" tooltip={COL_TOOLTIPS['coste-captada']}>€/Captada</ColTh>}
                   {showCol('placas-por-fecha')   && <ColTh colKey="placas-por-fecha"   tooltip={COL_TOOLTIPS['placas-por-fecha']}   borderLeft>Placas</ColTh>}
                   {showCol('baterias-por-fecha') && <ColTh colKey="baterias-por-fecha" tooltip={COL_TOOLTIPS['baterias-por-fecha']}>Baterías</ColTh>}
                   {showCol('total-agendado')     && <ColTh colKey="total-agendado"     tooltip={COL_TOOLTIPS['total-agendado']}>Total</ColTh>}
@@ -708,9 +630,6 @@ export function Presupuesto({ onNavigate }: PresupuestoProps) {
                   return (
                     <React.Fragment key={group.label}>
                       {group.rows.map((row, idx) => {
-                        const totalCostoEUR  = row.gastoEUR + (row.telefonia ?? 0);
-                        const costePorAgenda  = row.agendas  > 0 ? totalCostoEUR / row.agendas  : null;
-                        const costePorCaptada = row.captadas > 0 ? totalCostoEUR / row.captadas : null;
                         const isEditing = editingDia === row.dia;
                         const isSaving  = savingDia  === row.dia;
                         const wkColor   = row.isWeekend ? 'text-gray-400' : '';
@@ -747,11 +666,6 @@ export function Presupuesto({ onNavigate }: PresupuestoProps) {
                               </td>
                             )}
 
-                            {showCol('agendas')       && <td className={`px-3 py-2 text-center ${wkColor}`}>{row.agendas   > 0 ? row.agendas  : dash}</td>}
-                            {showCol('captadas')      && <td className={`px-3 py-2 text-center ${wkColor}`}>{row.captadas  > 0 ? row.captadas : dash}</td>}
-                            {showCol('coste-agenda')  && <td className={`px-3 py-2 text-center font-medium ${row.isWeekend ? 'text-gray-400' : 'text-gray-700'}`}>{costePorAgenda  !== null ? fmtEUR(costePorAgenda)  : dash}</td>}
-                            {showCol('coste-captada') && <td className={`px-3 py-2 text-center font-medium ${row.isWeekend ? 'text-gray-400' : 'text-gray-700'}`}>{costePorCaptada !== null ? fmtEUR(costePorCaptada) : dash}</td>}
-
                             {showCol('placas-por-fecha')   && <td className={`px-3 py-2 text-center border-l-2 border-blue-100 ${wkColor}`}>{row.placas_por_fecha   > 0 ? row.placas_por_fecha   : dash}</td>}
                             {showCol('baterias-por-fecha') && <td className={`px-3 py-2 text-center ${wkColor}`}>{row.baterias_por_fecha > 0 ? row.baterias_por_fecha : dash}</td>}
                             {showCol('total-agendado')     && <td className={`px-3 py-2 text-center font-medium ${wkColor}`}>{(row.placas_por_fecha + row.baterias_por_fecha) > 0 ? (row.placas_por_fecha + row.baterias_por_fecha) : dash}</td>}
@@ -773,10 +687,6 @@ export function Presupuesto({ onNavigate }: PresupuestoProps) {
                         {showCol('gasto-usd')          && <td className="px-3 py-2 text-center">{fmtUSD(sub.gastoUSD)}</td>}
                         {showCol('gasto-eur')          && <td className="px-3 py-2 text-center">{fmtEUR(sub.gastoEUR)}</td>}
                         {showCol('telefonia')          && <td className="px-3 py-2 text-center">{sub.telefonia > 0 ? fmtEUR(sub.telefonia) : <span className="opacity-40">—</span>}</td>}
-                        {showCol('agendas')            && <td className="px-3 py-2 text-center">{sub.agendas}</td>}
-                        {showCol('captadas')           && <td className="px-3 py-2 text-center">{sub.captadas}</td>}
-                        {showCol('coste-agenda')       && <td className="px-3 py-2 text-center">{sub.mediaAgenda  !== null ? fmtEUR(sub.mediaAgenda)  : <span className="opacity-40">—</span>}</td>}
-                        {showCol('coste-captada')      && <td className="px-3 py-2 text-center">{sub.mediaCaptada !== null ? fmtEUR(sub.mediaCaptada) : <span className="opacity-40">—</span>}</td>}
                         {showCol('placas-por-fecha')   && <td className="px-3 py-2 text-center border-l-2 border-[#a8bce8]">{sub.placas_pf}</td>}
                         {showCol('baterias-por-fecha') && <td className="px-3 py-2 text-center">{sub.baterias_pf}</td>}
                         {showCol('total-agendado')     && <td className="px-3 py-2 text-center font-bold">{sub.placas_pf + sub.baterias_pf}</td>}
@@ -798,10 +708,6 @@ export function Presupuesto({ onNavigate }: PresupuestoProps) {
                   {showCol('gasto-usd')          && <td className="px-3 py-3 text-center">{fmtUSD(totals.gastoUSD)}</td>}
                   {showCol('gasto-eur')          && <td className="px-3 py-3 text-center">{fmtEUR(totals.gastoEUR)}</td>}
                   {showCol('telefonia')          && <td className="px-3 py-3 text-center">{totals.telefonia > 0 ? fmtEUR(totals.telefonia) : <span className="opacity-50">—</span>}</td>}
-                  {showCol('agendas')            && <td className="px-3 py-3 text-center">{totals.agendas}</td>}
-                  {showCol('captadas')           && <td className="px-3 py-3 text-center">{totals.captadas}</td>}
-                  {showCol('coste-agenda')       && <td className="px-3 py-3 text-center">{totals.mediaAgenda  !== null ? fmtEUR(totals.mediaAgenda)  : <span className="opacity-50">—</span>}</td>}
-                  {showCol('coste-captada')      && <td className="px-3 py-3 text-center">{totals.mediaCaptada !== null ? fmtEUR(totals.mediaCaptada) : <span className="opacity-50">—</span>}</td>}
                   {showCol('placas-por-fecha')   && <td className="px-3 py-3 text-center border-l-2 border-blue-400/40">{totals.placas_pf}</td>}
                   {showCol('baterias-por-fecha') && <td className="px-3 py-3 text-center">{totals.baterias_pf}</td>}
                   {showCol('total-agendado')     && <td className="px-3 py-3 text-center">{totals.placas_pf + totals.baterias_pf}</td>}

@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
-import { BASE_URL } from '../../lib/supabase';
+import { Settings, X, RefreshCw, Save, XCircle, CheckCircle2, AlertCircle } from 'lucide-react';
+import { BASE_URL, canAccessSeguimientos, getStoredClientId } from '../../lib/supabase';
+import { saveBatchCallSettings, getRetellConfig, updateRetellConfig } from '../../services/api/seguimientos';
 
 type BatchStatus = 'pending' | 'sending' | 'success' | 'error';
 
@@ -21,6 +23,7 @@ interface BatchConfig {
   startTime: string;
   timezone: string;
   reservedConcurrency: string;
+  seguimiento: boolean;
 }
 
 interface BatchDraft {
@@ -229,6 +232,18 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
   const [retellLoadingByKey, setRetellLoadingByKey] = useState<Record<string, boolean>>({});
   const [retellErrorByKey, setRetellErrorByKey] = useState<Record<string, string | null>>({});
 
+  const hasSeguimientos = canAccessSeguimientos();
+
+  // — Estado del modal de configuración de seguimiento —
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [configBatchId, setConfigBatchId] = useState<string | null>(null);
+  const [configDelays, setConfigDelays] = useState<number[]>([20, 60, 120]);
+  const [configActiveHours, setConfigActiveHours] = useState(8);
+  const [loadingConfig, setLoadingConfig] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [configMsg, setConfigMsg] = useState('');
+  const [configError, setConfigError] = useState('');
+
   const availableApiKeys = useMemo(() => Array.from(new Set(apiKeys.filter(Boolean))), [apiKeys]);
   const totalContacts = useMemo(() => batches.reduce((acc, b) => acc + b.contactsCount, 0), [batches]);
   const successCount = useMemo(() => batches.filter((b) => b.status === 'success').length, [batches]);
@@ -314,6 +329,7 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
             startTime: '',
             timezone: DEFAULT_TIMEZONE,
             reservedConcurrency: '',
+            seguimiento: false,
           },
         };
       }),
@@ -338,7 +354,7 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
     );
   }, [availableApiKeys]);
 
-  function updateBatchConfig(batchId: string, key: keyof BatchConfig, value: string) {
+  function updateBatchConfig(batchId: string, key: keyof BatchConfig, value: string | boolean) {
     setBatches((prev) =>
       prev.map((batch) => (batch.id === batchId ? { ...batch, config: { ...batch.config, [key]: value } } : batch)),
     );
@@ -388,6 +404,44 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
       setRetellLoadingByKey((prev) => ({ ...prev, [apiKey]: false }));
     }
   }
+
+  const openConfigModal = useCallback(async (batchId: string) => {
+    setConfigBatchId(batchId);
+    setConfigMsg('');
+    setConfigError('');
+    setShowConfigModal(true);
+    const clientId = getStoredClientId();
+    if (!clientId) return;
+    setLoadingConfig(true);
+    try {
+      const cfg = await getRetellConfig(clientId);
+      setConfigDelays(cfg.retell_delays || [20, 60, 120]);
+      setConfigActiveHours(cfg.retell_active_hours || 8);
+    } catch {
+      setConfigError('Error al cargar la configuración.');
+    } finally {
+      setLoadingConfig(false);
+    }
+  }, []);
+
+  const handleSaveConfig = async () => {
+    const clientId = getStoredClientId();
+    if (!clientId) return;
+    setSavingConfig(true);
+    setConfigMsg('');
+    setConfigError('');
+    try {
+      await updateRetellConfig(clientId, {
+        retell_delays: configDelays,
+        retell_active_hours: configActiveHours,
+      });
+      setConfigMsg('Configuración guardada.');
+    } catch {
+      setConfigError('Error al guardar la configuración.');
+    } finally {
+      setSavingConfig(false);
+    }
+  };
 
   async function handleFileUpload(file: File | null) {
     if (!file) return;
@@ -455,6 +509,12 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
       const data: BatchResponse = await response.json();
       if (!response.ok || !data.success) throw new Error(data.error || `Error ${response.status}`);
       setBatches((prev) => prev.map((b) => (b.id === batchId ? { ...b, status: 'success', response: data, error: null } : b)));
+      if (canAccessSeguimientos() && data.batch_call_id) {
+        const clientId = getStoredClientId();
+        if (clientId) {
+          await saveBatchCallSettings(data.batch_call_id, clientId, target.config.seguimiento);
+        }
+      }
       return true;
     } catch (err: any) {
       setBatches((prev) =>
@@ -661,6 +721,37 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
                       <label className="block text-sm font-medium text-gray-700">Reserved concurrency (opcional)</label>
                       <input type="number" min={0} value={batch.config.reservedConcurrency} onChange={(e) => updateBatchConfig(batch.id, 'reservedConcurrency', e.target.value)} className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900" />
                     </div>
+                    {hasSeguimientos && (
+                      <div className="space-y-1.5">
+                        <label className="block text-sm font-medium text-gray-700">Seguimiento automático</label>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => updateBatchConfig(batch.id, 'seguimiento', !batch.config.seguimiento)}
+                            className={`flex-1 px-3 py-2 rounded-md border text-sm font-medium transition-colors ${
+                              batch.config.seguimiento
+                                ? 'bg-indigo-50 border-indigo-400 text-indigo-700 hover:bg-indigo-100'
+                                : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                            }`}
+                          >
+                            {batch.config.seguimiento ? 'Activado' : 'Desactivado'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void openConfigModal(batch.id)}
+                            title="Configurar reintentos"
+                            className="p-2 rounded-md border border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
+                          >
+                            <Settings className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <p className="text-xs text-gray-400">
+                          {batch.config.seguimiento
+                            ? 'Los contactos que no contesten serán reintentados automáticamente'
+                            : 'Esta campaña no generará reintentos automáticos'}
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {batch.config.apiKey.trim() && (
@@ -727,6 +818,130 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
       )}
 
       {message && <p className={`text-sm ${messageType === 'ok' ? 'text-green-600' : messageType === 'error' ? 'text-red-600' : 'text-gray-600'}`}>{message}</p>}
+
+      {/* Modal de configuración de seguimiento */}
+      {showConfigModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6 space-y-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">Configuración de reintentos</h2>
+                {configBatchId && (() => {
+                  const b = batches.find((x) => x.id === configBatchId);
+                  return b ? (
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      Campaña: <span className="font-medium text-gray-600">{b.config.batchName || `Batch ${b.partNumber}`}</span>
+                    </p>
+                  ) : null;
+                })()}
+              </div>
+              <button onClick={() => setShowConfigModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {loadingConfig ? (
+              <div className="flex items-center gap-2 text-sm text-gray-400">
+                <RefreshCw className="w-4 h-4 animate-spin" /> Cargando…
+              </div>
+            ) : (
+              <div className="space-y-5">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Ventana de rellamadas (horas)
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      min={1}
+                      max={24}
+                      value={configActiveHours}
+                      onChange={(e) => setConfigActiveHours(Number(e.target.value))}
+                      className="w-24 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-500">horas desde la llamada original</span>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">Pasadas estas horas, los reintentos se cancelan.</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Tiempos entre reintentos (minutos)
+                  </label>
+                  <p className="text-xs text-gray-400 mb-2">Cada fila es un intento. El largo define cuántos reintentos se hacen.</p>
+                  <div className="space-y-2">
+                    {configDelays.map((min, i) => (
+                      <div key={i} className="flex items-center gap-3">
+                        <span className="text-xs text-gray-500 w-28 shrink-0">
+                          {i === 0 ? 'Tras llamada original' : `Tras intento ${i}`}
+                        </span>
+                        <input
+                          type="number"
+                          min={1}
+                          value={min}
+                          onChange={(e) => {
+                            const next = [...configDelays];
+                            next[i] = Number(e.target.value);
+                            setConfigDelays(next);
+                          }}
+                          className="w-20 border border-gray-300 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <span className="text-xs text-gray-400">min</span>
+                        <span className="text-xs text-gray-300">({min >= 60 ? `${(min / 60).toFixed(1)}h` : `${min}min`})</span>
+                        <button
+                          onClick={() => setConfigDelays(configDelays.filter((_, j) => j !== i))}
+                          className="text-red-400 hover:text-red-600"
+                        >
+                          <XCircle className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setConfigDelays([...configDelays, 60])}
+                    className="mt-3 text-sm text-blue-600 hover:text-blue-800"
+                  >
+                    + Agregar intento
+                  </button>
+                  {configDelays.length > 0 && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Total: <strong>{configDelays.length}</strong> reintentos configurados
+                    </p>
+                  )}
+                </div>
+
+                {configMsg && (
+                  <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-2">
+                    <CheckCircle2 className="w-4 h-4" />{configMsg}
+                  </div>
+                )}
+                {configError && (
+                  <div className="flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+                    <AlertCircle className="w-4 h-4" />{configError}
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+                  <button
+                    onClick={() => setShowConfigModal(false)}
+                    className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
+                  >
+                    Cerrar
+                  </button>
+                  <button
+                    onClick={handleSaveConfig}
+                    disabled={savingConfig}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {savingConfig ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    {savingConfig ? 'Guardando…' : 'Guardar'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
