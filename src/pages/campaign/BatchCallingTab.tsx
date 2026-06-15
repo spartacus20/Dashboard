@@ -474,9 +474,9 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
   async function sendBatch(batchId: string): Promise<boolean> {
     const target = batches.find((b) => b.id === batchId);
     if (!target || !BASE_URL) return false;
-    if (!target.config.apiKey.trim() || !target.config.fromNumber.trim()) {
+    if (!target.config.apiKey.trim() || !target.config.fromNumber.trim() || !target.config.agentId.trim()) {
       setBatches((prev) =>
-        prev.map((b) => (b.id === batchId ? { ...b, status: 'error', error: 'API Key y From Number son obligatorios.' } : b)),
+        prev.map((b) => (b.id === batchId ? { ...b, status: 'error', error: 'API Key, From Number y Agent ID son obligatorios.' } : b)),
       );
       return false;
     }
@@ -667,10 +667,10 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
                       )}
                     </div>
                     <div className="space-y-1.5">
-                      <label className="block text-sm font-medium text-gray-700">Agent ID (opcional)</label>
+                      <label className="block text-sm font-medium text-gray-700">Agent ID</label>
                       {(retellOptionsByKey[batch.config.apiKey.trim()]?.agents || []).length > 0 ? (
-                        <select value={batch.config.agentId} onChange={(e) => updateBatchConfig(batch.id, 'agentId', e.target.value)} className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900">
-                          <option value="">Sin override de agente</option>
+                        <select value={batch.config.agentId} onChange={(e) => updateBatchConfig(batch.id, 'agentId', e.target.value)} className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900" required>
+                          <option value="" disabled>Sin override de agente</option>
                           {(retellOptionsByKey[batch.config.apiKey.trim()]?.agents || []).filter((agent) => getAgentIdentifier(agent)).map((agent) => {
                             const id = getAgentIdentifier(agent);
                             return <option key={id} value={id}>{getAgentLabel(agent)}</option>;
