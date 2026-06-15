@@ -98,6 +98,35 @@ export async function createBatchCall(
 
 
 
+export async function fetchAgentIdForBatch(
+  apiKey: string,
+  batchCallId: string
+): Promise<{ agent_id: string | null; agent_name: string | null }> {
+  try {
+    const callsRes = await fetch('https://api.retellai.com/v2/list-calls', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filter_criteria: { batch_call_id: [batchCallId] }, limit: 1, sort_order: 'descending' }),
+    });
+    if (!callsRes.ok) return { agent_id: null, agent_name: null };
+    const callsData = await callsRes.json();
+    const calls = Array.isArray(callsData) ? callsData : (callsData.calls ?? []);
+    const agent_id: string | null = calls[0]?.agent_id ?? null;
+    if (!agent_id) return { agent_id: null, agent_name: null };
+
+    const agentRes = await fetch(`https://api.retellai.com/get-agent/${agent_id}`, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+    });
+    const agent_name: string | null = agentRes.ok ? ((await agentRes.json()).agent_name ?? null) : null;
+    return { agent_id, agent_name };
+  } catch {
+    return { agent_id: null, agent_name: null };
+  }
+}
+
+
+
 export async function deleteBatchCall(
   apiKey: string,
   batchCallId: string

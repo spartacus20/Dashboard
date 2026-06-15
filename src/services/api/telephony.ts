@@ -148,6 +148,44 @@ export async function importPhoneNumber(
 
 
 
+// Función para actualizar un número de teléfono
+export async function updatePhoneNumber(
+  apiKey: string,
+  phoneNumber: string,
+  data: {
+    nickname?: string | null;
+    inbound_webhook_url?: string | null;
+    inbound_sms_webhook_url?: string | null;
+    fallback_number?: string | null;
+    allowed_inbound_country_list?: string[] | null;
+    allowed_outbound_country_list?: string[] | null;
+    termination_uri?: string;
+    auth_username?: string;
+    auth_password?: string;
+    transport?: string | null;
+    inbound_agents?: { agent_id: string; weight: number }[] | null;
+    outbound_agents?: { agent_id: string; weight: number }[] | null;
+  }
+): Promise<any> {
+  const response = await fetch(`https://api.retellai.com/update-phone-number/${encodeURIComponent(phoneNumber)}`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Error al actualizar número: ${response.status} ${response.statusText} - ${errorText}`);
+  }
+
+  return await response.json();
+}
+
+
+
 // Función para eliminar un número de teléfono
 export async function deletePhoneNumber(
   apiKey: string,
