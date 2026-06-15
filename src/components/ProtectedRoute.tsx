@@ -1,6 +1,8 @@
 import React from 'react'
 import { useAuth } from '../context/AuthContext'
 import { Login } from './Login'
+import { SuspendedAccount } from './SuspendedAccount'
+import { isAdmin, isClientActive, getSubscriptionExpiry } from '../lib/supabase'
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -22,6 +24,11 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
 
   if (!user) {
     return <Login />
+  }
+
+  // Admin siempre pasa — verá un banner en el dashboard si el cliente está suspendido
+  if (!isAdmin() && !isClientActive()) {
+    return <SuspendedAccount expiresAt={getSubscriptionExpiry()} />
   }
 
   return <>{children}</>

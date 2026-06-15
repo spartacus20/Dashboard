@@ -124,6 +124,14 @@ export const getClientId = async (email: string): Promise<string | null> => {
         if (userData.metadata_llamadas) {
           sessionStorage.setItem('metadata_llamadas', JSON.stringify(userData.metadata_llamadas))
         }
+
+        // Guardar estado de suscripción del cliente
+        sessionStorage.setItem('clientActive', String(userData.active !== false))
+        if (userData.subscription_expires_at) {
+          sessionStorage.setItem('subscriptionExpiresAt', userData.subscription_expires_at)
+        } else {
+          sessionStorage.removeItem('subscriptionExpiresAt')
+        }
         
         // Guardar permissions SOLO si no existen ya en sessionStorage (evitar sobrescribir en refresh)
         // Esto previene problemas de seguridad donde se muestran páginas que el usuario no debería ver
@@ -394,6 +402,49 @@ export const getCurrentUserInfo = (): { email: string; name: string } => {
   return { email, name }
 }
 
+// --- Helpers de suscripción ---
+
+export const getSubscriptionExpiry = (): string | null => {
+  return sessionStorage.getItem('subscriptionExpiresAt') || null
+}
+
+export const isSubscriptionExpired = (): boolean => {
+  const expiresAt = getSubscriptionExpiry()
+  if (!expiresAt) return false
+  return new Date(expiresAt) < new Date()
+}
+
+// Retorna false solo si active=false O si tiene fecha de expiración y ya venció.
+// Sin fecha → nunca expira.
+export const isClientActive = (): boolean => {
+  if (sessionStorage.getItem('clientActive') === 'false') return false
+  return !isSubscriptionExpired()
+}
+
+// Llama al backend con client_id para actualizar el estado de suscripción en sessionStorage.
+// Se usa al cambiar de cliente (changeClientId).
+export const updateClientSubscriptionStatus = async (clientId: string): Promise<void> => {
+  try {
+    const response = await fetch(`${BASE_URL}/get-client`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: clientId })
+    })
+    if (!response.ok) return
+    const data = await response.json()
+    const userData = Array.isArray(data) ? data[0] : data
+    if (!userData) return
+    sessionStorage.setItem('clientActive', String(userData.active !== false))
+    if (userData.subscription_expires_at) {
+      sessionStorage.setItem('subscriptionExpiresAt', userData.subscription_expires_at)
+    } else {
+      sessionStorage.removeItem('subscriptionExpiresAt')
+    }
+  } catch {
+    // Si falla, no bloqueamos — el estado previo permanece
+  }
+}
+
 // Función para limpiar todos los datos del sessionStorage
 export const clearSessionData = () => {
   sessionStorage.removeItem('userData')
@@ -405,6 +456,8 @@ export const clearSessionData = () => {
   sessionStorage.removeItem('metadata_llamadas')
   sessionStorage.removeItem('permissions')
   sessionStorage.removeItem('client_test')
+  sessionStorage.removeItem('clientActive')
+  sessionStorage.removeItem('subscriptionExpiresAt')
   // También limpiar el client_id seleccionado y el client_test del usuario al cerrar sesión
   localStorage.removeItem('selected_client_id')
   localStorage.removeItem('user_client_test')

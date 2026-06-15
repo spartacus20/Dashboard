@@ -29,6 +29,9 @@ import {
   canAccessBudget,
   canAccessSeguimientos,
   canAccessDashboard,
+  isAdmin,
+  isClientActive,
+  getSubscriptionExpiry,
 } from './lib/supabase';
 import { X, Upload, Phone, Info, Check, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 import { useDashboardRoute, navigateDashboard } from './lib/dashboardRoute';
@@ -119,6 +122,16 @@ function DashboardApp() {
   }, [currentPage, campaignEnabled]);
 
   // Tickets: visible solo si metadata.tickets === true (sessionStorage)
+  // Banner para admin cuando el cliente seleccionado está suspendido
+  const [showSuspendedBanner, setShowSuspendedBanner] = React.useState(
+    () => isAdmin() && !isClientActive()
+  )
+  React.useEffect(() => {
+    const handleClientChange = () => setShowSuspendedBanner(isAdmin() && !isClientActive())
+    window.addEventListener('clientIdChanged', handleClientChange)
+    return () => window.removeEventListener('clientIdChanged', handleClientChange)
+  }, [])
+
   const [dashboardEnabled, setDashboardEnabled] = React.useState(() => canAccessDashboard());
 
   // Actualiza dashboardEnabled cuando las permissions se cargan desde el servidor
@@ -1332,6 +1345,18 @@ function DashboardApp() {
       />
 
       <div className="md:ml-64 p-4 md:p-8 transition-all">
+        {showSuspendedBanner && (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-red-500" />
+            <span>
+              Este cliente está <strong>suspendido</strong>
+              {getSubscriptionExpiry()
+                ? ` — venció el ${new Date(getSubscriptionExpiry()!).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}`
+                : ''}
+              . Los usuarios sin rol admin no pueden acceder.
+            </span>
+          </div>
+        )}
         <Suspense
           fallback={
             <div className="flex items-center justify-center py-24">
