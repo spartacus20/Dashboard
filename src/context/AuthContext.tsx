@@ -259,14 +259,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       //   "✅ AuthContext - client_id seleccionado guardado en localStorage y sessionStorage",
       // );
 
-      // Actualizar estado de suscripción para el nuevo cliente (en paralelo)
-      updateClientSubscriptionStatus(newClientId).catch(() => {})
-
-      // Obtener la nueva API key y configuración para el nuevo client_id
-      // console.log(
-      //   "🔄 AuthContext - Obteniendo API key para nuevo client_id...",
-      // );
-      const result = await getClientApiKey(newClientId);
+      // Actualizar estado de suscripción y API key en paralelo,
+      // esperar ambas antes de disparar clientIdChanged
+      const [, result] = await Promise.all([
+        updateClientSubscriptionStatus(newClientId).catch(() => {}),
+        getClientApiKey(newClientId),
+      ]);
       // console.log("📋 AuthContext - Resultado de getClientApiKey:", {
       //   hasApiKey: !!result.apiKey,
       //   hasApiKeyTest: !!result.apiKeyTest,
