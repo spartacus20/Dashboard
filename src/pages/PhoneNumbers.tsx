@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Phone, Copy, RefreshCw, ExternalLink, X, Send, Plus, ChevronDown, User, Trash2, AlertTriangle, Search, BarChart3, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Phone, Copy, RefreshCw, ExternalLink, X, Send, Plus, ChevronDown, User, Trash2, AlertTriangle, Search, BarChart3, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
 import { RetellPhoneNumber, RetellAgent, BlockedNumber } from '../types';
 import { createPhoneCall, fetchAgents, importPhoneNumber, deletePhoneNumber, fetchFolders, getCallCountsByFromNumber, listBlockedNumbers, createBlockedNumber, updateBlockedNumber, deleteBlockedNumber } from '../api';
-import { fetchPhoneNumbers } from '../services/api/telephony';
+import { fetchPhoneNumbers, updatePhoneNumber } from '../services/api/telephony';
 import { useCallsContext } from '../context/CallsContext';
 import { getUserData } from '../lib/supabase';
 import { PHONES_PAGE_SIZE as PHONES_PER_PAGE, DEFAULT_TERMINATION_URIS } from '../lib/constants';
@@ -929,6 +929,274 @@ function DeletePhoneModal({ phoneNumber, onClose, onSuccess, apiKey }: DeletePho
   );
 }
 
+// Modal para editar un número de teléfono
+interface EditPhoneModalProps {
+  phoneNumber: RetellPhoneNumber;
+  onClose: () => void;
+  onSuccess: () => void;
+  apiKey: string | null;
+}
+
+function EditPhoneModal({ phoneNumber, onClose, onSuccess, apiKey }: EditPhoneModalProps) {
+  const effectiveApiKey = phoneNumber.workspace_api_key || apiKey;
+
+  // General
+  const [nickname, setNickname] = useState(phoneNumber.nickname || '');
+  const [fallbackNumber, setFallbackNumber] = useState('');
+
+  // Webhooks
+  const [inboundWebhookUrl, setInboundWebhookUrl] = useState(phoneNumber.inbound_webhook_url || '');
+  const [inboundSmsWebhookUrl, setInboundSmsWebhookUrl] = useState('');
+
+  // Agents
+  const [agents, setAgents] = useState<RetellAgent[]>([]);
+  const [loadingAgents, setLoadingAgents] = useState(false);
+  const currentInboundAgentId = phoneNumber.inbound_agents?.[0]?.agent_id ?? phoneNumber.inbound_agent_id ?? '';
+  const currentOutboundAgentId = phoneNumber.outbound_agents?.[0]?.agent_id ?? phoneNumber.outbound_agent_id ?? '';
+  const [inboundAgentId, setInboundAgentId] = useState(currentInboundAgentId);
+  const [outboundAgentId, setOutboundAgentId] = useState(currentOutboundAgentId);
+
+  // SIP / Trunk
+  const [terminationUri, setTerminationUri] = useState('');
+  const [authUsername, setAuthUsername] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [transport, setTransport] = useState('');
+
+  // Countries (comma-separated)
+  const [allowedInboundCountries, setAllowedInboundCountries] = useState('');
+  const [allowedOutboundCountries, setAllowedOutboundCountries] = useState('');
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!effectiveApiKey) return;
+    setLoadingAgents(true);
+    fetchAgents(effectiveApiKey)
+      .then(setAgents)
+      .catch(() => {})
+      .finally(() => setLoadingAgents(false));
+  }, [effectiveApiKey]);
+
+  const parseCountries = (raw: string): string[] | null => {
+    const list = raw.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+    return list.length > 0 ? list : null;
+  };
+
+  const handleSave = async () => {
+    if (!effectiveApiKey) {
+      setError('API key no configurada para este workspace');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const payload: Parameters<typeof updatePhoneNumber>[2] = {};
+
+      payload.nickname = nickname.trim() || null;
+      payload.inbound_webhook_url = inboundWebhookUrl.trim() || null;
+      if (inboundSmsWebhookUrl.trim()) payload.inbound_sms_webhook_url = inboundSmsWebhookUrl.trim();
+      if (fallbackNumber.trim()) payload.fallback_number = fallbackNumber.trim();
+      if (terminationUri.trim()) payload.termination_uri = terminationUri.trim();
+      if (authUsername.trim()) payload.auth_username = authUsername.trim();
+      if (authPassword.trim()) payload.auth_password = authPassword.trim();
+      if (transport) payload.transport = transport;
+
+      payload.inbound_agents = inboundAgentId ? [{ agent_id: inboundAgentId, weight: 1 }] : null;
+      payload.outbound_agents = outboundAgentId ? [{ agent_id: outboundAgentId, weight: 1 }] : null;
+
+      const inboundCountries = parseCountries(allowedInboundCountries);
+      if (inboundCountries !== null) payload.allowed_inbound_country_list = inboundCountries;
+      const outboundCountries = parseCountries(allowedOutboundCountries);
+      if (outboundCountries !== null) payload.allowed_outbound_country_list = outboundCountries;
+
+      await updatePhoneNumber(effectiveApiKey, phoneNumber.phone_number, payload);
+      toast.success('Número actualizado correctamente');
+      onSuccess();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al actualizar el número');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const inputClass = 'w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500';
+  const labelClass = 'block text-sm font-medium text-slate-700 mb-1';
+  const sectionClass = 'text-xs font-bold text-slate-400 uppercase tracking-wider mb-3';
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-2xl flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="flex justify-between items-center border-b border-slate-200 p-4 bg-gradient-to-r from-amber-50 to-orange-50 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <Pencil className="w-5 h-5 text-amber-600" />
+            <div>
+              <h3 className="text-lg font-medium text-slate-800">Editar número</h3>
+              <p className="text-sm text-slate-500">{phoneNumber.phone_number_pretty || phoneNumber.phone_number}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-slate-200 rounded-full transition-colors">
+            <X className="w-5 h-5 text-slate-500 hover:text-slate-700" />
+          </button>
+        </div>
+
+        {/* Scrollable body */}
+        <div className="overflow-y-auto flex-1 p-5 space-y-6">
+
+          {/* General */}
+          <div>
+            <p className={sectionClass}>General</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className={labelClass}>Nickname</label>
+                <input type="text" value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="Ej: Número principal" className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Número de fallback</label>
+                <input type="text" value={fallbackNumber} onChange={(e) => setFallbackNumber(e.target.value)} placeholder="+14155551234" className={inputClass} />
+              </div>
+            </div>
+          </div>
+
+          {/* Webhooks */}
+          <div>
+            <p className={sectionClass}>Webhooks</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className={labelClass}>Webhook de entrada (voz)</label>
+                <input type="text" value={inboundWebhookUrl} onChange={(e) => setInboundWebhookUrl(e.target.value)} placeholder="https://..." className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Webhook de entrada (SMS)</label>
+                <input type="text" value={inboundSmsWebhookUrl} onChange={(e) => setInboundSmsWebhookUrl(e.target.value)} placeholder="https://..." className={inputClass} />
+              </div>
+            </div>
+          </div>
+
+          {/* Agentes */}
+          <div>
+            <p className={sectionClass}>Agentes</p>
+            {loadingAgents ? (
+              <p className="text-sm text-slate-400">Cargando agentes...</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className={labelClass}>Agente de entrada</label>
+                  <select value={inboundAgentId} onChange={(e) => setInboundAgentId(e.target.value)} className={inputClass}>
+                    <option value="">Sin agente</option>
+                    {agents.map(a => (
+                      <option key={a.agent_id} value={a.agent_id}>{a.agent_name}</option>
+                    ))}
+                  </select>
+                  {(phoneNumber.inbound_agents?.length ?? 0) > 1 && (
+                    <p className="text-xs text-amber-600 mt-1">Actualmente tiene {phoneNumber.inbound_agents!.length} agentes con pesos. Al guardar se reemplazarán por el seleccionado.</p>
+                  )}
+                </div>
+                <div>
+                  <label className={labelClass}>Agente de salida</label>
+                  <select value={outboundAgentId} onChange={(e) => setOutboundAgentId(e.target.value)} className={inputClass}>
+                    <option value="">Sin agente</option>
+                    {agents.map(a => (
+                      <option key={a.agent_id} value={a.agent_id}>{a.agent_name}</option>
+                    ))}
+                  </select>
+                  {(phoneNumber.outbound_agents?.length ?? 0) > 1 && (
+                    <p className="text-xs text-amber-600 mt-1">Actualmente tiene {phoneNumber.outbound_agents!.length} agentes con pesos. Al guardar se reemplazarán por el seleccionado.</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* SIP / Troncal */}
+          <div>
+            <p className={sectionClass}>SIP / Troncal</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <label className={labelClass}>Termination URI</label>
+                <input type="text" value={terminationUri} onChange={(e) => setTerminationUri(e.target.value)} placeholder="someuri.pstn.twilio.com" className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Usuario autenticación</label>
+                <input type="text" value={authUsername} onChange={(e) => setAuthUsername(e.target.value)} placeholder="username" className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Contraseña autenticación</label>
+                <input type="password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} placeholder="••••••••" className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Protocolo de transporte</label>
+                <select value={transport} onChange={(e) => setTransport(e.target.value)} className={inputClass}>
+                  <option value="">Sin cambio</option>
+                  <option value="TCP">TCP</option>
+                  <option value="TLS">TLS</option>
+                  <option value="UDP">UDP</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Países permitidos */}
+          <div>
+            <p className={sectionClass}>Países permitidos</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className={labelClass}>Entrantes (ISO 3166-1)</label>
+                <input type="text" value={allowedInboundCountries} onChange={(e) => setAllowedInboundCountries(e.target.value)} placeholder="US, CA, GB" className={inputClass} />
+                <p className="text-xs text-slate-400 mt-1">Separar por coma. Vacío = todos.</p>
+              </div>
+              <div>
+                <label className={labelClass}>Salientes (ISO 3166-1)</label>
+                <input type="text" value={allowedOutboundCountries} onChange={(e) => setAllowedOutboundCountries(e.target.value)} placeholder="US, CA" className={inputClass} />
+                <p className="text-xs text-slate-400 mt-1">Separar por coma. Vacío = todos.</p>
+              </div>
+            </div>
+          </div>
+
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+              {error}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-2 p-4 border-t border-slate-200 flex-shrink-0">
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors disabled:opacity-60"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={loading}
+            className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 flex items-center gap-2 transition-colors disabled:opacity-60"
+          >
+            {loading ? (
+              <>
+                <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Guardando...
+              </>
+            ) : (
+              <>
+                <Pencil className="h-4 w-4" />
+                Guardar
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Modal para eliminar varios números: filtros por workspace y búsqueda, selección con checkboxes, elimina uno a uno
 interface DeleteMultiplePhoneModalProps {
   phoneNumbers: RetellPhoneNumber[];
@@ -1147,6 +1415,8 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
   const [showDeletePhoneModal, setShowDeletePhoneModal] = useState(false);
   const [showDeleteMultipleModal, setShowDeleteMultipleModal] = useState(false);
   const [phoneToDelete, setPhoneToDelete] = useState<RetellPhoneNumber | null>(null);
+  const [showEditPhoneModal, setShowEditPhoneModal] = useState(false);
+  const [phoneToEdit, setPhoneToEdit] = useState<RetellPhoneNumber | null>(null);
   const [phoneSearchTerm, setPhoneSearchTerm] = useState('');
   const [workspaceFoldersByApiKey, setWorkspaceFoldersByApiKey] = useState<Record<string, string>>({});
   const [callCountsByPhone, setCallCountsByPhone] = useState<Record<string, { total: number; efectivas: number; fallidas: number }>>({});
@@ -1728,6 +1998,17 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
                     <button
                       type="button"
                       onClick={() => {
+                        setPhoneToEdit(phone);
+                        setShowEditPhoneModal(true);
+                      }}
+                      className="flex items-center gap-2 bg-amber-100 text-amber-600 hover:bg-amber-600 hover:text-white px-4 py-2 rounded-lg font-semibold text-sm transition-all"
+                    >
+                      <Pencil className="w-5 h-5" />
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
                         setPhoneToDelete(phone);
                         setShowDeletePhoneModal(true);
                       }}
@@ -2123,6 +2404,19 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
           onClose={() => setShowAddPhoneModal(false)}
           onSuccess={() => selectedWorkspaceKey && loadLocalPhoneNumbers(selectedWorkspaceKey)}
           workspaceOptions={workspaceOptions}
+        />
+      )}
+
+      {/* Modal para editar número de teléfono */}
+      {showEditPhoneModal && phoneToEdit && (
+        <EditPhoneModal
+          phoneNumber={phoneToEdit}
+          onClose={() => {
+            setPhoneToEdit(null);
+            setShowEditPhoneModal(false);
+          }}
+          onSuccess={() => selectedWorkspaceKey && loadLocalPhoneNumbers(selectedWorkspaceKey)}
+          apiKey={apiKey}
         />
       )}
 

@@ -7,6 +7,7 @@ import {
   selected_client_id,
   clearSessionData,
   setClientId,
+  updateClientSubscriptionStatus,
 } from "../lib/supabase";
 import { getClientApiKey } from "../api";
 
@@ -102,11 +103,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // Para SIGNED_IN y TOKEN_REFRESHED levantamos loading=true ANTES del primer
+      // await y ANTES de setUser, para que React agrupe los tres en un solo render
+      // (spinner). Así ProtectedRoute nunca ve user=set con clientActive vacío.
+      if (
+        (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") &&
+        session?.user?.email
+      ) {
+        setLoading(true);
+      }
+
       setSession(session);
       setUser(session?.user ?? null);
-      setLoading(false);
 
-      // Si hay una nueva sesión (login exitoso o sesión restaurada), obtener el client_id
       if (
         (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") &&
         session?.user?.email
@@ -117,7 +126,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           // console.warn('No se pudo obtener el client_id de get-client:', err)
         }
 
-        // Establecer filtro por defecto del dashboard a "today" solo en nuevo login
         if (event === "SIGNED_IN") {
           try {
             localStorage.setItem("dashboard_time_period", "today");
@@ -125,10 +133,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
       }
 
-      // Si se cerró sesión, limpiar datos
       if (event === "SIGNED_OUT") {
         clearSessionData();
       }
+
+      // Siempre al final: en este punto clientActive ya está en sessionStorage
+      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
@@ -249,11 +259,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       //   "✅ AuthContext - client_id seleccionado guardado en localStorage y sessionStorage",
       // );
 
-      // Obtener la nueva API key y configuración para el nuevo client_id
-      // console.log(
-      //   "🔄 AuthContext - Obteniendo API key para nuevo client_id...",
-      // );
-      const result = await getClientApiKey(newClientId);
+      // Actualizar estado de suscripción y API key en paralelo,
+      // esperar ambas antes de disparar clientIdChanged
+      const [, result] = await Promise.all([
+        updateClientSubscriptionStatus(newClientId).catch(() => {}),
+        getClientApiKey(newClientId),
+      ]);
       // console.log("📋 AuthContext - Resultado de getClientApiKey:", {
       //   hasApiKey: !!result.apiKey,
       //   hasApiKeyTest: !!result.apiKeyTest,
