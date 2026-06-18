@@ -99,20 +99,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     getInitialSession();
 
-    // Escuchar cambios en la autenticación
+    // Escuchar cambios en la autenticación.
+    // IMPORTANTE: nunca tocamos `loading` aquí. El loading solo existe durante
+    // getInitialSession (primera carga). Cualquier evento posterior (SIGNED_IN por
+    // renovación de sesión, TOKEN_REFRESHED, etc.) se maneja en silencio para no
+    // desmontar el dashboard ni cerrar modales abiertos.
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // Para SIGNED_IN y TOKEN_REFRESHED levantamos loading=true ANTES del primer
-      // await y ANTES de setUser, para que React agrupe los tres en un solo render
-      // (spinner). Así ProtectedRoute nunca ve user=set con clientActive vacío.
-      if (
-        (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") &&
-        session?.user?.email
-      ) {
-        setLoading(true);
-      }
-
       setSession(session);
       setUser(session?.user ?? null);
 
@@ -120,10 +114,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") &&
         session?.user?.email
       ) {
+        // Actualizar datos del cliente en background (sin spinner)
         try {
           await getClientId(session.user.email);
-        } catch (err) {
-          // console.warn('No se pudo obtener el client_id de get-client:', err)
+        } catch {
+          // silencioso
         }
 
         if (event === "SIGNED_IN") {
@@ -131,14 +126,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             localStorage.setItem("dashboard_time_period", "today");
           } catch {}
         }
+        return;
       }
 
       if (event === "SIGNED_OUT") {
         clearSessionData();
       }
-
-      // Siempre al final: en este punto clientActive ya está en sessionStorage
-      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
