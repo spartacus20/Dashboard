@@ -519,238 +519,209 @@ export function Sidebar({
 
         <nav className="space-y-2 flex-1 min-h-0 overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#1e4a8a] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#2e5fa0]">
           <button
-            onClick={() => {
-              navigateWithParams("dashboard");
-            }}
-            className={`flex w-full items-center gap-2 px-4 py-2 ${
+            onClick={() => { navigateWithParams("dashboard"); }}
+            className={`group flex w-full items-center gap-2 px-4 py-2 ${
               currentPage === "dashboard"
                 ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
                 : "text-gray-300 hover:bg-[#0a2a5a]"
             } rounded-lg`}
           >
-            <BarChart3 className="w-5 h-5" />
+            <BarChart3 className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
             Dashboard
           </button>
           {recoveriesEnabled && (
             <button
-              onClick={() => {
-                navigateWithParams("recoveries");
-              }}
-              className={`flex w-full items-center gap-2 px-4 py-2 ${
+              onClick={() => { navigateWithParams("recoveries"); }}
+              className={`group flex w-full items-center gap-2 px-4 py-2 ${
                 currentPage === "recoveries"
                   ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
                   : "text-gray-300 hover:bg-[#0a2a5a]"
               } rounded-lg`}
             >
-              <RotateCcw className="w-5 h-5" />
+              <RotateCcw className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
               Recobros
             </button>
           )}
           {hydroEnabled && (
             <button
-              onClick={() => {
-                navigateWithParams("interesados");
-              }}
-              className={`flex w-full items-center gap-2 px-4 py-2 ${
+              onClick={() => { navigateWithParams("interesados"); }}
+              className={`group flex w-full items-center gap-2 px-4 py-2 ${
                 currentPage === "interesados"
                   ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
                   : "text-gray-300 hover:bg-[#0a2a5a]"
               } rounded-lg`}
             >
-              <Users className="w-5 h-5" />
+              <Users className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
               Interesados
             </button>
           )}
           {canAccessAgenda && (
             <button
-              onClick={() => {
-                navigateWithParams("agendas");
-              }}
-              className={`flex w-full items-center gap-2 px-4 py-2 ${
+              onClick={() => { navigateWithParams("agendas"); }}
+              className={`group flex w-full items-center gap-2 px-4 py-2 ${
                 currentPage === "agendas"
                   ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
                   : "text-gray-300 hover:bg-[#0a2a5a]"
               } rounded-lg`}
             >
-              <Calendar className="w-5 h-5" />
+              <Calendar className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
               Agendas
             </button>
           )}
           {canAccessRecords && (
             <button
-              onClick={() => {
-                navigateWithParams("recordings");
-              }}
-              className={`flex w-full items-center gap-2 px-4 py-2 ${
+              onClick={() => { navigateWithParams("recordings"); }}
+              className={`group flex w-full items-center gap-2 px-4 py-2 ${
                 currentPage === "recordings"
                   ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
                   : "text-gray-300 hover:bg-[#0a2a5a]"
               } rounded-lg`}
             >
-              <Mic className="w-5 h-5" />
+              <Mic className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
               Grabaciones
             </button>
           )}
           {canAccessNumTel && (
             <button
-              onClick={() => {
-                navigateWithParams("phones");
-              }}
-              className={`flex w-full items-center gap-2 px-4 py-2 ${
+              onClick={() => { navigateWithParams("phones"); }}
+              className={`group flex w-full items-center gap-2 px-4 py-2 ${
                 currentPage === "phones"
                   ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
                   : "text-gray-300 hover:bg-[#0a2a5a]"
               } rounded-lg`}
+              title="Números de Teléfono"
             >
-              <Phone className="w-5 h-5" />
-              Números de Teléfono
+              <Phone className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
+              <span className="truncate">Números de Teléfono</span>
             </button>
           )}
           {canAccessCallbacks && (
             <button
-              onClick={() => {
-                navigateWithParams("callbacks");
-              }}
-              className={`flex w-full items-center gap-2 px-4 py-2 ${
+              onClick={() => { navigateWithParams("callbacks"); }}
+              className={`group flex w-full items-center gap-2 px-4 py-2 ${
                 currentPage === "callbacks"
                   ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
                   : "text-gray-300 hover:bg-[#0a2a5a]"
               } rounded-lg`}
             >
-              <PhoneCall className="w-5 h-5" />
+              <PhoneCall className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
               Callbacks
             </button>
           )}
           {showBatchCall && (
             <button
-              onClick={() => {
-                navigateWithParams("batch-call");
-              }}
-              className={`flex w-full items-center gap-2 px-4 py-2 ${
+              onClick={() => { navigateWithParams("batch-call"); }}
+              className={`group flex w-full items-center gap-2 px-4 py-2 ${
                 currentPage === "batch-call"
                   ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
                   : "text-gray-300 hover:bg-[#0a2a5a]"
               } rounded-lg`}
             >
-              <PhoneOutgoing className="w-5 h-5" />
+              <PhoneOutgoing className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
               Llamadas en Lote
             </button>
           )}
           {canAccessCampaign && (
             <button
-              onClick={() => {
-                navigateWithParams("campaign");
-              }}
-              className={`flex w-full items-center gap-2 px-4 py-2 ${
+              onClick={() => { navigateWithParams("campaign"); }}
+              className={`group flex w-full items-center gap-2 px-4 py-2 ${
                 currentPage === "campaign"
                   ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
                   : "text-gray-300 hover:bg-[#0a2a5a]"
               } rounded-lg`}
             >
-              <Megaphone className="w-5 h-5" />
+              <Megaphone className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
               Campaña
             </button>
           )}
           {canAccessSales && (
             <button
-              onClick={() => {
-                navigateWithParams("ventas");
-              }}
-              className={`flex w-full items-center gap-2 px-4 py-2 ${
+              onClick={() => { navigateWithParams("ventas"); }}
+              className={`group flex w-full items-center gap-2 px-4 py-2 ${
                 currentPage === "ventas"
                   ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
                   : "text-gray-300 hover:bg-[#0a2a5a]"
               } rounded-lg`}
             >
-              <TrendingUp className="w-5 h-5" />
+              <TrendingUp className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
               Ventas
             </button>
           )}
           {canAccessLaunch && (
             <button
-              onClick={() => {
-                navigateWithParams("lanzamiento");
-              }}
-              className={`flex w-full items-center gap-2 px-4 py-2 ${
+              onClick={() => { navigateWithParams("lanzamiento"); }}
+              className={`group flex w-full items-center gap-2 px-4 py-2 ${
                 currentPage === "lanzamiento"
                   ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
                   : "text-gray-300 hover:bg-[#0a2a5a]"
               } rounded-lg`}
             >
-              <Rocket className="w-5 h-5" />
+              <Rocket className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
               Lanzamiento
             </button>
           )}
           {canAccessDontCall && (
             <button
-              onClick={() => {
-                navigateWithParams("no-llamar");
-              }}
-              className={`flex w-full items-center gap-2 px-4 py-2 ${
+              onClick={() => { navigateWithParams("no-llamar"); }}
+              className={`group flex w-full items-center gap-2 px-4 py-2 ${
                 currentPage === "no-llamar"
                   ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
                   : "text-gray-300 hover:bg-[#0a2a5a]"
               } rounded-lg`}
             >
-              <PhoneOff className="w-5 h-5" />
+              <PhoneOff className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
               No Llamar
             </button>
           )}
           {ticketsEnabled && (
             <button
-              onClick={() => {
-                navigateWithParams("tickets");
-              }}
-              className={`flex w-full items-center gap-2 px-4 py-2 ${
+              onClick={() => { navigateWithParams("tickets"); }}
+              className={`group flex w-full items-center gap-2 px-4 py-2 ${
                 currentPage === "tickets"
                   ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
                   : "text-gray-300 hover:bg-[#0a2a5a]"
               } rounded-lg`}
             >
-              <ClipboardList className="w-5 h-5" />
+              <ClipboardList className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
               Tickets
             </button>
           )}
           {seguimientosEnabled && (
             <button
               onClick={() => navigateWithParams("seguimientos")}
-              className={`flex w-full items-center gap-2 px-4 py-2 ${
+              className={`group flex w-full items-center gap-2 px-4 py-2 ${
                 currentPage === "seguimientos"
                   ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
                   : "text-gray-300 hover:bg-[#0a2a5a]"
               } rounded-lg`}
             >
-              <PhoneForwarded className="w-5 h-5" />
+              <PhoneForwarded className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
               Seguimientos
             </button>
           )}
           {assistantIAEnabled && (
             <button
-              onClick={() => {
-                navigateWithParams("soporte-ia");
-              }}
-              className={`flex w-full items-center gap-2 px-4 py-2 ${
+              onClick={() => { navigateWithParams("soporte-ia"); }}
+              className={`group flex w-full items-center gap-2 px-4 py-2 ${
                 currentPage === "soporte-ia"
                   ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
                   : "text-gray-300 hover:bg-[#0a2a5a]"
               } rounded-lg`}
             >
-              <BotMessageSquare className="w-5 h-5" />
+              <BotMessageSquare className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
               Soporte IA
             </button>
           )}
           {budgetEnabled && (
             <button
-              onClick={() => {
-                navigateWithParams("presupuesto");
-              }}
-              className={`flex w-full items-center gap-2 px-4 py-2 ${
+              onClick={() => { navigateWithParams("presupuesto"); }}
+              className={`group flex w-full items-center gap-2 px-4 py-2 ${
                 currentPage === "presupuesto"
                   ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
                   : "text-gray-300 hover:bg-[#0a2a5a]"
               } rounded-lg`}
             >
-              <Wallet className="w-5 h-5" />
+              <Wallet className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
               Presupuesto
             </button>
           )}
@@ -767,9 +738,9 @@ export function Sidebar({
 
           <button
             onClick={handleSignOut}
-            className="flex w-full items-center gap-2 px-4 py-2 text-gray-300 hover:bg-red-600 hover:text-white rounded-lg transition-colors"
+            className="group flex w-full items-center gap-2 px-4 py-2 text-gray-300 hover:bg-red-600 hover:text-white rounded-lg transition-colors"
           >
-            <LogOut className="w-5 h-5" />
+            <LogOut className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
             Cerrar Sesión
           </button>
         </div>
