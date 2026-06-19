@@ -1,54 +1,36 @@
 import { RetellAgent, CallsByPhoneResponse, RetellFolder } from '../../types';
 import { getClientId, BASE_URL, ASISTENCIA_FUNNEL_URL, GET_CALL_TRANSCRIPT_URL } from './config';
 
-
-
-
-export async function fetchFolders(apiKey: string): Promise<RetellFolder[]> {
-  const response = await fetch('https://api.retellai.com/get-folders', {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-  });
+// Obtiene las carpetas (folders) de un workspace específico via backend proxy.
+// El resultado sirve para determinar el nombre del workspace.
+export async function fetchFolders(clientId: string, workspaceIndex = 0): Promise<RetellFolder[]> {
+  const response = await fetch(
+    `${BASE_URL}/api/telephony/${encodeURIComponent(clientId)}/workspaces`
+  );
 
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`Error al obtener folders: ${response.status} ${response.statusText} - ${errorText}`);
   }
 
-  const data = await response.json();
-  if (!Array.isArray(data)) {
-    throw new Error('Formato de respuesta inesperado al obtener folders');
-  }
-
-  return data;
+  const result = await response.json();
+  const workspaces: { index: number; name: string; folders: RetellFolder[] }[] = result.data || [];
+  const workspace = workspaces.find((w) => w.index === workspaceIndex);
+  return workspace?.folders ?? [];
 }
 
-
-
-export async function fetchAgents(apiKey: string): Promise<RetellAgent[]> {
-  const response = await fetch('https://api.retellai.com/list-agents', {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    }
-  });
+// Obtiene los agentes de un workspace específico via backend proxy.
+export async function fetchAgents(clientId: string, workspaceIndex = 0): Promise<RetellAgent[]> {
+  const response = await fetch(
+    `${BASE_URL}/api/telephony/${encodeURIComponent(clientId)}/agents?workspace_index=${workspaceIndex}`
+  );
 
   if (!response.ok) {
     throw new Error(`Error al obtener agentes: ${response.status} ${response.statusText}`);
   }
 
-  const data = await response.json();
-  
-  // La respuesta debería ser un array de agentes
-  if (!Array.isArray(data)) {
-    throw new Error('Formato de respuesta inesperado');
-  }
-  
-  return data;
+  const result = await response.json();
+  return result.data ?? [];
 }
 
 

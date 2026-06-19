@@ -91,7 +91,7 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
           setWorkspaceFoldersByApiKey(prev => ({ ...prev, [key]: cached }));
           return;
         }
-        const folders = await fetchFolders(key);
+        const folders = await fetchFolders(clientId ?? '', apiKeysToUse.indexOf(key));
         if (!folders || folders.length === 0) return;
         const name = resolveFolderName(folders);
         await setCachedFolderName(key, name);

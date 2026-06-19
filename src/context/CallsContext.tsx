@@ -673,12 +673,9 @@ export function CallsProvider({ children }: CallsProviderProps) {
       return;
     }
     
-    // Determinar qué API keys usar: apiKeyTest si está disponible, sino apiKey
-    const apiKeysToUse = apiKeyTest && apiKeyTest.length > 0 ? apiKeyTest : (apiKey ? [apiKey] : null);
-    
-    // Esperar a que tengamos al menos una API key
-    if (!apiKeysToUse || apiKeysToUse.length === 0) {
-      // console.log('Esperando API key para cargar números de teléfono...');
+    // Esperar a que tengamos clientId disponible
+    if (!clientId) {
+      // console.log('Esperando clientId para cargar números de teléfono...');
       return;
     }
     
@@ -703,9 +700,7 @@ export function CallsProvider({ children }: CallsProviderProps) {
     setLoadingPhoneNumbers(true);
     
     try {
-      // console.log(`Cargando números de teléfono desde ${apiKeysToUse.length} API key(s)`);
-      // fetchPhoneNumbers ahora acepta un array de API keys
-      const numbers = await fetchPhoneNumbers(apiKeysToUse.length > 1 ? apiKeysToUse : apiKeysToUse[0]);
+      const numbers = await fetchPhoneNumbers(clientId);
       
       setPhoneNumbers(numbers);
       setPhoneNumbersLoaded(true);

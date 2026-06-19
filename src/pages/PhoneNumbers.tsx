@@ -1,12 +1,12 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Phone, Copy, RefreshCw, ExternalLink, X, Send, Plus, ChevronDown, User, Trash2, AlertTriangle, Search, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
 import { RetellPhoneNumber, RetellAgent, BlockedNumber } from '../types';
-import { createPhoneCall, fetchAgents, importPhoneNumber, deletePhoneNumber, fetchFolders, getCallCountForNumber, listBlockedNumbers, createBlockedNumber, updateBlockedNumber, deleteBlockedNumber } from '../api';
-import { fetchPhoneNumbers, updatePhoneNumber } from '../services/api/telephony';
+import { fetchAgents, getCallCountForNumber, listBlockedNumbers, createBlockedNumber, updateBlockedNumber, deleteBlockedNumber } from '../api';
+import { fetchPhoneNumbers, updatePhoneNumber, createPhoneCall, importPhoneNumber, deletePhoneNumber } from '../services/api/telephony';
+import { getClientId, BASE_URL } from '../services/api/config';
 import { useCallsContext } from '../context/CallsContext';
 import { getUserData } from '../lib/supabase';
 import { PHONES_PAGE_SIZE as PHONES_PER_PAGE, DEFAULT_TERMINATION_URIS } from '../lib/constants';
-import { getCachedFolderName, setCachedFolderName } from '../lib/folderNameCache';
 import { toast } from 'sonner';
 
 interface PhoneNumbersProps {
@@ -17,11 +17,12 @@ interface PhoneNumbersProps {
 interface CallModalProps {
   phoneNumber: RetellPhoneNumber;
   onClose: () => void;
-  apiKey: string | null;
+  workspaceIndex: number;
 }
 
 // Componente para el modal de llamada
-function CallModal({ phoneNumber, onClose, apiKey }: CallModalProps) {
+function CallModal({ phoneNumber, onClose, workspaceIndex }: CallModalProps) {
+  const clientId = getClientId() ?? '';
   const [toNumber, setToNumber] = useState('');
   const [overrideAgentId, setOverrideAgentId] = useState('');
   const [loading, setLoading] = useState(false);
@@ -39,8 +40,8 @@ function CallModal({ phoneNumber, onClose, apiKey }: CallModalProps) {
   // Cargar los agentes al abrir el modal
   useEffect(() => {
     const loadAgents = async () => {
-      if (!apiKey) {
-        setAgentsError('API key no configurada');
+      if (!clientId) {
+        setAgentsError('client_id no disponible');
         return;
       }
 
@@ -48,7 +49,7 @@ function CallModal({ phoneNumber, onClose, apiKey }: CallModalProps) {
       setAgentsError(null);
 
       try {
-        const agentsData = await fetchAgents(apiKey);
+        const agentsData = await fetchAgents(clientId, workspaceIndex);
         setAgents(agentsData);
         
         // Si hay un agente asignado al número, seleccionarlo por defecto
@@ -69,7 +70,7 @@ function CallModal({ phoneNumber, onClose, apiKey }: CallModalProps) {
     };
 
     loadAgents();
-  }, [apiKey, phoneNumber.inbound_agents, phoneNumber.inbound_agent_id]);
+    }, [clientId, workspaceIndex, phoneNumber.inbound_agents, phoneNumber.inbound_agent_id]);
 
   // Función para añadir un nuevo par de variable dinámica
   const addDynamicVariable = () => {
@@ -112,8 +113,8 @@ function CallModal({ phoneNumber, onClose, apiKey }: CallModalProps) {
 
   // Función para iniciar la llamada
   const handleCreateCall = async () => {
-    if (!apiKey) {
-      setError('API key no configurada');
+    if (!clientId) {
+      setError('client_id no disponible');
       return;
     }
 
@@ -142,7 +143,7 @@ function CallModal({ phoneNumber, onClose, apiKey }: CallModalProps) {
         ...(Object.keys(dynamicVars).length > 0 && { retell_llm_dynamic_variables: dynamicVars })
       };
 
-      const result = await createPhoneCall(apiKey, params);
+      const result = await createPhoneCall(clientId, params, workspaceIndex);
       setSuccess(`Llamada iniciada con éxito. ID: ${result.call_id || 'N/A'}`);
     } catch (err) {
       // console.error('Error al crear la llamada:', err);
@@ -346,12 +347,12 @@ function CallModal({ phoneNumber, onClose, apiKey }: CallModalProps) {
 interface AddPhoneModalProps {
   onClose: () => void;
   onSuccess: () => void;
-  workspaceOptions: { label: string; key: string }[];
+  workspaceOptions: { label: string; index: number }[];
 }
 
 // Componente para el modal de añadir número de teléfono
 function AddPhoneModal({ onClose, onSuccess, workspaceOptions }: AddPhoneModalProps) {
-  const { apiKey, apiKeyTest, clientId, phoneNumbers: contextPhoneNumbers } = useCallsContext();
+  const clientId = getClientId() ?? '';
   const [phoneNumber, setPhoneNumber] = useState('');
   const [nickname, setNickname] = useState('');
   const [terminationUri, setTerminationUri] = useState('');
@@ -359,7 +360,7 @@ function AddPhoneModal({ onClose, onSuccess, workspaceOptions }: AddPhoneModalPr
   const [sipUsername, setSipUsername] = useState('');
   const [sipPassword, setSipPassword] = useState('');
   const [transport, setTransport] = useState<'TCP' | 'UDP' | 'TLS'>('TCP');
-  const [selectedWorkspaceApiKey, setSelectedWorkspaceApiKey] = useState<string | null>(null);
+  const [selectedWorkspaceIndex, setSelectedWorkspaceIndex] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -421,28 +422,20 @@ function AddPhoneModal({ onClose, onSuccess, workspaceOptions }: AddPhoneModalPr
     setTerminationUriOptions(merged);
   }, []);
 
-  // Seleccionar por defecto el primer workspace disponible
-  useEffect(() => {
-    if (!selectedWorkspaceApiKey && workspaceOptions.length > 0) {
-      setSelectedWorkspaceApiKey(workspaceOptions[0].key);
-    }
-  }, [selectedWorkspaceApiKey, workspaceOptions]);
-
   // Cargar agentes cuando se selecciona un workspace
   useEffect(() => {
     const loadAgents = async () => {
-      if (!selectedWorkspaceApiKey) return;
+      if (!clientId) return;
 
       setLoadingAgents(true);
       setAgentsError(null);
 
       try {
-        const agentsData = await fetchAgents(selectedWorkspaceApiKey);
+        const agentsData = await fetchAgents(clientId, selectedWorkspaceIndex);
         setAgents(agentsData);
         setSelectedInboundAgent(null);
         setSelectedOutboundAgent(null);
       } catch (err) {
-        // console.error('Error cargando agentes para workspace:', err);
         setAgentsError(err instanceof Error ? err.message : 'Error al cargar los agentes');
       } finally {
         setLoadingAgents(false);
@@ -450,24 +443,17 @@ function AddPhoneModal({ onClose, onSuccess, workspaceOptions }: AddPhoneModalPr
     };
 
     loadAgents();
-  }, [selectedWorkspaceApiKey]);
+  }, [clientId, selectedWorkspaceIndex]);
 
   // Función para añadir el número de teléfono
   const handleAddPhone = async () => {
-    const effectiveApiKey = selectedWorkspaceApiKey || apiKey;
-
-    if (!effectiveApiKey) {
-      setError('API key no configurada. Selecciona un workspace válido.');
+    if (!clientId) {
+      setError('client_id no disponible');
       return;
     }
 
     if (!phoneNumber.trim()) {
       setError('El número de teléfono es obligatorio');
-      return;
-    }
-
-    if (!selectedWorkspaceApiKey) {
-      setError('Debes seleccionar un workspace');
       return;
     }
 
@@ -512,7 +498,7 @@ function AddPhoneModal({ onClose, onSuccess, workspaceOptions }: AddPhoneModalPr
         phoneData.transport = transport;
       }
 
-      const result = await importPhoneNumber(effectiveApiKey, phoneData);
+      const result = await importPhoneNumber(clientId, phoneData, selectedWorkspaceIndex);
       setSuccess(`Número de teléfono añadido con éxito. ID: ${result.phone_number_id || 'N/A'}`);
       
       // Limpiar el formulario
@@ -560,13 +546,12 @@ function AddPhoneModal({ onClose, onSuccess, workspaceOptions }: AddPhoneModalPr
           <div>
             <label className="block text-slate-600 mb-1">Workspace *</label>
             <select
-              value={selectedWorkspaceApiKey || ''}
-              onChange={(e) => setSelectedWorkspaceApiKey(e.target.value || null)}
+              value={selectedWorkspaceIndex}
+              onChange={(e) => setSelectedWorkspaceIndex(Number(e.target.value))}
               className="w-full p-3 rounded-lg bg-white border border-slate-300 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="">Selecciona un workspace</option>
               {workspaceOptions.map((ws) => (
-                <option key={ws.key} value={ws.key}>
+                <option key={ws.index} value={ws.index}>
                   {ws.label}
                 </option>
               ))}
@@ -821,20 +806,18 @@ interface DeletePhoneModalProps {
   phoneNumber: RetellPhoneNumber;
   onClose: () => void;
   onSuccess: () => void;
-  apiKey: string | null;
 }
 
 // Componente para el modal de confirmación de eliminación
-function DeletePhoneModal({ phoneNumber, onClose, onSuccess, apiKey }: DeletePhoneModalProps) {
+function DeletePhoneModal({ phoneNumber, onClose, onSuccess }: DeletePhoneModalProps) {
+  const clientId = getClientId() ?? '';
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Función para eliminar el número de teléfono
   const handleDeletePhone = async () => {
-    const effectiveApiKey = phoneNumber.workspace_api_key || apiKey;
-
-    if (!effectiveApiKey) {
-      setError('API key no configurada para este workspace');
+    if (!clientId) {
+      setError('client_id no disponible');
       return;
     }
 
@@ -842,7 +825,7 @@ function DeletePhoneModal({ phoneNumber, onClose, onSuccess, apiKey }: DeletePho
     setError(null);
 
     try {
-      await deletePhoneNumber(effectiveApiKey, phoneNumber.phone_number);
+      await deletePhoneNumber(clientId, phoneNumber.phone_number, phoneNumber.workspace_index ?? 0);
       
       toast.success('Número de teléfono eliminado correctamente');
       
@@ -935,11 +918,11 @@ interface EditPhoneModalProps {
   phoneNumber: RetellPhoneNumber;
   onClose: () => void;
   onSuccess: () => void;
-  apiKey: string | null;
 }
 
-function EditPhoneModal({ phoneNumber, onClose, onSuccess, apiKey }: EditPhoneModalProps) {
-  const effectiveApiKey = phoneNumber.workspace_api_key || apiKey;
+function EditPhoneModal({ phoneNumber, onClose, onSuccess }: EditPhoneModalProps) {
+  const clientId = getClientId() ?? '';
+  const workspaceIndex = phoneNumber.workspace_index ?? 0;
 
   // General
   const [nickname, setNickname] = useState(phoneNumber.nickname || '');
@@ -971,13 +954,13 @@ function EditPhoneModal({ phoneNumber, onClose, onSuccess, apiKey }: EditPhoneMo
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!effectiveApiKey) return;
+    if (!clientId) return;
     setLoadingAgents(true);
-    fetchAgents(effectiveApiKey)
+    fetchAgents(clientId, workspaceIndex)
       .then(setAgents)
       .catch(() => {})
       .finally(() => setLoadingAgents(false));
-  }, [effectiveApiKey]);
+  }, [clientId, workspaceIndex]);
 
   const parseCountries = (raw: string): string[] | null => {
     const list = raw.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
@@ -985,8 +968,8 @@ function EditPhoneModal({ phoneNumber, onClose, onSuccess, apiKey }: EditPhoneMo
   };
 
   const handleSave = async () => {
-    if (!effectiveApiKey) {
-      setError('API key no configurada para este workspace');
+    if (!clientId) {
+      setError('client_id no disponible');
       return;
     }
     setLoading(true);
@@ -1011,7 +994,7 @@ function EditPhoneModal({ phoneNumber, onClose, onSuccess, apiKey }: EditPhoneMo
       const outboundCountries = parseCountries(allowedOutboundCountries);
       if (outboundCountries !== null) payload.allowed_outbound_country_list = outboundCountries;
 
-      await updatePhoneNumber(effectiveApiKey, phoneNumber.phone_number, payload);
+      await updatePhoneNumber(clientId, phoneNumber.phone_number, payload, workspaceIndex);
       toast.success('Número actualizado correctamente');
       onSuccess();
       onClose();
@@ -1203,7 +1186,6 @@ interface DeleteMultiplePhoneModalProps {
   phoneNumbers: RetellPhoneNumber[];
   availableWorkspaces: string[];
   getWorkspaceLabel: (phone: RetellPhoneNumber) => string;
-  apiKey: string | null;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -1212,10 +1194,10 @@ function DeleteMultiplePhoneModal({
   phoneNumbers,
   availableWorkspaces,
   getWorkspaceLabel,
-  apiKey,
   onClose,
   onSuccess,
 }: DeleteMultiplePhoneModalProps) {
+  const clientId = getClientId() ?? '';
   const [selectedSet, setSelectedSet] = useState<Set<string>>(new Set());
   const [modalWorkspaceFilter, setModalWorkspaceFilter] = useState<string | null>(null);
   const [modalSearchTerm, setModalSearchTerm] = useState('');
@@ -1268,14 +1250,8 @@ function DeleteMultiplePhoneModal({
     try {
       for (let i = 0; i < selectedPhones.length; i++) {
         const phone = selectedPhones[i];
-        const effectiveApiKey = phone.workspace_api_key || apiKey;
-        if (!effectiveApiKey) {
-          setError(`Sin API key para el número ${phone.phone_number_pretty || phone.phone_number}`);
-          setDeleting(false);
-          return;
-        }
         setProgress({ current: i + 1, total: selectedPhones.length });
-        await deletePhoneNumber(effectiveApiKey, phone.phone_number);
+        await deletePhoneNumber(clientId, phone.phone_number, phone.workspace_index ?? 0);
       }
 
       toast.success(`${selectedPhones.length} número(s) eliminado(s) correctamente`);
@@ -1409,7 +1385,6 @@ function DeleteMultiplePhoneModal({
 }
 
 export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
-  const [error, setError] = useState<string | null>(null);
   const [copiedNumber, setCopiedNumber] = useState<string | null>(null);
   const [selectedPhone, setSelectedPhone] = useState<RetellPhoneNumber | null>(null);
   const [showAddPhoneModal, setShowAddPhoneModal] = useState(false);
@@ -1419,7 +1394,6 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
   const [showEditPhoneModal, setShowEditPhoneModal] = useState(false);
   const [phoneToEdit, setPhoneToEdit] = useState<RetellPhoneNumber | null>(null);
   const [phoneSearchTerm, setPhoneSearchTerm] = useState('');
-  const [workspaceFoldersByApiKey, setWorkspaceFoldersByApiKey] = useState<Record<string, string>>({});
   const [callCountsByPhone, setCallCountsByPhone] = useState<Record<string, { total: number; efectivas: number; fallidas: number } | 'loading' | 'error'>>({});
   const [selectedPhoneDetail, setSelectedPhoneDetail] = useState<RetellPhoneNumber | null>(null);
   const [phoneNumbersTab, setPhoneNumbersTab] = useState<'phones' | 'blocked'>('phones');
@@ -1434,28 +1408,31 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
   const [editBlockedSaving, setEditBlockedSaving] = useState(false);
   const [editBlockedError, setEditBlockedError] = useState<string | null>(null);
 
-  // Usar el contexto para obtener la API key y configuración
+  // Configuración del cliente desde el contexto
   const { 
-    apiKey, 
-    apiKeyTest,
     clientId,
     callsEnabled, 
     phoneFilter 
   } = useCallsContext();
 
-  // Estado local de números de teléfono (carga por workspace seleccionado)
-  const [selectedWorkspaceKey, setSelectedWorkspaceKey] = useState<string | null>(null);
+  // workspace seleccionado por índice (0 = principal, 1+ = adicionales)
+  const [selectedWorkspaceIndex, setSelectedWorkspaceIndex] = useState<number>(0);
   const [localPhoneNumbers, setLocalPhoneNumbers] = useState<RetellPhoneNumber[]>([]);
   const [localLoading, setLocalLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
 
+  // Nombres de workspaces indexados por workspace_index
+  const [workspaceNameByIndex, setWorkspaceNameByIndex] = useState<Record<number, string>>({});
+
   const phoneNumbers = localPhoneNumbers;
   const loading = localLoading;
 
-  const loadLocalPhoneNumbers = useCallback(async (apiKeyToLoad: string) => {
+  // Carga todos los números del cliente (todos los workspaces de una vez via backend)
+  const loadLocalPhoneNumbers = useCallback(async () => {
+    if (!clientId) return;
     setLocalLoading(true);
     try {
-      const numbers = await fetchPhoneNumbers(apiKeyToLoad);
+      const numbers = await fetchPhoneNumbers(clientId);
       setLocalPhoneNumbers(numbers);
       setCurrentPage(1);
     } catch {
@@ -1463,72 +1440,30 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
     } finally {
       setLocalLoading(false);
     }
-  }, []);
+  }, [clientId]);
 
-  // Cargar el primer workspace al montar o cuando cambien las keys
+  // Cargar números al montar o cuando cambie el clientId
   useEffect(() => {
-    const firstKey = (apiKeyTest && apiKeyTest.length > 0 ? apiKeyTest[0] : null) ?? apiKey;
-    if (firstKey) {
-      setSelectedWorkspaceKey(firstKey);
-      loadLocalPhoneNumbers(firstKey);
-    }
+    loadLocalPhoneNumbers();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiKey, apiKeyTest]);
+  }, [clientId]);
 
-  // Cargar nombres de folders POR WORKSPACE en paralelo, PERO solo después de que
-  // los teléfonos del primer workspace ya cargaron. Así evitamos saturar el pool de
-  // conexiones del navegador (máx. 6 por dominio) y los teléfonos se muestran primero.
-  // Los nombres se cachean en localStorage (hash SHA-256 de la key, TTL 24h).
+  // Cargar nombres de workspaces desde el backend una vez que los teléfonos terminaron de cargar
   useEffect(() => {
-    if (localLoading) return; // esperar a que terminen los teléfonos
+    if (localLoading || !clientId) return;
 
-    const apiKeysToUse = apiKeyTest && apiKeyTest.length > 0
-      ? apiKeyTest
-      : apiKey ? [apiKey] : [];
-
-    if (apiKeysToUse.length === 0) return;
-
-    const baseClientId = (clientId || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-
-    const resolveFolderName = (folders: { folderName: string }[]): string => {
-      if (folders.length === 1) return folders[0].folderName;
-      let best = folders[0];
-      let bestScore = -1;
-      for (const folder of folders) {
-        const norm = folder.folderName.toLowerCase().replace(/[^a-z0-9]+/g, '');
-        let score = 0;
-        if (baseClientId && norm.includes(baseClientId)) {
-          score = baseClientId.length;
-        } else if (baseClientId) {
-          const maxLen = Math.min(baseClientId.length, norm.length);
-          while (score < maxLen && baseClientId[score] === norm[score]) score++;
-        }
-        if (score > bestScore) { bestScore = score; best = folder; }
-      }
-      return best.folderName;
-    };
-
-    // Cache first: si el nombre ya está en localStorage, aplicar inmediatamente.
-    // Solo se llama a Retell si no hay cache o expiró (TTL 24h).
-    apiKeysToUse.forEach(async (key) => {
-      try {
-        const cached = await getCachedFolderName(key);
-        if (cached) {
-          setWorkspaceFoldersByApiKey(prev => ({ ...prev, [key]: cached }));
-          return;
-        }
-        const folders = await fetchFolders(key);
-        if (!folders || folders.length === 0) return;
-        const name = resolveFolderName(folders);
-        await setCachedFolderName(key, name);
-        setWorkspaceFoldersByApiKey(prev => ({ ...prev, [key]: name }));
-      } catch {
-        // silencioso
-      }
-    });
-  // localLoading como dependencia hace que este efecto corra cuando los teléfonos terminan
+    fetch(`${BASE_URL}/api/telephony/${encodeURIComponent(clientId)}/workspaces`)
+      .then((r) => r.json())
+      .then((result) => {
+        const map: Record<number, string> = {};
+        (result.data || []).forEach((ws: { index: number; name: string }) => {
+          map[ws.index] = ws.name;
+        });
+        setWorkspaceNameByIndex(map);
+      })
+      .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localLoading, apiKey, apiKeyTest, clientId]);
+  }, [localLoading, clientId]);
 
   // Cargar números bloqueados
   useEffect(() => {
@@ -1606,57 +1541,29 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
     }
   };
 
-  // Mapear cada API key a un nombre de workspace (misma fuente que el selector de filtro)
-  const workspaceNameByApiKey = useMemo(() => {
-    const mapping: Record<string, string> = {};
-    const keys = apiKeyTest && apiKeyTest.length > 0 ? apiKeyTest : (apiKey ? [apiKey] : []);
+  // Nombre de workspace por índice (viene del backend)
+  const getWorkspaceName = (index: number) =>
+    workspaceNameByIndex[index] || `Workspace ${index + 1}`;
 
-    keys.forEach((key, index) => {
-      const phoneForKey = phoneNumbers.find((p) => p.workspace_api_key === key);
-      const fromFolders = workspaceFoldersByApiKey[key];
-      const fromMetadata = phoneForKey?.workspace_name;
-      const fromWebhook = phoneForKey?.inbound_webhook_url
-        ? getWorkspaceFromWebhook(phoneForKey.inbound_webhook_url)
-        : null;
-
-      mapping[key] = fromFolders || fromMetadata || fromWebhook || `Workspace ${index + 1}`;
-    });
-
-    // Incluir keys de teléfonos cargados que no estén en apiKeyTest
-    phoneNumbers.forEach((p) => {
-      const key = p.workspace_api_key;
-      if (!key || mapping[key]) return;
-
-      const fromFolders = workspaceFoldersByApiKey[key];
-      const fromMetadata = p.workspace_name;
-      const fromWebhook = p.inbound_webhook_url
-        ? getWorkspaceFromWebhook(p.inbound_webhook_url)
-        : null;
-
-      mapping[key] = fromFolders || fromMetadata || fromWebhook || key;
-    });
-
-    return mapping;
-  }, [phoneNumbers, workspaceFoldersByApiKey, apiKey, apiKeyTest]);
-
-  // Opciones de workspace para el selector (derivadas de las API keys disponibles)
+  // Opciones de workspace para los selectores
   const workspaceOptions = useMemo(() => {
-    const keys = apiKeyTest && apiKeyTest.length > 0 ? apiKeyTest : (apiKey ? [apiKey] : []);
-    return keys.map((key, i) => ({
-      key,
-      label: workspaceFoldersByApiKey[key] || `Workspace ${i + 1}`,
-    }));
-  }, [apiKey, apiKeyTest, workspaceFoldersByApiKey]);
+    const indices = Object.keys(workspaceNameByIndex).map(Number);
+    if (indices.length === 0) return [{ index: 0, label: 'Workspace 1' }];
+    return indices.map((i) => ({ index: i, label: workspaceNameByIndex[i] || `Workspace ${i + 1}` }));
+  }, [workspaceNameByIndex]);
 
-  // Para el modal de eliminar múltiples (sigue necesitando availableWorkspaces por nombre)
-  const availableWorkspaces = Array.from(
-    new Set(Object.values(workspaceNameByApiKey).filter(Boolean))
+  // Para el modal de eliminar múltiples
+  const availableWorkspaces = useMemo(
+    () => Object.values(workspaceNameByIndex).filter(Boolean),
+    [workspaceNameByIndex]
   );
 
-  // Filtrar solo por número específico de URL (el workspace ya viene filtrado por la carga)
-  const filteredPhoneNumbers = phoneFilter
-    ? phoneNumbers.filter(phone => phone.phone_number === phoneFilter)
-    : phoneNumbers;
+  // Filtrar por workspace seleccionado y por número específico de URL
+  const filteredPhoneNumbers = phoneNumbers.filter((phone) => {
+    if (workspaceOptions.length > 1 && (phone.workspace_index ?? 0) !== selectedWorkspaceIndex) return false;
+    if (phoneFilter && phone.phone_number !== phoneFilter) return false;
+    return true;
+  });
 
   // Filtrar por búsqueda de número (incluye dígitos y espacios/guiones)
   const normalizePhone = (s: string) => (s || '').replace(/\D/g, '');
@@ -1683,9 +1590,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
         setCopiedNumber(number);
         setTimeout(() => setCopiedNumber(null), 2000);
       })
-      .catch(err => {
-        // console.error('Error al copiar:', err);
-      });
+      .catch(() => {});
   };
   
   // Formatear la fecha de última modificación
@@ -1809,22 +1714,21 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
           <h3 className="text-lg font-semibold text-slate-800">Números de Teléfono</h3>
           
           <div className="flex flex-wrap gap-2 items-center justify-end">
-            {/* Selector de workspace (controla qué números se cargan) */}
+            {/* Selector de workspace (filtra localmente los números ya cargados) */}
             {workspaceOptions.length > 1 && (
               <div className="flex items-center gap-2">
                 <span className="text-sm text-slate-600">Workspace:</span>
                 <select
-                  value={selectedWorkspaceKey || ''}
+                  value={selectedWorkspaceIndex}
                   onChange={(e) => {
-                    const key = e.target.value;
-                    setSelectedWorkspaceKey(key);
-                    loadLocalPhoneNumbers(key);
+                    setSelectedWorkspaceIndex(Number(e.target.value));
+                    setCurrentPage(1);
                   }}
                   disabled={localLoading}
                   className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
                 >
                   {workspaceOptions.map((ws) => (
-                    <option key={ws.key} value={ws.key}>
+                    <option key={ws.index} value={ws.index}>
                       {ws.label}
                     </option>
                   ))}
@@ -1853,7 +1757,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
             </button>
             
             <button
-              onClick={() => selectedWorkspaceKey && loadLocalPhoneNumbers(selectedWorkspaceKey)}
+              onClick={() => loadLocalPhoneNumbers()}
               disabled={loadingAll}
               className={`px-4 py-2 rounded-lg text-white flex items-center ${
                 loadingAll
@@ -1897,15 +1801,8 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
             </div>
           )}
           
-          {/* Mostrar error si lo hay */}
-          {!loadingAll && error && (
-            <div className="p-6 text-center text-red-600">
-              {error}
-            </div>
-          )}
-          
           {/* No se encontraron resultados */}
-          {!loadingAll && !error && displayPhoneNumbers.length === 0 && (
+          {!loadingAll && displayPhoneNumbers.length === 0 && (
             <div className="p-6 text-center text-slate-600">
               {phoneFilter ? (
                 <div className="space-y-4">
@@ -1927,7 +1824,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
           )}
           
           {/* Info de paginación */}
-          {!loadingAll && !error && filteredBySearch.length > 0 && (
+          {!loadingAll && filteredBySearch.length > 0 && (
             <div className="flex items-center justify-between text-sm text-slate-500 pb-1">
               <span>
                 {filteredBySearch.length} número{filteredBySearch.length !== 1 ? 's' : ''} en total
@@ -1939,11 +1836,9 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
           )}
 
           {/* Lista de números de teléfono — filas compactas */}
-          {!loadingAll && !error && displayPhoneNumbers.map((phone) => {
-            const workspaceLabel = phone.workspace_api_key
-              ? workspaceNameByApiKey[phone.workspace_api_key] ||
-                (phone.inbound_webhook_url ? getWorkspaceFromWebhook(phone.inbound_webhook_url) : null)
-              : phone.inbound_webhook_url ? getWorkspaceFromWebhook(phone.inbound_webhook_url) : null;
+          {!loadingAll && displayPhoneNumbers.map((phone) => {
+            const workspaceLabel = getWorkspaceName(phone.workspace_index ?? 0) ||
+              (phone.inbound_webhook_url ? getWorkspaceFromWebhook(phone.inbound_webhook_url) : null);
             const inboundAgentId = phone.inbound_agents?.[0]?.agent_id ?? phone.inbound_agent_id;
 
             return (
@@ -2024,7 +1919,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
           })}
 
           {/* Controles de paginación */}
-          {!loadingAll && !error && totalPages > 1 && (
+          {!loadingAll && totalPages > 1 && (
             <div className="flex items-center justify-center gap-2 pt-4 border-t border-slate-100">
               <button
                 type="button"
@@ -2287,7 +2182,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
         <CallModal 
           phoneNumber={selectedPhone}
           onClose={() => setSelectedPhone(null)}
-          apiKey={selectedPhone.workspace_api_key || apiKey}
+          workspaceIndex={selectedPhone.workspace_index ?? 0}
         />
       )}
 
@@ -2295,7 +2190,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
       {showAddPhoneModal && (
         <AddPhoneModal
           onClose={() => setShowAddPhoneModal(false)}
-          onSuccess={() => selectedWorkspaceKey && loadLocalPhoneNumbers(selectedWorkspaceKey)}
+          onSuccess={() => loadLocalPhoneNumbers()}
           workspaceOptions={workspaceOptions}
         />
       )}
@@ -2308,8 +2203,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
             setPhoneToEdit(null);
             setShowEditPhoneModal(false);
           }}
-          onSuccess={() => selectedWorkspaceKey && loadLocalPhoneNumbers(selectedWorkspaceKey)}
-          apiKey={apiKey}
+          onSuccess={() => loadLocalPhoneNumbers()}
         />
       )}
 
@@ -2321,8 +2215,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
             setPhoneToDelete(null);
             setShowDeletePhoneModal(false);
           }}
-          onSuccess={() => selectedWorkspaceKey && loadLocalPhoneNumbers(selectedWorkspaceKey)}
-          apiKey={apiKey}
+          onSuccess={() => loadLocalPhoneNumbers()}
         />
       )}
 
@@ -2331,14 +2224,9 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
         <DeleteMultiplePhoneModal
           phoneNumbers={phoneNumbers}
           availableWorkspaces={availableWorkspaces}
-          getWorkspaceLabel={(phone) => {
-            const fromApiKey = phone.workspace_api_key ? workspaceNameByApiKey[phone.workspace_api_key] : undefined;
-            const fromWebhook = phone.inbound_webhook_url ? getWorkspaceFromWebhook(phone.inbound_webhook_url) : null;
-            return fromApiKey || fromWebhook || 'Sin workspace';
-          }}
-          apiKey={apiKey}
+          getWorkspaceLabel={(phone) => getWorkspaceName(phone.workspace_index ?? 0)}
           onClose={() => setShowDeleteMultipleModal(false)}
-          onSuccess={() => selectedWorkspaceKey && loadLocalPhoneNumbers(selectedWorkspaceKey)}
+          onSuccess={() => loadLocalPhoneNumbers()}
         />
       )}
 
@@ -2349,10 +2237,8 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
         const countsLoading = phoneEntry === 'loading';
         const countsError = phoneEntry === 'error';
         const counts = (phoneEntry && phoneEntry !== 'loading' && phoneEntry !== 'error') ? phoneEntry : null;
-        const workspaceLabel = phone.workspace_api_key
-          ? workspaceNameByApiKey[phone.workspace_api_key] ||
-            (phone.inbound_webhook_url ? getWorkspaceFromWebhook(phone.inbound_webhook_url) : null)
-          : phone.inbound_webhook_url ? getWorkspaceFromWebhook(phone.inbound_webhook_url) : null;
+        const workspaceLabel = getWorkspaceName(phone.workspace_index ?? 0) ||
+          (phone.inbound_webhook_url ? getWorkspaceFromWebhook(phone.inbound_webhook_url) : null);
         const inboundAgentId = phone.inbound_agents?.[0]?.agent_id ?? phone.inbound_agent_id;
         const outboundAgentId = phone.outbound_agents?.[0]?.agent_id ?? phone.outbound_agent_id;
 
