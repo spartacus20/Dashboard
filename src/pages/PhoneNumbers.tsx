@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Phone, Copy, RefreshCw, ExternalLink, X, Send, Plus, ChevronDown, User, Trash2, AlertTriangle, Search, BarChart3, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
+import { Phone, Copy, RefreshCw, ExternalLink, X, Send, Plus, ChevronDown, User, Trash2, AlertTriangle, Search, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
 import { RetellPhoneNumber, RetellAgent, BlockedNumber } from '../types';
-import { createPhoneCall, fetchAgents, importPhoneNumber, deletePhoneNumber, fetchFolders, getCallCountsByFromNumber, listBlockedNumbers, createBlockedNumber, updateBlockedNumber, deleteBlockedNumber } from '../api';
+import { createPhoneCall, fetchAgents, importPhoneNumber, deletePhoneNumber, fetchFolders, getCallCountForNumber, listBlockedNumbers, createBlockedNumber, updateBlockedNumber, deleteBlockedNumber } from '../api';
 import { fetchPhoneNumbers, updatePhoneNumber } from '../services/api/telephony';
 import { useCallsContext } from '../context/CallsContext';
 import { getUserData } from '../lib/supabase';
 import { PHONES_PAGE_SIZE as PHONES_PER_PAGE, DEFAULT_TERMINATION_URIS } from '../lib/constants';
+import { getCachedFolderName, setCachedFolderName } from '../lib/folderNameCache';
 import { toast } from 'sonner';
 
 interface PhoneNumbersProps {
@@ -1419,8 +1420,8 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
   const [phoneToEdit, setPhoneToEdit] = useState<RetellPhoneNumber | null>(null);
   const [phoneSearchTerm, setPhoneSearchTerm] = useState('');
   const [workspaceFoldersByApiKey, setWorkspaceFoldersByApiKey] = useState<Record<string, string>>({});
-  const [callCountsByPhone, setCallCountsByPhone] = useState<Record<string, { total: number; efectivas: number; fallidas: number }>>({});
-  const [loadingCallCounts, setLoadingCallCounts] = useState(true);
+  const [callCountsByPhone, setCallCountsByPhone] = useState<Record<string, { total: number; efectivas: number; fallidas: number } | 'loading' | 'error'>>({});
+  const [selectedPhoneDetail, setSelectedPhoneDetail] = useState<RetellPhoneNumber | null>(null);
   const [phoneNumbersTab, setPhoneNumbersTab] = useState<'phones' | 'blocked'>('phones');
   const [blockedNumbers, setBlockedNumbers] = useState<BlockedNumber[]>([]);
   const [loadingBlocked, setLoadingBlocked] = useState(false);
@@ -1477,6 +1478,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
   // Cargar nombres de folders POR WORKSPACE en paralelo, PERO solo después de que
   // los teléfonos del primer workspace ya cargaron. Así evitamos saturar el pool de
   // conexiones del navegador (máx. 6 por dominio) y los teléfonos se muestran primero.
+  // Los nombres se cachean en localStorage (hash SHA-256 de la key, TTL 24h).
   useEffect(() => {
     if (localLoading) return; // esperar a que terminen los teléfonos
 
@@ -1506,12 +1508,19 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
       return best.folderName;
     };
 
-    // Una vez libres las conexiones, lanzar todos en paralelo e ir actualizando el estado
+    // Cache first: si el nombre ya está en localStorage, aplicar inmediatamente.
+    // Solo se llama a Retell si no hay cache o expiró (TTL 24h).
     apiKeysToUse.forEach(async (key) => {
       try {
+        const cached = await getCachedFolderName(key);
+        if (cached) {
+          setWorkspaceFoldersByApiKey(prev => ({ ...prev, [key]: cached }));
+          return;
+        }
         const folders = await fetchFolders(key);
         if (!folders || folders.length === 0) return;
         const name = resolveFolderName(folders);
+        await setCachedFolderName(key, name);
         setWorkspaceFoldersByApiKey(prev => ({ ...prev, [key]: name }));
       } catch {
         // silencioso
@@ -1546,42 +1555,26 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
     }
   }, [blockedToEdit]);
 
-  // Cargar conteos de llamadas por número desde call_logs (por from_number)
-  useEffect(() => {
-    const loadCallCounts = async () => {
-      if (!clientId) {
-        setLoadingCallCounts(false);
-        return;
-      }
-      setLoadingCallCounts(true);
-      try {
-        const rows = await getCallCountsByFromNumber(clientId);
-        const map: Record<string, { total: number; efectivas: number; fallidas: number }> = {};
-        rows.forEach((r) => {
-          const key = r.from_number || '';
-          const keyNorm = (r.from_number_norm != null && r.from_number_norm !== '') ? r.from_number_norm : key.replace(/^\+/, '');
-          const value = { total: r.total, efectivas: r.efectivas, fallidas: r.fallidas };
-          if (key) map[key] = value;
-          if (keyNorm && keyNorm !== key) map[keyNorm] = value;
-        });
-        setCallCountsByPhone(map);
-      } catch (e) {
-        // console.error('Error al cargar conteos de llamadas por número:', e);
-      } finally {
-        setLoadingCallCounts(false);
-      }
-    };
-    loadCallCounts();
+  const loadCallCountForPhone = useCallback(async (phoneNumber: string) => {
+    if (!clientId) return;
+    setCallCountsByPhone((prev) => {
+      if (prev[phoneNumber] !== undefined) return prev;
+      return { ...prev, [phoneNumber]: 'loading' };
+    });
+    try {
+      const counts = await getCallCountForNumber(clientId, phoneNumber);
+      setCallCountsByPhone((prev) => ({ ...prev, [phoneNumber]: counts }));
+    } catch {
+      setCallCountsByPhone((prev) => ({ ...prev, [phoneNumber]: 'error' }));
+    }
   }, [clientId]);
 
-  const getCallCountsForPhone = (phoneNumber: string): { total: number; efectivas: number; fallidas: number } | null => {
-    const withPlus = phoneNumber.startsWith('+') ? phoneNumber : `+${phoneNumber}`;
-    const withoutPlus = phoneNumber.replace(/^\+/, '');
-    return callCountsByPhone[withPlus] ?? callCountsByPhone[withoutPlus] ?? callCountsByPhone[phoneNumber] ?? null;
-  };
+  const openPhoneDetail = useCallback((phone: RetellPhoneNumber) => {
+    setSelectedPhoneDetail(phone);
+    loadCallCountForPhone(phone.phone_number);
+  }, [loadCallCountForPhone]);
 
-  // No mostrar contenido hasta que estén cargados números y conteos de llamadas
-  const loadingAll = loading || loadingCallCounts;
+  const loadingAll = loading;
 
   // Obtener nombre de workspace a partir de la URL del webhook
   const getWorkspaceFromWebhook = (webhookUrl?: string): string | null => {
@@ -1945,28 +1938,28 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
             </div>
           )}
 
-          {/* Lista de números de teléfono */}
+          {/* Lista de números de teléfono — filas compactas */}
           {!loadingAll && !error && displayPhoneNumbers.map((phone) => {
-            const counts = getCallCountsForPhone(phone.phone_number);
-            const total = counts?.total ?? 0;
-            const efectivas = counts?.efectivas ?? 0;
-            const fallidas = counts?.fallidas ?? 0;
             const workspaceLabel = phone.workspace_api_key
               ? workspaceNameByApiKey[phone.workspace_api_key] ||
                 (phone.inbound_webhook_url ? getWorkspaceFromWebhook(phone.inbound_webhook_url) : null)
               : phone.inbound_webhook_url ? getWorkspaceFromWebhook(phone.inbound_webhook_url) : null;
+            const inboundAgentId = phone.inbound_agents?.[0]?.agent_id ?? phone.inbound_agent_id;
 
             return (
-              <div key={phone.phone_number} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden transition-all hover:shadow-md">
-                {/* Cabecera: número + acciones */}
-                <div className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="flex items-start gap-4">
-                    <div className="bg-blue-100 p-3 rounded-full">
-                      <Phone className="w-6 h-6 text-blue-600" />
+              <div
+                key={phone.phone_number}
+                className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-200 transition-all cursor-pointer"
+                onClick={() => openPhoneDetail(phone)}
+              >
+                <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="bg-blue-100 p-2.5 rounded-full shrink-0">
+                      <Phone className="w-5 h-5 text-blue-600" />
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-xl font-bold tracking-tight text-slate-800">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-base font-bold tracking-tight text-slate-800">
                           {phone.phone_number_pretty || phone.phone_number}
                         </h3>
                         <button
@@ -1975,155 +1968,55 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
                           className="text-slate-400 hover:text-blue-600 transition-colors"
                           title="Copiar número"
                         >
-                          <Copy className="w-5 h-5" />
+                          <Copy className="w-4 h-4" />
                         </button>
                         {copiedNumber === phone.phone_number && (
-                          <span className="text-green-600 text-sm">¡Copiado!</span>
+                          <span className="text-green-600 text-xs font-medium">¡Copiado!</span>
                         )}
                       </div>
-                      <p className="text-sm text-slate-500 mt-0.5">ID: {phone.phone_number_pretty || phone.phone_number}</p>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        {workspaceLabel && (
+                          <span className="text-xs text-slate-400">{workspaceLabel}</span>
+                        )}
+                        {phone.phone_number_type && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                            {phone.phone_number_type}
+                          </span>
+                        )}
+                        {inboundAgentId && (
+                          <span className="text-xs text-slate-400 truncate">· {inboundAgentId.substring(0, 14)}...</span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 shrink-0">
                     {callsEnabled && (
                       <button
                         type="button"
-                        onClick={() => setSelectedPhone(phone)}
-                        className="flex items-center gap-2 bg-blue-600/10 text-blue-600 hover:bg-blue-600 hover:text-white px-4 py-2 rounded-lg font-semibold text-sm transition-all"
+                        onClick={(e) => { e.stopPropagation(); setSelectedPhone(phone); }}
+                        className="flex items-center gap-1.5 bg-blue-600/10 text-blue-600 hover:bg-blue-600 hover:text-white px-3 py-1.5 rounded-lg font-semibold text-xs transition-all"
                       >
-                        <Phone className="w-5 h-5" />
+                        <Phone className="w-4 h-4" />
                         Llamar
                       </button>
                     )}
                     <button
                       type="button"
-                      onClick={() => {
-                        setPhoneToEdit(phone);
-                        setShowEditPhoneModal(true);
-                      }}
-                      className="flex items-center gap-2 bg-amber-100 text-amber-600 hover:bg-amber-600 hover:text-white px-4 py-2 rounded-lg font-semibold text-sm transition-all"
+                      onClick={(e) => { e.stopPropagation(); setPhoneToEdit(phone); setShowEditPhoneModal(true); }}
+                      className="flex items-center gap-1.5 bg-amber-100 text-amber-600 hover:bg-amber-600 hover:text-white px-3 py-1.5 rounded-lg font-semibold text-xs transition-all"
                     >
-                      <Pencil className="w-5 h-5" />
+                      <Pencil className="w-4 h-4" />
                       Editar
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        setPhoneToDelete(phone);
-                        setShowDeletePhoneModal(true);
-                      }}
-                      className="flex items-center gap-2 bg-rose-100 text-rose-600 hover:bg-rose-600 hover:text-white px-4 py-2 rounded-lg font-semibold text-sm transition-all"
+                      onClick={(e) => { e.stopPropagation(); setPhoneToDelete(phone); setShowDeletePhoneModal(true); }}
+                      className="flex items-center gap-1.5 bg-rose-100 text-rose-600 hover:bg-rose-600 hover:text-white px-3 py-1.5 rounded-lg font-semibold text-xs transition-all"
                     >
-                      <Trash2 className="w-5 h-5" />
+                      <Trash2 className="w-4 h-4" />
                       Eliminar
                     </button>
-                  </div>
-                </div>
-
-                {/* Llamadas realizadas */}
-                <div className="px-6 py-4 bg-slate-50/50 border-y border-slate-100">
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                      <BarChart3 className="w-4 h-4" />
-                      Llamadas realizadas
-                    </span>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className={`flex items-center px-3 py-1 rounded-full text-xs font-semibold shadow-sm ${
-                        total >= 35000
-                          ? 'bg-rose-100 text-rose-700'
-                          : total >= 15000
-                            ? 'bg-amber-100 text-amber-700'
-                            : 'bg-emerald-100 text-emerald-700'
-                      }`}>
-                        <span className="mr-1 opacity-70">Total:</span> {total.toLocaleString()}
-                      </span>
-                      <span className="flex items-center text-slate-700 text-xs font-semibold">
-                        <span className="mr-1">Efectivas:</span> <span className="text-emerald-700">{efectivas.toLocaleString()}</span>
-                      </span>
-                      <span className="flex items-center text-slate-700 text-xs font-semibold">
-                        <span className="mr-1">Fallidas:</span> <span className="text-rose-700">{fallidas.toLocaleString()}</span>
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Detalles en grid */}
-                <div className="p-6">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-y-6 gap-x-8">
-                    <div>
-                      <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Nombre</p>
-                      <p className="text-sm font-medium">{phone.nickname || phone.phone_number_pretty || phone.phone_number}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Tipo</p>
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        {phone.phone_number_type || '—'}
-                      </span>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Última modificación</p>
-                      <p className="text-sm font-medium">{formatDate(phone.last_modification_timestamp)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Workspace</p>
-                      <p className="text-sm font-medium">{workspaceLabel || 'No especificado'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Agente de entrada</p>
-                      {(() => {
-                        const agentId = phone.inbound_agents?.[0]?.agent_id ?? phone.inbound_agent_id;
-                        return agentId ? (
-                          <a
-                            href={getAgentUrl(agentId)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sm font-medium text-blue-600 hover:underline flex items-center gap-1"
-                          >
-                            {agentId.substring(0, 12)}...
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </a>
-                        ) : (
-                          <p className="text-sm font-medium">No asignado</p>
-                        );
-                      })()}
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Agente de salida</p>
-                      {(() => {
-                        const agentId = phone.outbound_agents?.[0]?.agent_id ?? phone.outbound_agent_id;
-                        return agentId ? (
-                          <a
-                            href={getAgentUrl(agentId)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sm font-medium text-blue-600 hover:underline flex items-center gap-1"
-                          >
-                            {agentId.substring(0, 12)}...
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </a>
-                        ) : (
-                          <p className="text-sm font-medium">No asignado</p>
-                        );
-                      })()}
-                    </div>
-                    {phone.inbound_webhook_url && (
-                      <div className="sm:col-span-2">
-                        <p className="text-xs font-semibold text-slate-400 uppercase mb-1">URL de webhook</p>
-                        <div className="flex items-center gap-2">
-                          <code className="text-xs font-mono bg-slate-100 p-2 rounded block truncate flex-1 text-slate-600">
-                            {phone.inbound_webhook_url}
-                          </code>
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); copyToClipboard(phone.inbound_webhook_url!); }}
-                            className="p-1.5 text-slate-400 hover:text-blue-600 transition-colors shrink-0"
-                            title="Copiar URL"
-                          >
-                            <Copy className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                    <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
                   </div>
                 </div>
               </div>
@@ -2448,6 +2341,213 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
           onSuccess={() => selectedWorkspaceKey && loadLocalPhoneNumbers(selectedWorkspaceKey)}
         />
       )}
+
+      {/* Modal de detalle de número de teléfono */}
+      {selectedPhoneDetail && (() => {
+        const phone = selectedPhoneDetail;
+        const phoneEntry = callCountsByPhone[phone.phone_number];
+        const countsLoading = phoneEntry === 'loading';
+        const countsError = phoneEntry === 'error';
+        const counts = (phoneEntry && phoneEntry !== 'loading' && phoneEntry !== 'error') ? phoneEntry : null;
+        const workspaceLabel = phone.workspace_api_key
+          ? workspaceNameByApiKey[phone.workspace_api_key] ||
+            (phone.inbound_webhook_url ? getWorkspaceFromWebhook(phone.inbound_webhook_url) : null)
+          : phone.inbound_webhook_url ? getWorkspaceFromWebhook(phone.inbound_webhook_url) : null;
+        const inboundAgentId = phone.inbound_agents?.[0]?.agent_id ?? phone.inbound_agent_id;
+        const outboundAgentId = phone.outbound_agents?.[0]?.agent_id ?? phone.outbound_agent_id;
+
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+            onClick={() => setSelectedPhoneDetail(null)}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between px-6 pt-6 pb-4">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="bg-blue-100 p-2.5 rounded-xl shrink-0">
+                    <Phone className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-base font-bold text-slate-800 leading-tight">
+                        {phone.phone_number_pretty || phone.phone_number}
+                      </h3>
+                      {phone.phone_number_type && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          {phone.phone_number_type}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <p className="text-xs text-slate-400 font-mono truncate">{phone.phone_number}</p>
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(phone.phone_number)}
+                        className="text-slate-400 hover:text-blue-600 transition-colors shrink-0"
+                        title="Copiar número"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                      {copiedNumber === phone.phone_number && (
+                        <span className="text-green-600 text-xs">¡Copiado!</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPhoneDetail(null)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 transition-colors shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Estadísticas */}
+              <div className="grid grid-cols-3 gap-3 px-6 pb-5">
+                {counts ? (
+                  <>
+                    <div className={`rounded-xl p-3 text-center border ${counts.total >= 35000 ? 'bg-rose-50 border-rose-100' : counts.total >= 15000 ? 'bg-amber-50 border-amber-100' : 'bg-slate-50 border-slate-100'}`}>
+                      <p className={`text-xl font-bold ${counts.total >= 35000 ? 'text-rose-700' : counts.total >= 15000 ? 'text-amber-700' : 'text-slate-800'}`}>
+                        {counts.total.toLocaleString()}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-0.5">Total</p>
+                    </div>
+                    <div className="bg-emerald-50 rounded-xl p-3 text-center border border-emerald-100">
+                      <p className="text-xl font-bold text-emerald-700">{counts.efectivas.toLocaleString()}</p>
+                      <p className="text-xs text-emerald-500 mt-0.5">Efectivas</p>
+                    </div>
+                    <div className="bg-rose-50 rounded-xl p-3 text-center border border-rose-100">
+                      <p className="text-xl font-bold text-rose-700">{counts.fallidas.toLocaleString()}</p>
+                      <p className="text-xs text-rose-500 mt-0.5">Fallidas</p>
+                    </div>
+                  </>
+                ) : countsLoading ? (
+                  <div className="col-span-3 text-center py-3 text-sm text-slate-400 animate-pulse">Cargando estadísticas...</div>
+                ) : countsError ? (
+                  <div className="col-span-3 text-center py-3">
+                    <button
+                      type="button"
+                      onClick={() => loadCallCountForPhone(phone.phone_number)}
+                      className="text-xs text-rose-500 hover:underline"
+                    >
+                      Error al cargar — reintentar
+                    </button>
+                  </div>
+                ) : (
+                  <div className="col-span-3 text-center py-3 text-sm text-slate-400 animate-pulse">Cargando estadísticas...</div>
+                )}
+              </div>
+
+              {/* Detalles */}
+              <div className="border-t border-slate-100 px-6 py-5 grid grid-cols-2 gap-x-8 gap-y-4">
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Nombre</p>
+                  <p className="text-sm font-medium text-slate-700">{phone.nickname || phone.phone_number_pretty || phone.phone_number}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Tipo</p>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                    {phone.phone_number_type || '—'}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Última modificación</p>
+                  <p className="text-sm font-medium text-slate-700">{formatDate(phone.last_modification_timestamp)}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Workspace</p>
+                  <p className="text-sm font-medium text-slate-700">{workspaceLabel || 'No especificado'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Agente de entrada</p>
+                  {inboundAgentId ? (
+                    <a
+                      href={getAgentUrl(inboundAgentId)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-medium text-blue-600 hover:underline flex items-center gap-1"
+                    >
+                      {inboundAgentId.substring(0, 12)}...
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  ) : (
+                    <p className="text-sm font-medium text-slate-700">No asignado</p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Agente de salida</p>
+                  {outboundAgentId ? (
+                    <a
+                      href={getAgentUrl(outboundAgentId)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-medium text-blue-600 hover:underline flex items-center gap-1"
+                    >
+                      {outboundAgentId.substring(0, 12)}...
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  ) : (
+                    <p className="text-sm font-medium text-slate-700">No asignado</p>
+                  )}
+                </div>
+                {phone.inbound_webhook_url && (
+                  <div className="col-span-2">
+                    <p className="text-xs font-semibold text-slate-400 uppercase mb-1">URL de webhook</p>
+                    <div className="flex items-center gap-2">
+                      <code className="text-xs font-mono bg-slate-100 p-2 rounded block truncate flex-1 text-slate-600">
+                        {phone.inbound_webhook_url}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(phone.inbound_webhook_url!)}
+                        className="p-1.5 text-slate-400 hover:text-blue-600 transition-colors shrink-0"
+                        title="Copiar URL"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Acciones */}
+              <div className="border-t border-slate-100 px-6 py-4 bg-slate-50/60 flex items-center justify-end gap-2">
+                {callsEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedPhoneDetail(null); setSelectedPhone(phone); }}
+                    className="flex items-center gap-1.5 bg-blue-600/10 text-blue-600 hover:bg-blue-600 hover:text-white px-4 py-2 rounded-lg font-semibold text-sm transition-all"
+                  >
+                    <Phone className="w-4 h-4" />
+                    Llamar
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => { setSelectedPhoneDetail(null); setPhoneToEdit(phone); setShowEditPhoneModal(true); }}
+                  className="flex items-center gap-1.5 bg-amber-100 text-amber-600 hover:bg-amber-600 hover:text-white px-4 py-2 rounded-lg font-semibold text-sm transition-all"
+                >
+                  <Pencil className="w-4 h-4" />
+                  Editar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setSelectedPhoneDetail(null); setPhoneToDelete(phone); setShowDeletePhoneModal(true); }}
+                  className="flex items-center gap-1.5 bg-rose-100 text-rose-600 hover:bg-rose-600 hover:text-white px-4 py-2 rounded-lg font-semibold text-sm transition-all"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Eliminar
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
