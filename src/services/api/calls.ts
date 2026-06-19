@@ -690,6 +690,22 @@ export async function getCallCountsByFromNumber(clientId: string): Promise<CallC
   }
 }
 
+export async function getCallCountForNumber(
+  clientId: string,
+  fromNumber: string
+): Promise<{ total: number; efectivas: number; fallidas: number }> {
+  const response = await fetch(`${BASE_URL}/api/calls/call-count-for-number`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ client_id: clientId, from_number: fromNumber }),
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Error en call-count-for-number: ${response.status} - ${errorText}`);
+  }
+  return response.json();
+}
+
 export async function exportCallsWithColumns(
   apiKey: string,
   params: {

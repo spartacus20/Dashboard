@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Megaphone, RefreshCw, AlertCircle, Search, BarChart3, Upload, Pencil, Trash2, ChevronLeft, ChevronRight, X, Info } from 'lucide-react';
 import { RetellBatchCall } from '../types';
 import { fetchBatchCalls, fetchFolders, deleteBatchCall, fetchAgentIdForBatch } from '../api';
+import { getCachedFolderName, setCachedFolderName } from '../lib/folderNameCache';
 import { useCallsContext } from '../context/CallsContext';
 import { BatchCallingTab } from './campaign/BatchCallingTab';
 import { Button } from '../components/ui/button';
@@ -21,9 +22,9 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
   const [campaignTab, setCampaignTab] = useState<'campaigns' | 'batch-calling'>('campaigns');
   const [currentPage, setCurrentPage] = useState(1);
   const [batchCallsByWorkspace, setBatchCallsByWorkspace] = useState<BatchCallWithWorkspace[]>([]);
+  const [selectedWorkspaceKey, setSelectedWorkspaceKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [workspaceFilter, setWorkspaceFilter] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [workspaceFoldersByApiKey, setWorkspaceFoldersByApiKey] = useState<Record<string, string>>({});
   const [batchToDelete, setBatchToDelete] = useState<BatchCallWithWorkspace | null>(null);
@@ -44,7 +45,7 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
     try {
       await deleteBatchCall(batchToDelete.workspace_api_key, batchToDelete.batch_call_id);
       setBatchToDelete(null);
-      await loadAllBatchCalls();
+      if (selectedWorkspaceKey) await loadWorkspaceBatchCalls(selectedWorkspaceKey);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al eliminar la campaña');
     } finally {
@@ -81,11 +82,19 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
       return best.folderName;
     };
 
+    // Cache first: si el nombre ya está en localStorage, aplicar inmediatamente.
+    // Solo se llama a Retell si no hay cache o expiró (TTL 24h).
     apiKeysToUse.forEach(async (key) => {
       try {
+        const cached = await getCachedFolderName(key);
+        if (cached) {
+          setWorkspaceFoldersByApiKey(prev => ({ ...prev, [key]: cached }));
+          return;
+        }
         const folders = await fetchFolders(key);
         if (!folders || folders.length === 0) return;
         const name = resolveFolderName(folders);
+        await setCachedFolderName(key, name);
         setWorkspaceFoldersByApiKey(prev => ({ ...prev, [key]: name }));
       } catch {
         // silencioso
@@ -126,7 +135,6 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
   // Filtrar, ordenar y paginar campañas
   const filteredBatchCalls = useMemo(() => {
     let list = batchCallsByWorkspace;
-    if (workspaceFilter) list = list.filter((b) => b.workspace_name === workspaceFilter);
     if (searchTerm.trim()) {
       const term = searchTerm.trim().toLowerCase();
       list = list.filter(
@@ -139,7 +147,7 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
     return [...list].sort(
       (a, b) => getSortPriority(a.status || '') - getSortPriority(b.status || '')
     );
-  }, [batchCallsByWorkspace, workspaceFilter, searchTerm]);
+  }, [batchCallsByWorkspace, searchTerm]);
 
   const totalPages = Math.max(1, Math.ceil(filteredBatchCalls.length / ITEMS_PER_PAGE));
   const safePage = Math.min(currentPage, totalPages);
@@ -148,39 +156,22 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
     safePage * ITEMS_PER_PAGE
   );
 
-  // Cargar batch calls de todas las API keys
-  const loadAllBatchCalls = async () => {
-    if (apiKeysToFetch.length === 0) {
-      setBatchCallsByWorkspace([]);
-      setLoading(false);
-      return;
-    }
-
+  // Cargar batch calls de un único workspace
+  const loadWorkspaceBatchCalls = async (key: string) => {
     setLoading(true);
     setError(null);
-
     try {
-      const results = await Promise.all(
-        apiKeysToFetch.map(async (key) => {
-          try {
-            const list = await fetchBatchCalls(key);
-            const workspaceName = workspaceNameByApiKey[key] || 'Workspace';
-            return (list || []).map((batch: RetellBatchCall) => ({
-              ...batch,
-              workspace_api_key: key,
-              workspace_name: workspaceName,
-            }));
-          } catch (err) {
-            // console.error(`Error obteniendo batch calls para API key ${key.substring(0, 10)}...:`, err);
-            return [] as BatchCallWithWorkspace[];
-          }
-        })
+      const list = await fetchBatchCalls(key);
+      const workspaceName = workspaceNameByApiKey[key] || 'Workspace';
+      setBatchCallsByWorkspace(
+        (list || []).map((batch: RetellBatchCall) => ({
+          ...batch,
+          workspace_api_key: key,
+          workspace_name: workspaceName,
+        }))
       );
-
-      const combined = results.flat();
-      setBatchCallsByWorkspace(combined);
+      setCurrentPage(1);
     } catch (err) {
-      // console.error('Error cargando campañas:', err);
       setError(err instanceof Error ? err.message : 'Error al cargar las campañas');
       setBatchCallsByWorkspace([]);
     } finally {
@@ -188,23 +179,30 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
     }
   };
 
+  // Al montar (o cuando cambien las keys), cargar solo el primer workspace
   useEffect(() => {
-    loadAllBatchCalls();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiKeysToFetch.join(',')]);
-
-  // Actualizar nombres de workspace cuando terminen de cargarse los phone numbers
-  useEffect(() => {
-    if (!loading && Object.keys(workspaceNameByApiKey).length > 0 && batchCallsByWorkspace.length > 0) {
-      setBatchCallsByWorkspace((prev) =>
-        prev.map((b) => ({
-          ...b,
-          workspace_name: workspaceNameByApiKey[b.workspace_api_key] || b.workspace_name,
-        }))
-      );
+    const firstKey = (apiKeyTest && apiKeyTest.length > 0 ? apiKeyTest[0] : null) ?? apiKey;
+    if (firstKey) {
+      setSelectedWorkspaceKey(firstKey);
+      loadWorkspaceBatchCalls(firstKey);
+    } else {
+      setBatchCallsByWorkspace([]);
+      setLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiKey, apiKeyTest]);
 
-  }, [workspaceNameByApiKey, loading, batchCallsByWorkspace.length]);
+  // Actualizar nombre de workspace cuando terminen de cargarse los folders
+  useEffect(() => {
+    if (!loading && selectedWorkspaceKey && batchCallsByWorkspace.length > 0) {
+      const name = workspaceNameByApiKey[selectedWorkspaceKey];
+      if (name) {
+        setBatchCallsByWorkspace((prev) =>
+          prev.map((b) => ({ ...b, workspace_name: name }))
+        );
+      }
+    }
+  }, [workspaceNameByApiKey, loading, selectedWorkspaceKey]);
 
   const [selectedBatch, setSelectedBatch] = useState<BatchCallWithWorkspace | null>(null);
   const [modalAgent, setModalAgent] = useState<{ agent_id: string | null; agent_name: string | null } | undefined>(undefined);
@@ -278,18 +276,22 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
               />
             </div>
 
-            {availableWorkspaces.length > 0 && (
+            {apiKeysToFetch.length > 1 && (
               <div className="flex items-center gap-2">
                 <span className="text-sm text-slate-600">Workspace:</span>
                 <select
-                  value={workspaceFilter || ''}
-                  onChange={(e) => { setWorkspaceFilter(e.target.value || null); setCurrentPage(1); }}
+                  value={selectedWorkspaceKey || ''}
+                  onChange={(e) => {
+                    const key = e.target.value;
+                    if (!key) return;
+                    setSelectedWorkspaceKey(key);
+                    loadWorkspaceBatchCalls(key);
+                  }}
                   className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="">Todos</option>
-                  {availableWorkspaces.map((ws) => (
-                    <option key={ws} value={ws}>
-                      {ws}
+                  {apiKeysToFetch.map((key) => (
+                    <option key={key} value={key}>
+                      {workspaceNameByApiKey[key] || key.substring(0, 12) + '...'}
                     </option>
                   ))}
                 </select>
@@ -297,7 +299,7 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
             )}
 
             <button
-              onClick={() => loadAllBatchCalls()}
+              onClick={() => selectedWorkspaceKey && loadWorkspaceBatchCalls(selectedWorkspaceKey)}
               disabled={loading}
               className={`px-4 py-2 rounded-lg text-white flex items-center ${
                 loading
