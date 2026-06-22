@@ -1,8 +1,6 @@
 import { RetellPhoneNumber } from '../../types';
+import { BASE_URL } from './config';
 import { getWorkspaceNameFromWebhook } from './calls';
-
-
-
 
 interface CreatePhoneCallParams {
   from_number: string;
@@ -11,146 +9,87 @@ interface CreatePhoneCallParams {
   retell_llm_dynamic_variables?: Record<string, any>;
 }
 
+// ─── Números de teléfono ──────────────────────────────────────────────────────
 
-// Función para obtener números de teléfono de una sola API key
-async function fetchPhoneNumbersFromSingleApiKey(apiKey: string): Promise<RetellPhoneNumber[]> {
-  const response = await fetch('https://api.retellai.com/v2/list-phone-numbers', {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    }
-  });
+// Obtiene todos los números del cliente (todos los workspaces) via backend proxy.
+// El backend enriquece cada número con workspace_index.
+export async function fetchPhoneNumbers(clientId: string): Promise<RetellPhoneNumber[]> {
+  const response = await fetch(`${BASE_URL}/api/telephony/${encodeURIComponent(clientId)}/phone-numbers`);
 
   if (!response.ok) {
     throw new Error(`Error al obtener números de teléfono: ${response.status} ${response.statusText}`);
   }
 
-  const data = await response.json();
+  const result = await response.json();
+  const items: any[] = result.data || [];
 
-  const items = Array.isArray(data.items) ? data.items : (Array.isArray(data) ? data : []);
-
-  return items;
+  return items.map((phone) => ({
+    ...phone,
+    workspace_name: phone.workspace_name || getWorkspaceNameFromWebhook(phone.inbound_webhook_url) || undefined,
+  }));
 }
 
+// ─── Llamadas de prueba ───────────────────────────────────────────────────────
 
-
-// Función principal para obtener números de teléfono de una o múltiples API keys
-export async function fetchPhoneNumbers(apiKey: string | string[]): Promise<RetellPhoneNumber[]> {
-  // Si es un array, obtener números de todas las API keys y combinarlos
-  if (Array.isArray(apiKey)) {
-    // console.log(`📞 Obteniendo números de teléfono de ${apiKey.length} API keys`);
-    
-    // Obtener números de todas las API keys en paralelo y adjuntar metadata de workspace
-    const results = await Promise.all(
-      apiKey.map(async (key) => {
-        const numbers = await fetchPhoneNumbersFromSingleApiKey(key).catch(() => {
-          // console.error(
-            // `❌ Error obteniendo números de teléfono para API key ${key.substring(0, 10)}...:`,
-            // err
-          // );
-          return [] as RetellPhoneNumber[]; // Devolver array vacío en caso de error para no romper el flujo
-        });
-
-        return numbers.map((phone) => {
-          const workspaceName = getWorkspaceNameFromWebhook(phone.inbound_webhook_url);
-          return {
-            ...phone,
-            workspace_api_key: key,
-            workspace_name: workspaceName || undefined,
-          };
-        });
-      })
-    );
-    
-    // Combinar todos los resultados y eliminar duplicados por phone_number
-    const allNumbers = results.flat();
-    const uniqueNumbers = Array.from(
-      new Map(allNumbers.map(phone => [phone.phone_number, phone])).values()
-    );
-    
-    // console.log(`✅ Total de números únicos obtenidos: ${uniqueNumbers.length}`);
-    return uniqueNumbers;
-  }
-  
-  // Si es una sola API key, usar la función original y adjuntar metadata de workspace
-  const numbers = await fetchPhoneNumbersFromSingleApiKey(apiKey);
-  return numbers.map((phone) => {
-    const workspaceName = getWorkspaceNameFromWebhook(phone.inbound_webhook_url);
-    return {
-      ...phone,
-      workspace_api_key: apiKey,
-      workspace_name: workspaceName || undefined,
-    };
-  });
-}
-
-
-
-export async function createPhoneCall(apiKey: string, params: CreatePhoneCallParams): Promise<any> {
-  const response = await fetch('https://api.retellai.com/v2/create-phone-call', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(params),
-  });
+export async function createPhoneCall(
+  clientId: string,
+  params: CreatePhoneCallParams,
+  workspaceIndex = 0
+): Promise<any> {
+  const response = await fetch(
+    `${BASE_URL}/api/telephony/${encodeURIComponent(clientId)}/phone-call`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workspace_index: workspaceIndex, ...params }),
+    }
+  );
 
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`Error al crear llamada: ${response.status} ${response.statusText} - ${errorText}`);
   }
 
-  return await response.json();
+  const result = await response.json();
+  return result.data || result;
 }
 
+// ─── Importar número ──────────────────────────────────────────────────────────
 
-
-// Función para importar un número de teléfono
 export async function importPhoneNumber(
-  apiKey: string,
+  clientId: string,
   phoneData: {
     phone_number: string;
     termination_uri?: string;
     sip_trunk_auth_username?: string;
     sip_trunk_auth_password?: string;
     nickname?: string;
-  }
+    [key: string]: any;
+  },
+  workspaceIndex = 0
 ): Promise<any> {
-  try {
-    // console.log('Importando número de teléfono:', phoneData.phone_number);
-    
-    const response = await fetch('https://api.retellai.com/import-phone-number', {
+  const response = await fetch(
+    `${BASE_URL}/api/telephony/${encodeURIComponent(clientId)}/import-phone-number`,
+    {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(phoneData),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      // console.error('Error en la respuesta:', response.status, response.statusText, errorText);
-      throw new Error(`Error al importar número de teléfono: ${response.status} ${response.statusText} - ${errorText}`);
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workspace_index: workspaceIndex, ...phoneData }),
     }
+  );
 
-    const data = await response.json();
-    // console.log('Respuesta de importación:', data);
-    
-    return data;
-  } catch (error) {
-    // console.error('Error al importar número de teléfono:', error);
-    throw error;
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Error al importar número de teléfono: ${response.status} ${response.statusText} - ${errorText}`);
   }
+
+  const result = await response.json();
+  return result.data || result;
 }
 
+// ─── Actualizar número ────────────────────────────────────────────────────────
 
-
-// Función para actualizar un número de teléfono
 export async function updatePhoneNumber(
-  apiKey: string,
+  clientId: string,
   phoneNumber: string,
   data: {
     nickname?: string | null;
@@ -165,57 +104,48 @@ export async function updatePhoneNumber(
     transport?: string | null;
     inbound_agents?: { agent_id: string; weight: number }[] | null;
     outbound_agents?: { agent_id: string; weight: number }[] | null;
-  }
+  },
+  workspaceIndex = 0
 ): Promise<any> {
-  const response = await fetch(`https://api.retellai.com/update-phone-number/${encodeURIComponent(phoneNumber)}`, {
-    method: 'PATCH',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
+  const response = await fetch(
+    `${BASE_URL}/api/telephony/${encodeURIComponent(clientId)}/phone-number/${encodeURIComponent(phoneNumber)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workspace_index: workspaceIndex, ...data }),
+    }
+  );
 
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`Error al actualizar número: ${response.status} ${response.statusText} - ${errorText}`);
   }
 
-  return await response.json();
+  const result = await response.json();
+  return result.data || result;
 }
 
+// ─── Eliminar número ──────────────────────────────────────────────────────────
 
-
-// Función para eliminar un número de teléfono
 export async function deletePhoneNumber(
-  apiKey: string,
-  phoneNumber: string
+  clientId: string,
+  phoneNumber: string,
+  workspaceIndex = 0
 ): Promise<any> {
-  try {
-    // console.log('Eliminando número de teléfono:', phoneNumber);
-    
-    const response = await fetch(`https://api.retellai.com/delete-phone-number/${phoneNumber}`, {
+  const response = await fetch(
+    `${BASE_URL}/api/telephony/${encodeURIComponent(clientId)}/phone-number/${encodeURIComponent(phoneNumber)}?workspace_index=${workspaceIndex}`,
+    {
       method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      // console.error('Error en la respuesta:', response.status, response.statusText, errorText);
-      throw new Error(`Error al eliminar número de teléfono: ${response.status} ${response.statusText} - ${errorText}`);
+      headers: { 'Content-Type': 'application/json' },
     }
+  );
 
-    // Para DELETE, la respuesta puede estar vacía (204 No Content)
-    const data = response.status === 204 ? { success: true } : await response.json();
-    // console.log('Respuesta de eliminación:', data);
-    
-    return data;
-  } catch (error) {
-    // console.error('Error al eliminar número de teléfono:', error);
-    throw error;
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Error al eliminar número de teléfono: ${response.status} ${response.statusText} - ${errorText}`);
   }
-}
 
+  if (response.status === 204) return { success: true };
+  const result = await response.json();
+  return result.data || result;
+}

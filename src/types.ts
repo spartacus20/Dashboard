@@ -130,9 +130,9 @@ export interface RetellPhoneNumber {
   nickname?: string;
   inbound_webhook_url?: string;
   last_modification_timestamp: number;
-  // Campos enriquecidos en frontend a partir de la API de Retell
+  // Campos enriquecidos al pasar por el backend proxy
   workspace_name?: string;
-  workspace_api_key?: string;
+  workspace_index?: number;
 }
 
 export interface RetellAgent {
@@ -201,6 +201,7 @@ export interface RetellBatchCall {
   completed: number;
   last_sent_timestamp: number;
   tasks_url: string;
+  workspace_index?: number;
 }
 
 export interface RetellFolder {

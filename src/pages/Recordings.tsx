@@ -189,8 +189,7 @@ const RecordingsSkeleton = () => {
 interface RecallModalProps {
   call: DetailedRetellCall;
   onClose: () => void;
-  apiKey: string | null;
-  apiKeyTest: string[] | null;
+  clientId: string | null;
   phoneNumbers: RetellPhoneNumber[];
 }
 
@@ -200,7 +199,7 @@ function normalizeE164(num: string): string {
   return trimmed.startsWith('+') ? trimmed : `+${trimmed}`;
 }
 
-function RecallModal({ call, onClose, apiKey, apiKeyTest, phoneNumbers }: RecallModalProps) {
+function RecallModal({ call, onClose, clientId, phoneNumbers }: RecallModalProps) {
   const [fromNumber, setFromNumber] = React.useState(normalizeE164(call.from_number || ''));
   const [toNumber, setToNumber] = React.useState(normalizeE164(call.to_number || ''));
   const [overrideAgentId, setOverrideAgentId] = React.useState(call.agent_id || '');
@@ -228,31 +227,31 @@ function RecallModal({ call, onClose, apiKey, apiKeyTest, phoneNumbers }: Recall
   // Cargar agentes al montar — usando el apiKey del workspace correcto
   React.useEffect(() => {
     const loadAgents = async () => {
-      // Determinar el apiKey correcto según el from_number
+      // Determinar el workspace_index del número de origen
       const normalized = normalizeE164(call.from_number || '');
       const phoneMatch = phoneNumbers.find(p => normalizeE164(p.phone_number || '') === normalized);
-      const keysToTry: string[] = [];
-      if (phoneMatch?.workspace_api_key) keysToTry.push(phoneMatch.workspace_api_key);
-      if (apiKeyTest && apiKeyTest.length > 0) keysToTry.push(...apiKeyTest);
-      if (apiKey) keysToTry.push(apiKey);
-      const uniqueKeys = Array.from(new Set(keysToTry));
+      const startIndex = phoneMatch?.workspace_index ?? 0;
+      const allKeys = apiKeyTest && apiKeyTest.length > 0 ? apiKeyTest : apiKey ? [apiKey] : [];
 
-      if (uniqueKeys.length === 0) {
-        setAgentsError('API key no configurada');
+      if (allKeys.length === 0 || !clientId) {
+        setAgentsError('Configuración de cliente no disponible');
         return;
       }
 
       setLoadingAgents(true);
       setAgentsError(null);
 
-      // Intentar con cada key hasta encontrar agentes
+      // Obtener agentes de todos los workspaces disponibles, priorizando el del número de origen
       let allAgents: RetellAgent[] = [];
-      for (const key of uniqueKeys) {
+      const wsIndices = Array.from({ length: allKeys.length }, (_, i) =>
+        i === 0 ? startIndex : i === startIndex ? 0 : i
+      );
+      for (const wsIdx of wsIndices) {
         try {
-          const data = await fetchAgents(key);
-          allAgents = [...allAgents, ...data.filter(a => !allAgents.find(x => x.agent_id === a.agent_id))];
+          const data = await fetchAgents(clientId, wsIdx);
+          allAgents = [...allAgents, ...data.filter((a: RetellAgent) => !allAgents.find(x => x.agent_id === a.agent_id))];
         } catch {
-          // continuar con la siguiente key
+          // continuar con el siguiente workspace
         }
       }
 
@@ -313,25 +312,20 @@ function RecallModal({ call, onClose, apiKey, apiKeyTest, phoneNumbers }: Recall
     setShowAgentsDropdown(false);
   };
 
-  // Resolver el apiKey correcto: buscar el workspace_api_key del número de origen
-  const resolveApiKey = (num: string): string | null => {
+  // Resolver el workspace_index correcto basado en el número de origen
+  const resolveWorkspaceIndex = (num: string): number => {
     const normalized = normalizeE164(num);
     const match = phoneNumbers.find(p =>
       normalizeE164(p.phone_number || '') === normalized
     );
-    if (match?.workspace_api_key) return match.workspace_api_key;
-    // Si hay múltiples API keys, probar la que sea
-    if (apiKeyTest && apiKeyTest.length > 0) return apiKeyTest[0];
-    return apiKey;
+    return match?.workspace_index ?? 0;
   };
 
   const handleCreateCall = async () => {
     if (!fromNumber) { setError('El número de origen es obligatorio'); return; }
     if (!toNumber) { setError('El número de destino es obligatorio'); return; }
     if (!selectedAgent) { setError('Selecciona un agente'); return; }
-
-    const effectiveApiKey = resolveApiKey(fromNumber);
-    if (!effectiveApiKey) { setError('API key no configurada'); return; }
+    if (!clientId) { setError('client_id no disponible'); return; }
 
     setLoading(true);
     setError(null);
@@ -349,7 +343,7 @@ function RecallModal({ call, onClose, apiKey, apiKeyTest, phoneNumbers }: Recall
         override_agent_id: overrideAgentId,
         ...(Object.keys(dynamicVars).length > 0 && { retell_llm_dynamic_variables: dynamicVars }),
       };
-      const result = await createPhoneCall(effectiveApiKey, params);
+      const result = await createPhoneCall(clientId, params, resolveWorkspaceIndex(fromNumber));
       setSuccess(`Llamada iniciada con éxito. ID: ${result.call_id || 'N/A'}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al iniciar la llamada');
@@ -3351,8 +3345,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         <RecallModal
           call={recallCall}
           onClose={() => setRecallCall(null)}
-          apiKey={apiKey}
-          apiKeyTest={apiKeyTest}
+          clientId={clientId}
           phoneNumbers={contextPhoneNumbers}
         />
       )}
