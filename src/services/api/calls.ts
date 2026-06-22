@@ -1,5 +1,5 @@
 import { RetellCall, FilterCriteria, CallStats } from '../../types';
-import { getClientId, BASE_URL, WEBHOOK_URL, API_URL } from './config';
+import { getClientId, BASE_URL, WEBHOOK_URL } from './config';
 
 // Códigos de análisis para Recoveries (definición del negocio)
 export const RECOVERY_CODIGOS: Record<string, string> = {
@@ -13,8 +13,6 @@ export const RECOVERY_CODIGOS: Record<string, string> = {
   CEC: 'Convenio',
   CFA: 'Cliente fallecido',
 };
-
-import { fetchCalls } from '../api';
 
 
 
@@ -146,37 +144,39 @@ export async function fetchCalls(
   } catch (error) {
     // console.error('Error al obtener llamadas del webhook:', error);
     
-    // Fallback a la API original de Retell si el webhook falla
-    // console.log('Intentando con la API de Retell directamente...');
-    
-    const requestBody = {
+    // Fallback: proxy a través del backend (nunca llamar a Retell directamente)
+    const fallbackClientId = clientId || getClientId();
+    if (!fallbackClientId) throw new Error('No hay client_id disponible para el fallback de llamadas');
+
+    const retellBody = {
       limit: 100,
       pagination_key: paginationKey,
       sort_order: 'descending',
       filter_criteria: filterCriteria,
     };
-    
-    const response = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-    });
+
+    const response = await fetch(
+      `${BASE_URL}/api/telephony/${encodeURIComponent(fallbackClientId)}/list-calls`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(retellBody),
+      }
+    );
 
     if (!response.ok) {
       throw new Error(`Error al obtener llamadas: ${response.status} ${response.statusText}`);
     }
 
-    const data = await response.json();
+    const result = await response.json();
+    const data = result.data ?? result;
     const calls = Array.isArray(data) ? data : data.calls || [];
-    
-    return { 
-      calls, 
-      pagination_key: Array.isArray(data) ? 
-        (calls.length > 0 ? calls[calls.length - 1].call_id : undefined) : 
-        data.pagination_key 
+
+    return {
+      calls,
+      pagination_key: Array.isArray(data)
+        ? (calls.length > 0 ? calls[calls.length - 1].call_id : undefined)
+        : data.pagination_key,
     };
   }
 }

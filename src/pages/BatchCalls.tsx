@@ -21,6 +21,7 @@ function BatchCall({ onNavigate }: { onNavigate: (page: string) => void }) {
   const [error, setError] = React.useState<string | null>(null);
   const {
     apiKey,
+    clientId,
     phoneNumbers,
     loadingPhoneNumbers,
     loadPhoneNumbers,
@@ -95,15 +96,16 @@ function BatchCall({ onNavigate }: { onNavigate: (page: string) => void }) {
 
   // Función para confirmar y ejecutar la eliminación
   const confirmDeleteBatch = React.useCallback(async () => {
-    if (!apiKey || !batchToDelete) return;
+    if (!clientId || !batchToDelete) return;
 
     setDeletingBatch(true);
     setDeleteError(null);
 
     try {
       const response = await deleteBatchCall(
-        apiKey,
+        clientId,
         batchToDelete.batch_call_id,
+        batchToDelete.workspace_index,
       );
       // console.log('Respuesta de eliminación:', response);
 

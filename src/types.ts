@@ -201,6 +201,7 @@ export interface RetellBatchCall {
   completed: number;
   last_sent_timestamp: number;
   tasks_url: string;
+  workspace_index?: number;
 }
 
 export interface RetellFolder {

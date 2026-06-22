@@ -189,8 +189,6 @@ const RecordingsSkeleton = () => {
 interface RecallModalProps {
   call: DetailedRetellCall;
   onClose: () => void;
-  apiKey: string | null;
-  apiKeyTest: string[] | null;
   clientId: string | null;
   phoneNumbers: RetellPhoneNumber[];
 }
@@ -201,7 +199,7 @@ function normalizeE164(num: string): string {
   return trimmed.startsWith('+') ? trimmed : `+${trimmed}`;
 }
 
-function RecallModal({ call, onClose, apiKey, apiKeyTest, clientId, phoneNumbers }: RecallModalProps) {
+function RecallModal({ call, onClose, clientId, phoneNumbers }: RecallModalProps) {
   const [fromNumber, setFromNumber] = React.useState(normalizeE164(call.from_number || ''));
   const [toNumber, setToNumber] = React.useState(normalizeE164(call.to_number || ''));
   const [overrideAgentId, setOverrideAgentId] = React.useState(call.agent_id || '');
@@ -3347,8 +3345,6 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         <RecallModal
           call={recallCall}
           onClose={() => setRecallCall(null)}
-          apiKey={apiKey}
-          apiKeyTest={apiKeyTest}
           clientId={clientId}
           phoneNumbers={contextPhoneNumbers}
         />
