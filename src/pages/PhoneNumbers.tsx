@@ -1126,23 +1126,6 @@ function EditPhoneModal({ phoneNumber, onClose, onSuccess }: EditPhoneModalProps
             </div>
           </div>
 
-          {/* Países permitidos */}
-          <div>
-            <p className={sectionClass}>Países permitidos</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className={labelClass}>Entrantes (ISO 3166-1)</label>
-                <input type="text" value={allowedInboundCountries} onChange={(e) => setAllowedInboundCountries(e.target.value)} placeholder="US, CA, GB" className={inputClass} />
-                <p className="text-xs text-slate-400 mt-1">Separar por coma. Vacío = todos.</p>
-              </div>
-              <div>
-                <label className={labelClass}>Salientes (ISO 3166-1)</label>
-                <input type="text" value={allowedOutboundCountries} onChange={(e) => setAllowedOutboundCountries(e.target.value)} placeholder="US, CA" className={inputClass} />
-                <p className="text-xs text-slate-400 mt-1">Separar por coma. Vacío = todos.</p>
-              </div>
-            </div>
-          </div>
-
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
               {error}
