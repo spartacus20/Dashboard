@@ -23,6 +23,7 @@ export const PAGE_IDS = [
   'soporte-ia',
   'presupuesto',
   'seguimientos',
+  'agentes',
 ] as const;
 
 export type PageId = (typeof PAGE_IDS)[number];

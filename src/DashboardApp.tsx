@@ -19,6 +19,7 @@ const SoporteIA = lazy(() => import('./pages/SoporteIA').then((m) => ({ default:
 const Seguimientos = lazy(() => import('./pages/Seguimientos').then((m) => ({ default: m.Seguimientos })));
 const Interesados = lazy(() => import('./pages/Interesados').then((m) => ({ default: m.Interesados })));
 const Presupuesto = lazy(() => import('./pages/Presupuesto').then((m) => ({ default: m.Presupuesto })));
+const Agentes = lazy(() => import('./pages/Agentes').then((m) => ({ default: m.Agentes })));
 import { useCallsContext } from './context/CallsContext';
 import { toast } from 'sonner';
 import {
@@ -1446,6 +1447,9 @@ function DashboardApp() {
         )}
         {currentPage === 'seguimientos' && seguimientosEnabled && (
           <Seguimientos onNavigate={goToPage} />
+        )}
+        {currentPage === 'agentes' && (
+          <Agentes onNavigate={goToPage} />
         )}
         </Suspense>
       </div>

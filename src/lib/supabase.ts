@@ -352,6 +352,9 @@ export const canAccessSeguimientos = (): boolean => canAccessFeature('seguimient
 // Función para verificar si el usuario tiene acceso a Presupuesto
 export const canAccessBudget = (): boolean => canAccessFeature('budget');
 
+// Función para verificar si el usuario tiene acceso a Agentes
+export const canAccessAgentes = (): boolean => canAccessFeature('agentes');
+
 // Obtiene el role del usuario desde userData en sessionStorage
 export const getUserRole = (): string | null => {
   try {

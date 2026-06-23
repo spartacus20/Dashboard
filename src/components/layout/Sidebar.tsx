@@ -23,6 +23,7 @@ import {
   ChevronDown,
   Search,
   PhoneForwarded,
+  BrainCircuit,
 } from "lucide-react";
 import { useCallsContext } from "../../context/CallsContext";
 import { useAuth } from "../../context/AuthContext";
@@ -35,6 +36,7 @@ import {
   canAccessHydro,
   canAccessSeguimientos,
   canAccessBudget,
+  canAccessAgentes,
   hasPermissionsDefined,
   getClientTest,
   getClientIdFromSession,
@@ -123,6 +125,7 @@ export function Sidebar({
   const [hydroEnabled, setHydroEnabled] = React.useState(() => canAccessHydro());
   const [seguimientosEnabled, setSeguimientosEnabled] = React.useState(() => canAccessSeguimientos());
   const [budgetEnabled, setBudgetEnabled] = React.useState(() => canAccessBudget());
+  const [agentesEnabled, setAgentesEnabled] = React.useState(() => canAccessAgentes());
 
   // Revisar metadata cuando cambie (ej. al cambiar de cliente)
   React.useEffect(() => {
@@ -133,6 +136,7 @@ export function Sidebar({
       setHydroEnabled(canAccessHydro());
       setSeguimientosEnabled(canAccessSeguimientos());
       setBudgetEnabled(canAccessBudget());
+      setAgentesEnabled(canAccessAgentes());
     };
     update();
     window.addEventListener("metadataUpdated", update);
@@ -723,6 +727,19 @@ export function Sidebar({
             >
               <Wallet className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
               Presupuesto
+            </button>
+          )}
+          {agentesEnabled && (
+            <button
+              onClick={() => { navigateWithParams("agentes"); }}
+              className={`group flex w-full items-center gap-2 px-4 py-2 ${
+                currentPage === "agentes"
+                  ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
+                  : "text-gray-300 hover:bg-[#0a2a5a]"
+              } rounded-lg`}
+            >
+              <BrainCircuit className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
+              Agentes
             </button>
           )}
         </nav>
