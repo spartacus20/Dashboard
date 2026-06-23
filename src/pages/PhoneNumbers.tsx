@@ -926,11 +926,11 @@ function EditPhoneModal({ phoneNumber, onClose, onSuccess }: EditPhoneModalProps
 
   // General
   const [nickname, setNickname] = useState(phoneNumber.nickname || '');
-  const [fallbackNumber, setFallbackNumber] = useState('');
+  const [fallbackNumber, setFallbackNumber] = useState(phoneNumber.fallback_number || '');
 
   // Webhooks
   const [inboundWebhookUrl, setInboundWebhookUrl] = useState(phoneNumber.inbound_webhook_url || '');
-  const [inboundSmsWebhookUrl, setInboundSmsWebhookUrl] = useState('');
+  const [inboundSmsWebhookUrl, setInboundSmsWebhookUrl] = useState(phoneNumber.inbound_sms_webhook_url || '');
 
   // Agents
   const [agents, setAgents] = useState<RetellAgent[]>([]);
@@ -941,14 +941,18 @@ function EditPhoneModal({ phoneNumber, onClose, onSuccess }: EditPhoneModalProps
   const [outboundAgentId, setOutboundAgentId] = useState(currentOutboundAgentId);
 
   // SIP / Trunk
-  const [terminationUri, setTerminationUri] = useState('');
-  const [authUsername, setAuthUsername] = useState('');
-  const [authPassword, setAuthPassword] = useState('');
-  const [transport, setTransport] = useState('');
+  const [terminationUri, setTerminationUri] = useState(phoneNumber.sip_outbound_trunk_config?.termination_uri || '');
+  const [authUsername, setAuthUsername] = useState(phoneNumber.sip_outbound_trunk_config?.auth_username || '');
+  const [authPassword, setAuthPassword] = useState(phoneNumber.sip_outbound_trunk_config?.auth_password || '');
+  const [transport, setTransport] = useState(phoneNumber.sip_outbound_trunk_config?.transport || '');
 
   // Countries (comma-separated)
-  const [allowedInboundCountries, setAllowedInboundCountries] = useState('');
-  const [allowedOutboundCountries, setAllowedOutboundCountries] = useState('');
+  const [allowedInboundCountries, setAllowedInboundCountries] = useState(
+    (phoneNumber.allowed_inbound_country_list ?? []).join(', ')
+  );
+  const [allowedOutboundCountries, setAllowedOutboundCountries] = useState(
+    (phoneNumber.allowed_outbound_country_list ?? []).join(', ')
+  );
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

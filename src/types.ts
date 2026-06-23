@@ -129,6 +129,16 @@ export interface RetellPhoneNumber {
   area_code: number;
   nickname?: string;
   inbound_webhook_url?: string;
+  inbound_sms_webhook_url?: string;
+  fallback_number?: string;
+  allowed_inbound_country_list?: string[];
+  allowed_outbound_country_list?: string[];
+  sip_outbound_trunk_config?: {
+    termination_uri?: string;
+    transport?: string;
+    auth_username?: string;
+    auth_password?: string;
+  };
   last_modification_timestamp: number;
   // Campos enriquecidos al pasar por el backend proxy
   workspace_name?: string;
