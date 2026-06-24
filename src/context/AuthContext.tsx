@@ -111,10 +111,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setUser(session?.user ?? null);
 
       if (
-        (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") &&
+        event === "SIGNED_IN" &&
         session?.user?.email
       ) {
         // Actualizar datos del cliente en background (sin spinner)
+        // TOKEN_REFRESHED se omite intencionalmente: solo refresca el JWT, no requiere
+        // re-fetchear datos del usuario. Hacerlo resetearía metadata/apiKey al cliente base.
         try {
           await getClientId(session.user.email);
         } catch {

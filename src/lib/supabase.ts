@@ -111,18 +111,23 @@ export const getClientId = async (email: string): Promise<string | null> => {
         }
         sessionStorage.setItem('fullName', fullName)
         
-        // Guardar metadatos
-        if (userData.metadata) {
-          sessionStorage.setItem('metadata', JSON.stringify(userData.metadata))
-          // Disparar evento personalizado para notificar que el metadata se guardó
-          window.dispatchEvent(new CustomEvent('metadataUpdated', { 
-            detail: { metadata: userData.metadata } 
-          }))
-        }
-        
-        // Guardar metadata_llamadas
-        if (userData.metadata_llamadas) {
-          sessionStorage.setItem('metadata_llamadas', JSON.stringify(userData.metadata_llamadas))
+        // Guardar metadatos solo cuando se usa el cliente por defecto.
+        // Si el usuario tiene otro cliente seleccionado, el metadata correcto
+        // lo carga getClientApiKey(clientIdToUse) en CallsContext; saltarse este
+        // paso evita el flash que mostraría secciones del cliente base antes de
+        // que carguen las del cliente seleccionado.
+        if (clientIdToUse === defaultClientId) {
+          if (userData.metadata) {
+            sessionStorage.setItem('metadata', JSON.stringify(userData.metadata))
+            window.dispatchEvent(new CustomEvent('metadataUpdated', {
+              detail: { metadata: userData.metadata }
+            }))
+          }
+          if (userData.metadata_llamadas) {
+            sessionStorage.setItem('metadata_llamadas', JSON.stringify(userData.metadata_llamadas))
+          } else {
+            sessionStorage.removeItem('metadata_llamadas')
+          }
         }
 
         // Guardar estado de suscripción del cliente
@@ -380,12 +385,13 @@ export const canAccess = (feature: 'agenda' | 'records' | 'num_tel' | 'callbacks
   }
 
   // Verificar metadata del cliente activo
+  // Si el cliente no tiene la feature definida en metadata → ocultar (false)
   const metadata = getMetadata()
   if (metadata && feature in metadata) {
     return metadata[feature] === true
   }
 
-  return true
+  return false
 }
 
 export const hasLaunchPermissions = (): boolean => {

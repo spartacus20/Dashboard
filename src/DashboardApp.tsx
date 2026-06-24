@@ -29,6 +29,7 @@ import {
   canAccessHydro,
   canAccessBudget,
   canAccessSeguimientos,
+  canAccessAgentes,
   canAccessDashboard,
   isAdmin,
   isClientActive,
@@ -75,6 +76,9 @@ function DashboardApp() {
     loadDashboardData,
     agendaEnabled,
     salesEnabled,
+    numTelEnabled,
+    recordsEnabled,
+    callbacksEnabled,
     launchEnabled,
     dontCallEnabled,
     campaignEnabled
@@ -117,10 +121,29 @@ function DashboardApp() {
   // Redirigir si se intenta acceder a campaña sin permisos
   React.useEffect(() => {
     if (currentPage === 'campaign' && !campaignEnabled) {
-      // console.log('Sin permisos de campaña, redirigiendo al dashboard');
       navigateDashboard('dashboard', undefined, { replace: true });
     }
   }, [currentPage, campaignEnabled]);
+  React.useEffect(() => {
+    if (currentPage === 'recordings' && !recordsEnabled) {
+      navigateDashboard('dashboard', undefined, { replace: true });
+    }
+  }, [currentPage, recordsEnabled]);
+  React.useEffect(() => {
+    if (currentPage === 'phones' && !numTelEnabled) {
+      navigateDashboard('dashboard', undefined, { replace: true });
+    }
+  }, [currentPage, numTelEnabled]);
+  React.useEffect(() => {
+    if (currentPage === 'callbacks' && !callbacksEnabled) {
+      navigateDashboard('dashboard', undefined, { replace: true });
+    }
+  }, [currentPage, callbacksEnabled]);
+  React.useEffect(() => {
+    if (currentPage === 'ventas' && !salesEnabled) {
+      navigateDashboard('dashboard', undefined, { replace: true });
+    }
+  }, [currentPage, salesEnabled]);
 
   // Tickets: visible solo si metadata.tickets === true (sessionStorage)
   // Banner para admin cuando el cliente seleccionado está suspendido
@@ -150,6 +173,7 @@ function DashboardApp() {
   const [hydroEnabled, setHydroEnabled] = React.useState(() => canAccessHydro());
   const [budgetEnabled, setBudgetEnabled] = React.useState(() => canAccessBudget());
   const [seguimientosEnabled, setSeguimientosEnabled] = React.useState(() => canAccessSeguimientos());
+  const [agentesEnabled, setAgentesEnabled] = React.useState(() => canAccessAgentes());
   React.useEffect(() => {
     const update = () => {
       setTicketsEnabled(canAccessTickets());
@@ -158,6 +182,7 @@ function DashboardApp() {
       setHydroEnabled(canAccessHydro());
       setBudgetEnabled(canAccessBudget());
       setSeguimientosEnabled(canAccessSeguimientos());
+      setAgentesEnabled(canAccessAgentes());
     };
     update();
     window.addEventListener('metadataUpdated', update);
@@ -193,6 +218,11 @@ function DashboardApp() {
       navigateDashboard('dashboard', undefined, { replace: true });
     }
   }, [currentPage, seguimientosEnabled]);
+  React.useEffect(() => {
+    if (currentPage === 'agentes' && !agentesEnabled) {
+      navigateDashboard('dashboard', undefined, { replace: true });
+    }
+  }, [currentPage, agentesEnabled]);
   
   // Calculamos si la caché está activa
   const cacheStatus = lastUpdated 
@@ -1389,12 +1419,12 @@ function DashboardApp() {
             launchEnabled={launchEnabled}
           />
         )}
-        {currentPage === 'recordings' && (
-          <Recordings 
+        {currentPage === 'recordings' && recordsEnabled && (
+          <Recordings
             onNavigate={goToPage}
           />
         )}
-        {currentPage === 'phones' && (
+        {currentPage === 'phones' && numTelEnabled && (
           <PhoneNumbers
             onNavigate={goToPage}
           />
@@ -1404,7 +1434,7 @@ function DashboardApp() {
             onNavigate={goToPage}
           />
         )}
-        {currentPage === 'callbacks' && (
+        {currentPage === 'callbacks' && callbacksEnabled && (
           <Callbacks
             onNavigate={goToPage}
           />
@@ -1412,13 +1442,13 @@ function DashboardApp() {
         {currentPage === 'batch-call' && (
           <BatchCall onNavigate={goToPage} />
         )}
-        {currentPage === 'ventas' && (
+        {currentPage === 'ventas' && salesEnabled && (
           <Ventas onNavigate={goToPage} />
         )}
-        {currentPage === 'lanzamiento' && (
+        {currentPage === 'lanzamiento' && launchEnabled && (
           <Lanzamiento />
         )}
-        {currentPage === 'no-llamar' && (
+        {currentPage === 'no-llamar' && dontCallEnabled && (
           <NoLlamar />
         )}
         {currentPage === 'tickets' && ticketsEnabled && (
@@ -1448,7 +1478,7 @@ function DashboardApp() {
         {currentPage === 'seguimientos' && seguimientosEnabled && (
           <Seguimientos onNavigate={goToPage} />
         )}
-        {currentPage === 'agentes' && (
+        {currentPage === 'agentes' && agentesEnabled && (
           <Agentes onNavigate={goToPage} />
         )}
         </Suspense>

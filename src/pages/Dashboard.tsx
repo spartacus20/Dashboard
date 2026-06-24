@@ -1814,7 +1814,7 @@ export function Dashboard({
             onClick={handleRefresh}
             disabled={loading}
             title="Actualizar datos"
-            className="bg-emerald-600 hover:bg-emerald-700 text-white p-2 h-9 w-9 flex items-center justify-center"
+            className="h-9 w-9 p-0 flex items-center justify-center bg-[#0a2a5a] border border-[#1e4a8a] hover:bg-[#1e4a8a] text-white transition-colors disabled:opacity-50"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
