@@ -57,3 +57,28 @@ export async function updateProfileName(
 
   return data;
 }
+
+export interface UpdatePasswordResponse {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
+
+export async function updateAccountPassword(
+  email: string,
+  password: string,
+): Promise<UpdatePasswordResponse> {
+  const response = await fetch(`${BASE_URL}/api/users/update-password`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+
+  const data = (await response.json()) as UpdatePasswordResponse;
+
+  if (!response.ok) {
+    throw new Error(data.error || data.message || 'No se pudo actualizar la contraseña');
+  }
+
+  return data;
+}

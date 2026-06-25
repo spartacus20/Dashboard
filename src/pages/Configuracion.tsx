@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Calendar, Mail, User } from "lucide-react";
+import { Calendar, Lock, Mail, User } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import {
   getAccountCreatedAt,
@@ -27,9 +27,11 @@ function formatAccountDate(dateString: string | null): string {
 }
 
 export function Configuracion() {
-  const { user } = useAuth();
+  const { user, changePassword } = useAuth();
   const sessionEmail = getEmail() || user?.email || "";
   const initialName = getFullName() || getCurrentUserInfo().name || "";
+  const usesEmailAuth =
+    user?.identities?.some((identity) => identity.provider === "email") ?? true;
 
   const [fullName, setFullNameInput] = useState(initialName);
   const [savedName, setSavedName] = useState(initialName);
@@ -38,9 +40,17 @@ export function Configuracion() {
   );
   const [saving, setSaving] = useState(false);
   const [loadingAccount, setLoadingAccount] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
 
   const accountActive = isClientActive();
   const hasChanges = fullName.trim() !== savedName.trim();
+  const canSubmitPasswordChange =
+    currentPassword.length > 0 &&
+    newPassword.length >= 8 &&
+    confirmPassword.length > 0;
 
   useEffect(() => {
     if (!sessionEmail) return;
@@ -125,6 +135,39 @@ export function Configuracion() {
       );
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handlePasswordChange = async () => {
+    if (newPassword.length < 8) {
+      toast.error("La nueva contraseña debe tener al menos 8 caracteres");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      toast.error("Las contraseñas nuevas no coinciden");
+      return;
+    }
+
+    if (newPassword === currentPassword) {
+      toast.error("La nueva contraseña debe ser distinta a la actual");
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      const { error } = await changePassword(currentPassword, newPassword);
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      toast.success("Contraseña actualizada correctamente");
+    } finally {
+      setChangingPassword(false);
     }
   };
 
@@ -225,6 +268,92 @@ export function Configuracion() {
             {saving ? "Guardando..." : "Guardar cambios"}
           </Button>
         </div>
+      </div>
+
+      <div className="max-w-2xl mt-6 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-6 py-5 border-b border-slate-100">
+          <h2 className="text-lg font-semibold text-slate-900">Seguridad</h2>
+          <p className="text-sm text-slate-500 mt-1">
+            Actualiza la contraseña de acceso al dashboard.
+          </p>
+        </div>
+
+        {usesEmailAuth ? (
+          <>
+            <div className="px-6 py-6 space-y-4">
+              <div className="space-y-2">
+                <label
+                  htmlFor="current-password"
+                  className="flex items-center gap-2 text-sm font-medium text-slate-700"
+                >
+                  <Lock className="w-4 h-4 text-slate-400" />
+                  Contraseña actual
+                </label>
+                <Input
+                  id="current-password"
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  autoComplete="current-password"
+                  className="bg-white border-slate-300 text-slate-900 placeholder:text-slate-400 focus-visible:ring-blue-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label
+                  htmlFor="new-password"
+                  className="text-sm font-medium text-slate-700"
+                >
+                  Nueva contraseña
+                </label>
+                <Input
+                  id="new-password"
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  autoComplete="new-password"
+                  minLength={8}
+                  className="bg-white border-slate-300 text-slate-900 placeholder:text-slate-400 focus-visible:ring-blue-500"
+                />
+                <p className="text-xs text-slate-500">Mínimo 8 caracteres.</p>
+              </div>
+
+              <div className="space-y-2">
+                <label
+                  htmlFor="confirm-password"
+                  className="text-sm font-medium text-slate-700"
+                >
+                  Confirmar nueva contraseña
+                </label>
+                <Input
+                  id="confirm-password"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  autoComplete="new-password"
+                  className="bg-white border-slate-300 text-slate-900 placeholder:text-slate-400 focus-visible:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+              <Button
+                onClick={() => void handlePasswordChange()}
+                disabled={!canSubmitPasswordChange || changingPassword}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {changingPassword ? "Actualizando..." : "Cambiar contraseña"}
+              </Button>
+            </div>
+          </>
+        ) : (
+          <div className="px-6 py-6">
+            <p className="text-sm text-slate-600">
+              Tu cuenta usa inicio de sesión externo. Para cambiar la contraseña,
+              contacta con un administrador.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
