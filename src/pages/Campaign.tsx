@@ -240,10 +240,10 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
   };
 
   return (
-    <div className="p-8 bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
+    <div className="p-8">
       <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">Campaña</h2>
+          <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800 mb-2">Campaña</h2>
           <p className="text-slate-600">Lista de batch calls y creación de nuevas campañas desde CSV</p>
         </div>
         <div className="flex gap-2">
@@ -318,26 +318,10 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
             <button
               onClick={() => loadBatchCalls(selectedWorkspaceIndex ?? undefined)}
               disabled={loading}
-              className={`px-4 py-2 rounded-lg text-white flex items-center ${
-                loading
-                  ? 'bg-slate-400 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800'
-              }`}
+              className="flex items-center gap-1.5 bg-[#0a2a5a] border border-[#1e4a8a] hover:bg-[#1e4a8a] disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg transition-colors text-white text-sm font-medium"
             >
-              {loading ? (
-                <>
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Cargando...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="h-5 w-5 mr-1" />
-                  Actualizar
-                </>
-              )}
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              {loading ? 'Cargando...' : 'Actualizar'}
             </button>
           </div>
         </div>

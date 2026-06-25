@@ -2059,9 +2059,9 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   };
 
   return (
-    <div className="p-8 bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
+    <div className="p-8">
       <div className="mb-8">
-        <h2 className="text-2xl font-bold text-slate-800 mb-2">Grabaciones</h2>
+        <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800 mb-2">Grabaciones</h2>
         <div className="flex flex-wrap items-center gap-2 text-slate-600">
           <p>Escucha y analiza las conversaciones de IA</p>
           
@@ -2112,50 +2112,34 @@ export function Recordings({ onNavigate }: RecordingsProps) {
             <CardTitle className="text-slate-800">Grabaciones</CardTitle>
             
             <div className="flex items-center gap-2">
-              <Button
+              <button
                 onClick={() => loadAllCalls(true)}
                 disabled={loadingAllCalls}
-                variant={loadingAllCalls ? "secondary" : "default"}
+                className="flex items-center gap-1.5 bg-[#0a2a5a] border border-[#1e4a8a] hover:bg-[#1e4a8a] disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg transition-colors text-white text-sm font-medium"
               >
-                {loadingAllCalls ? (
-                  <>
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Cargando...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Actualizar datos
-                  </>
-                )}
-              </Button>
+                <RefreshCw className={`h-4 w-4 ${loadingAllCalls ? 'animate-spin' : ''}`} />
+                {loadingAllCalls ? 'Cargando...' : 'Actualizar datos'}
+              </button>
               
               {/* Botón para exportar a Excel */}
-              <Button 
-                onClick={openExportModal} 
-                variant="outline" 
-                size="sm"
-                className="h-8 px-3 text-xs font-medium bg-blue-600 text-white border-blue-600 hover:bg-blue-700 hover:border-blue-700 transition-colors gap-1.5"
+              <button
+                onClick={openExportModal}
                 disabled={loadingAllCalls}
+                className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg transition-colors text-white text-sm font-medium border border-transparent"
               >
-                <Download className="h-3.5 w-3.5" />
+                <Download className="h-4 w-4" />
                 Exportar CSV
-              </Button>
+              </button>
               
               {/* Botón para personalizar columnas */}
               <div className="relative">
-                <Button 
-                  onClick={() => setShowColumnCustomizer(!showColumnCustomizer)} 
-                  variant="outline" 
-                  size="sm"
-                  className="h-8 px-3 text-xs font-medium bg-slate-700 text-white border-slate-700 hover:bg-slate-800 hover:border-slate-800 transition-colors gap-1.5 column-customizer-button"
+                <button
+                  onClick={() => setShowColumnCustomizer(!showColumnCustomizer)}
+                  className="flex items-center gap-1.5 bg-[#0a2a5a] border border-[#1e4a8a] hover:bg-[#1e4a8a] px-4 py-2 rounded-lg transition-colors text-white text-sm font-medium column-customizer-button"
                 >
-                  <ListFilter className="h-3.5 w-3.5" />
+                  <ListFilter className="h-4 w-4" />
                   Columnas
-                </Button>
+                </button>
                 
                 {showColumnCustomizer && (
                   <div className="absolute right-0 mt-2 w-64 bg-white rounded-md shadow-xl z-50 border border-slate-200 column-customizer-dropdown">

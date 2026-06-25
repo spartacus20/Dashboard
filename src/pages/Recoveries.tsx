@@ -342,11 +342,10 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
   });
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="max-w-7xl mx-auto p-4 md:p-8 space-y-6">
+    <div className="p-8 space-y-6">
         {/* Page Header */}
         <div className="space-y-1">
-          <h2 className="text-3xl font-black text-slate-900 tracking-tight">
+          <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800">
             Análisis de códigos de resultado
           </h2>
           <p className="text-slate-500">
@@ -916,7 +915,6 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
             </div>
           )}
         </div>
-      </div>
     </div>
   );
 }

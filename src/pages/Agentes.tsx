@@ -683,7 +683,7 @@ export function Agentes({ onNavigate: _onNavigate }: AgentesProps) {
           </button>
         )}
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Agentes</h1>
+          <h1 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800">Agentes</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             {selectedAgent ? selectedAgent.agent_name || 'Sin nombre' : 'Selecciona un agente para editar'}
           </p>
@@ -721,7 +721,7 @@ export function Agentes({ onNavigate: _onNavigate }: AgentesProps) {
   // ── LIST VIEW ───────────────────────────────────────────────────────────────
   if (!selectedAgent) {
     return (
-      <div className="space-y-5">
+      <div className="p-8 space-y-5">
         <PageHeader />
         {listError && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -801,7 +801,7 @@ export function Agentes({ onNavigate: _onNavigate }: AgentesProps) {
 
   // ── DETAIL VIEW ─────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-5">
+    <div className="p-8 space-y-5">
       <PageHeader />
 
       {isDirty && (
