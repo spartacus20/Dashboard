@@ -1,4 +1,29 @@
-import { BASE_URL } from './config';
+import { BASE_URL, GET_CLIENT_WEBHOOK_URL } from './config';
+
+export interface AccountProfile {
+  fullName: string;
+  createdAt: string | null;
+}
+
+export async function fetchAccountProfile(email: string): Promise<AccountProfile> {
+  const response = await fetch(GET_CLIENT_WEBHOOK_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+
+  if (!response.ok) {
+    throw new Error('No se pudo cargar la información de la cuenta');
+  }
+
+  const data = await response.json();
+  const profile = Array.isArray(data) ? data[0] : data;
+
+  return {
+    fullName: profile?.fullName || profile?.full_name || '',
+    createdAt: profile?.created_at || profile?.createdAt || null,
+  };
+}
 
 export interface UpdateProfileResponse {
   success: boolean;

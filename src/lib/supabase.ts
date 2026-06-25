@@ -102,6 +102,7 @@ export const getClientId = async (email: string): Promise<string | null> => {
         
         // Guardar TODOS los datos en sessionStorage
         sessionStorage.setItem('userData', JSON.stringify(userData))
+        persistAccountCreatedAt(userData)
         if (apiKey) {
           sessionStorage.setItem('apiKey', apiKey)
         }
@@ -265,10 +266,52 @@ export const getFullName = (): string | null => {
   return sessionStorage.getItem('fullName')
 }
 
+function normalizeAccountDateValue(value: unknown): string | null {
+  if (value == null || value === '') return null
+
+  if (typeof value === 'string') {
+    const parsed = new Date(value)
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString()
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString()
+  }
+
+  if (typeof value === 'number') {
+    const parsed = new Date(value)
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString()
+  }
+
+  return null
+}
+
+export const persistAccountCreatedAt = (
+  userData: Record<string, unknown> | null | undefined,
+): string | null => {
+  const normalized = normalizeAccountDateValue(
+    userData?.created_at ?? userData?.createdAt,
+  )
+
+  if (normalized) {
+    sessionStorage.setItem('accountCreatedAt', normalized)
+  } else {
+    sessionStorage.removeItem('accountCreatedAt')
+  }
+
+  return normalized
+}
+
 export const getAccountCreatedAt = (): string | null => {
+  const fromSession = sessionStorage.getItem('accountCreatedAt')
+  if (fromSession) {
+    const normalized = normalizeAccountDateValue(fromSession)
+    if (normalized) return normalized
+  }
+
   const userData = getUserData()
   if (!userData) return null
-  return userData.created_at || userData.createdAt || null
+  return normalizeAccountDateValue(userData.created_at ?? userData.createdAt)
 }
 
 export const setFullName = (fullName: string): void => {
@@ -495,6 +538,7 @@ export const clearSessionData = () => {
   sessionStorage.removeItem('client_test')
   sessionStorage.removeItem('clientActive')
   sessionStorage.removeItem('subscriptionExpiresAt')
+  sessionStorage.removeItem('accountCreatedAt')
   // También limpiar el client_id seleccionado y el client_test del usuario al cerrar sesión
   localStorage.removeItem('selected_client_id')
   localStorage.removeItem('user_client_test')

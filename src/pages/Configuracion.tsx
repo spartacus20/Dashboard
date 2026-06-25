@@ -4,14 +4,14 @@ import { Calendar, Mail, User } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import {
   getAccountCreatedAt,
-  getClientId,
   getCurrentUserInfo,
   getEmail,
   getFullName,
   isClientActive,
+  persistAccountCreatedAt,
   setFullName,
 } from "../lib/supabase";
-import { updateProfileName } from "../services/api/account";
+import { fetchAccountProfile, updateProfileName } from "../services/api/account";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 
@@ -43,30 +43,53 @@ export function Configuracion() {
   const hasChanges = fullName.trim() !== savedName.trim();
 
   useEffect(() => {
-    const refreshAccountData = async () => {
-      if (!sessionEmail || getAccountCreatedAt()) return;
+    if (!sessionEmail) return;
 
+    let cancelled = false;
+
+    const refreshAccountData = async () => {
       setLoadingAccount(true);
       try {
-        await getClientId(sessionEmail);
-        const refreshedName = getFullName() || "";
-        const refreshedCreatedAt = getAccountCreatedAt();
+        const profile = await fetchAccountProfile(sessionEmail);
+        if (cancelled) return;
 
-        if (refreshedName) {
-          setFullNameInput(refreshedName);
-          setSavedName(refreshedName);
+        const refreshedCreatedAt = persistAccountCreatedAt({
+          fullName: profile.fullName,
+          created_at: profile.createdAt,
+        });
+
+        if (profile.fullName) {
+          setFullNameInput(profile.fullName);
+          setSavedName(profile.fullName);
         }
+
         if (refreshedCreatedAt) {
           setActiveSince(refreshedCreatedAt);
+          return;
+        }
+
+        const cachedCreatedAt = getAccountCreatedAt();
+        if (cachedCreatedAt) {
+          setActiveSince(cachedCreatedAt);
         }
       } catch {
-        // Silencioso: la página sigue usable con datos locales
+        if (cancelled) return;
+        const cachedCreatedAt = getAccountCreatedAt();
+        if (cachedCreatedAt) {
+          setActiveSince(cachedCreatedAt);
+        }
       } finally {
-        setLoadingAccount(false);
+        if (!cancelled) {
+          setLoadingAccount(false);
+        }
       }
     };
 
     void refreshAccountData();
+
+    return () => {
+      cancelled = true;
+    };
   }, [sessionEmail]);
 
   const handleSave = async () => {
