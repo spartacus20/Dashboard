@@ -234,7 +234,7 @@ function BatchCall({ onNavigate }: { onNavigate: (page: string) => void }) {
   return (
     <div className="p-8">
       <div className="mb-8">
-        <h2 className="text-2xl font-bold text-white mb-2">Llamadas en Lote</h2>
+        <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800 mb-2">Llamadas en Lote</h2>
         <div className="flex flex-wrap items-center gap-2 text-gray-400">
           <p>Gestiona y visualiza campañas de llamadas programadas</p>
         </div>

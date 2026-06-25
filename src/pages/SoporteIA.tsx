@@ -495,10 +495,10 @@ export function SoporteIA({ onNavigate: _onNavigate }: SoporteIAProps) {
   }, [detailId, filas]);
 
   return (
-    <div className="w-full min-w-0 max-w-full">
+    <div className="p-8 w-full min-w-0">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4 min-w-0">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Soporte IA</h1>
+          <h1 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800">Soporte IA</h1>
           <p className="text-sm text-gray-600 mt-1">
             {seccion === 'incidencias'
               ? 'Incidencias: pulsa una fila para el motivo y el detalle completo.'

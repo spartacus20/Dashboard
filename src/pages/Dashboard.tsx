@@ -786,6 +786,42 @@ export function Dashboard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timePeriod, customStartDate, customEndDate, customStartTime, customEndTime, appliedDatabaseFilter, appliedClienteFilter]);
 
+  const [showStatusBadge, setShowStatusBadge] = React.useState(false);
+  const [statusBadgeFading, setStatusBadgeFading] = React.useState(false);
+  const STATUS_BADGE_VISIBLE_MS = 5000;
+  const STATUS_BADGE_FADE_MS = 300;
+
+  React.useEffect(() => {
+    if (!dashboardData) {
+      setShowStatusBadge(false);
+      setStatusBadgeFading(false);
+      return;
+    }
+
+    if (loading) {
+      setShowStatusBadge(true);
+      setStatusBadgeFading(false);
+      return;
+    }
+
+    setShowStatusBadge(true);
+    setStatusBadgeFading(false);
+
+    const fadeTimer = window.setTimeout(() => {
+      setStatusBadgeFading(true);
+    }, STATUS_BADGE_VISIBLE_MS);
+
+    const hideTimer = window.setTimeout(() => {
+      setShowStatusBadge(false);
+      setStatusBadgeFading(false);
+    }, STATUS_BADGE_VISIBLE_MS + STATUS_BADGE_FADE_MS);
+
+    return () => {
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(hideTimer);
+    };
+  }, [loading, dashboardData]);
+
   // Cargar métricas de lanzamiento por región cuando el usuario tiene permiso y cambia el período
   React.useEffect(() => {
     const loadLaunchRegionMetrics = async () => {
@@ -1638,57 +1674,79 @@ export function Dashboard({
         <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800 mb-2">
           Dashboard
         </h2>
-        <p className="text-slate-600">Análisis de llamadas con uMindsAI</p>
-        {dashboardData && (
-          <div
-            className={`mt-2 inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-              loading
-                ? "bg-blue-50 text-blue-700 border-blue-200"
-                : "bg-green-100 text-green-800 border-green-200"
-            }`}
-          >
-            {loading ? (
-              <>
-                <svg
-                  className="animate-spin w-3 h-3 mr-2"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-slate-600">Análisis de llamadas con uMindsAI</p>
+          {dashboardData && showStatusBadge && (
+            <div
+              className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border transition-opacity duration-300 ease-out ${
+                statusBadgeFading ? "opacity-0" : "opacity-100"
+              } ${
+                loading
+                  ? "bg-blue-50 text-blue-700 border-blue-200"
+                  : "bg-green-100 text-green-800 border-green-200"
+              }`}
+            >
+              {loading ? (
+                <>
+                  <svg
+                    className="animate-spin w-3 h-3 mr-2"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                  Actualizando métricas...
+                </>
+              ) : (
+                <>
+                  <svg
+                    className="w-3 h-3 mr-1"
                     fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
-                Actualizando métricas...
-              </>
-            ) : (
-              <>
-                <svg
-                  className="w-3 h-3 mr-1"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                Datos actualizados del servidor
-              </>
-            )}
-          </div>
-        )}
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                  Datos actualizados del servidor
+                </>
+              )}
+            </div>
+          )}
+          {dashboardData && !loading && !showStatusBadge && (
+            <span
+              className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-100 border border-green-200 text-green-800"
+              title="Datos actualizados del servidor"
+            >
+              <svg
+                className="w-3 h-3"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Filtros de período */}
@@ -1814,7 +1872,7 @@ export function Dashboard({
             onClick={handleRefresh}
             disabled={loading}
             title="Actualizar datos"
-            className="bg-emerald-600 hover:bg-emerald-700 text-white p-2 h-9 w-9 flex items-center justify-center"
+            className="h-9 w-9 p-0 flex items-center justify-center bg-[#0a2a5a] border border-[#1e4a8a] hover:bg-[#1e4a8a] text-white transition-colors disabled:opacity-50"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"

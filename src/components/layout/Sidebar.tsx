@@ -23,6 +23,9 @@ import {
   ChevronDown,
   Search,
   PhoneForwarded,
+  BrainCircuit,
+  Settings,
+  MoreVertical,
 } from "lucide-react";
 import { useCallsContext } from "../../context/CallsContext";
 import { useAuth } from "../../context/AuthContext";
@@ -35,9 +38,13 @@ import {
   canAccessHydro,
   canAccessSeguimientos,
   canAccessBudget,
+  canAccessAgentes,
   hasPermissionsDefined,
   getClientTest,
   getClientIdFromSession,
+  getFullName,
+  getUserData,
+  getEmail,
 } from "../../lib/supabase";
 
 interface SidebarProps {
@@ -85,12 +92,20 @@ export function Sidebar({
   const [isChangingClient, setIsChangingClient] = useState(false);
   const [clientSearch, setClientSearch] = useState("");
   const [isClientDropdownOpen, setIsClientDropdownOpen] = useState(false);
+  const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
+  const [profileName, setProfileName] = useState(
+    () => sessionStorage.getItem("fullName") || "",
+  );
   const clientDropdownRef = useRef<HTMLDivElement>(null);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
       if (clientDropdownRef.current && !clientDropdownRef.current.contains(e.target as Node)) {
         setIsClientDropdownOpen(false);
+      }
+      if (accountMenuRef.current && !accountMenuRef.current.contains(e.target as Node)) {
+        setIsAccountMenuOpen(false);
       }
     };
     document.addEventListener("mousedown", handleOutsideClick);
@@ -123,6 +138,7 @@ export function Sidebar({
   const [hydroEnabled, setHydroEnabled] = React.useState(() => canAccessHydro());
   const [seguimientosEnabled, setSeguimientosEnabled] = React.useState(() => canAccessSeguimientos());
   const [budgetEnabled, setBudgetEnabled] = React.useState(() => canAccessBudget());
+  const [agentesEnabled, setAgentesEnabled] = React.useState(() => canAccessAgentes());
 
   // Revisar metadata cuando cambie (ej. al cambiar de cliente)
   React.useEffect(() => {
@@ -133,6 +149,7 @@ export function Sidebar({
       setHydroEnabled(canAccessHydro());
       setSeguimientosEnabled(canAccessSeguimientos());
       setBudgetEnabled(canAccessBudget());
+      setAgentesEnabled(canAccessAgentes());
     };
     update();
     window.addEventListener("metadataUpdated", update);
@@ -344,13 +361,53 @@ export function Sidebar({
     setIsMobileMenuOpen(!isMobileMenuOpen);
   };
 
+  useEffect(() => {
+    const syncProfileName = () => {
+      const userData = getUserData();
+      const name =
+        getFullName() ||
+        userData?.fullName ||
+        userData?.full_name ||
+        "";
+      if (name) setProfileName(name);
+    };
+
+    const handleProfileUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ fullName?: string }>).detail;
+      if (detail?.fullName) {
+        setProfileName(detail.fullName);
+      } else {
+        syncProfileName();
+      }
+    };
+
+    syncProfileName();
+    window.addEventListener("profileUpdated", handleProfileUpdated);
+    return () => {
+      window.removeEventListener("profileUpdated", handleProfileUpdated);
+    };
+  }, [user?.email]);
+
   const handleSignOut = async () => {
     try {
+      setIsAccountMenuOpen(false);
       await signOut();
     } catch (error) {
       // console.error("Error al cerrar sesión:", error);
     }
   };
+
+  const resolvedProfileName =
+    profileName ||
+    getFullName() ||
+    getUserData()?.fullName ||
+    getUserData()?.full_name ||
+    "";
+  const userEmail = user?.email || getEmail() || "";
+  const userDisplayName = resolvedProfileName || userEmail || "Usuario";
+  const userInitial = (resolvedProfileName || userEmail || "U")[0].toUpperCase();
+  const showEmailSubtitle =
+    Boolean(userEmail) && userDisplayName.toLowerCase() !== userEmail.toLowerCase();
 
   return (
     <>
@@ -415,7 +472,7 @@ export function Sidebar({
 
               {/* Dropdown filtrado */}
               {isClientDropdownOpen && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-[#0d1f4a] border border-[#1e4a8a] rounded-md shadow-xl z-50 max-h-52 overflow-y-auto">
+                <div className="absolute top-full left-0 right-0 mt-1 bg-[#0d1f4a] border border-[#1e4a8a] rounded-md shadow-xl z-50 max-h-52 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#1e4a8a] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#2e5fa0]">
                   {availableClientIds
                     .filter((id) => id.toLowerCase().startsWith(clientSearch.toLowerCase()))
                     .map((clientId) => (
@@ -459,11 +516,10 @@ export function Sidebar({
         )}
 
         {/* Indicador de API key en uso */}
-        <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-[#0a2a5a] rounded-md text-xs text-gray-300">
-          <Key className="w-4 h-4 text-blue-400" />
-          <div className="overflow-hidden text-ellipsis">
-            <span className="text-gray-400">API Key:</span> {truncatedApiKey}
-          </div>
+        <div className="flex items-center gap-2 mb-4 px-3 py-1.5 bg-[#0a2a5a] rounded-md">
+          <Key className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+          <span className="text-xs text-gray-400 shrink-0">API Key</span>
+          <span className="ml-auto text-xs text-white font-medium truncate">{truncatedApiKey}</span>
         </div>
 
         {/* Indicador de estado de caché */}
@@ -471,48 +527,35 @@ export function Sidebar({
           <div className="mt-2 text-xs text-gray-300 mb-4">
             {isLoading || loadingAllCalls ? (
               <div className="space-y-2">
-                <span className="flex items-center text-blue-400">
-                  <svg
-                    className="animate-spin -ml-1 mr-1 h-3 w-3 text-blue-400"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
+                <div className="flex items-center justify-center gap-2 px-3 py-1.5 bg-[#0a2a5a] rounded-md">
+                  <svg className="animate-spin w-3 h-3 text-blue-400 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
-                  Cargando datos...
-                </span>
-
-                {/* Barra de progreso */}
+                  <span className="text-xs text-blue-400">Cargando datos...</span>
+                  {loadingProgress > 0 && totalCalls > 0 && (
+                    <span className="text-xs text-white tabular-nums">{progressPercentage}%</span>
+                  )}
+                </div>
                 {loadingProgress > 0 && (
-                  <div className="w-full">
-                    <div className="w-full bg-[#0a2a5a] rounded-full h-1.5">
-                      <div
-                        className="bg-blue-400 h-1.5 rounded-full"
-                        style={{ width: `${progressPercentage}%` }}
-                      ></div>
-                    </div>
-                    <div className="flex justify-between text-xs mt-1">
-                      <span>{loadingProgress} llamadas</span>
-                      {totalCalls > 0 && <span>{progressPercentage}%</span>}
-                    </div>
+                  <div className="w-full bg-[#0a2a5a] rounded-full h-1">
+                    <div className="bg-blue-400 h-1 rounded-full transition-all duration-300" style={{ width: `${progressPercentage}%` }} />
                   </div>
                 )}
               </div>
+            ) : cacheStatus.startsWith("Caché activa") ? (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-[#0a2a5a] rounded-md">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                <span className="text-emerald-400 font-medium">Caché activa</span>
+                <span className="ml-auto text-white tabular-nums">
+                  {cacheStatus.match(/\((.+)\)/)?.[1]}
+                </span>
+              </div>
             ) : (
-              cacheStatus
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-[#0a2a5a] rounded-md">
+                <span className="w-1.5 h-1.5 rounded-full bg-gray-500 shrink-0" />
+                <span className="text-gray-500">Sin datos en caché</span>
+              </div>
             )}
           </div>
         )}
@@ -725,23 +768,85 @@ export function Sidebar({
               Presupuesto
             </button>
           )}
+          {agentesEnabled && (
+            <button
+              onClick={() => { navigateWithParams("agentes"); }}
+              className={`group flex w-full items-center gap-2 px-4 py-2 ${
+                currentPage === "agentes"
+                  ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
+                  : "text-gray-300 hover:bg-[#0a2a5a]"
+              } rounded-lg`}
+            >
+              <BrainCircuit className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
+              Agentes
+            </button>
+          )}
         </nav>
 
-        {/* Información del usuario y botón de logout */}
-        <div className="mt-auto pt-4 border-t border-[#0a2a5a]">
-          <div className="mb-3 px-3 py-2 bg-[#0a2a5a] rounded-md">
-            <div className="text-xs text-gray-400 mb-1">Usuario</div>
-            <div className="text-sm text-white truncate">
-              {user?.email || "Usuario"}
+        {/* Información del usuario */}
+        <div ref={accountMenuRef} className="relative mt-auto pt-4 border-t border-[#0a2a5a]">
+          {isAccountMenuOpen && (
+            <div className="absolute left-full bottom-0 ml-5 w-56 rounded-lg border border-[#0a2a5a] bg-[#05163b] shadow-xl overflow-hidden z-50">
+              <div className="px-3 py-3 flex items-center gap-3 border-b border-[#0a2a5a]">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#1e4a8a] flex items-center justify-center text-white text-sm font-semibold">
+                  {userInitial}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm text-white font-medium truncate">
+                    {userDisplayName}
+                  </div>
+                  {showEmailSubtitle && (
+                    <div className="text-xs text-gray-400 truncate">{userEmail}</div>
+                  )}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  navigateWithParams("configuracion");
+                  setIsAccountMenuOpen(false);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-gray-200 hover:bg-[#0a2a5a] transition-colors"
+              >
+                <Settings className="w-4 h-4 shrink-0 text-gray-400" />
+                Configuración
+              </button>
+
+              <div className="border-t border-[#0a2a5a]" />
+
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-gray-200 hover:bg-[#0a2a5a] transition-colors"
+              >
+                <LogOut className="w-4 h-4 shrink-0 text-gray-400" />
+                Cerrar sesión
+              </button>
             </div>
-          </div>
+          )}
 
           <button
-            onClick={handleSignOut}
-            className="group flex w-full items-center gap-2 px-4 py-2 text-gray-300 hover:bg-red-600 hover:text-white rounded-lg transition-colors"
+            type="button"
+            onClick={() => setIsAccountMenuOpen((open) => !open)}
+            className={`w-full px-3 py-2 rounded-md flex items-center gap-3 transition-colors ${
+              isAccountMenuOpen
+                ? "bg-[#1e4a8a]/60"
+                : "bg-[#0a2a5a] hover:bg-[#1e4a8a]/40"
+            }`}
           >
-            <LogOut className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
-            Cerrar Sesión
+            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#1e4a8a] flex items-center justify-center text-white text-sm font-semibold">
+              {userInitial}
+            </div>
+            <div className="min-w-0 flex-1 text-left">
+              <div className="text-sm text-white font-medium truncate">
+                {userDisplayName}
+              </div>
+              {showEmailSubtitle && (
+                <div className="text-xs text-gray-400 truncate">{userEmail}</div>
+              )}
+            </div>
+            <MoreVertical className="w-4 h-4 text-gray-400 shrink-0" />
           </button>
         </div>
       </div>

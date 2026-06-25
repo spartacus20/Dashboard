@@ -634,10 +634,10 @@ const Lanzamiento: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="p-8 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Lanzamiento</h1>
+          <h1 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800">Lanzamiento</h1>
           <p className="text-muted-foreground">
             Métricas de campañas de lanzamiento
           </p>

@@ -102,6 +102,7 @@ export const getClientId = async (email: string): Promise<string | null> => {
         
         // Guardar TODOS los datos en sessionStorage
         sessionStorage.setItem('userData', JSON.stringify(userData))
+        persistAccountCreatedAt(userData)
         if (apiKey) {
           sessionStorage.setItem('apiKey', apiKey)
         }
@@ -110,19 +111,29 @@ export const getClientId = async (email: string): Promise<string | null> => {
           sessionStorage.setItem('email', userData.email)
         }
         sessionStorage.setItem('fullName', fullName)
-        
-        // Guardar metadatos
-        if (userData.metadata) {
-          sessionStorage.setItem('metadata', JSON.stringify(userData.metadata))
-          // Disparar evento personalizado para notificar que el metadata se guardó
-          window.dispatchEvent(new CustomEvent('metadataUpdated', { 
-            detail: { metadata: userData.metadata } 
-          }))
+        if (fullName) {
+          window.dispatchEvent(
+            new CustomEvent('profileUpdated', { detail: { fullName } }),
+          )
         }
         
-        // Guardar metadata_llamadas
-        if (userData.metadata_llamadas) {
-          sessionStorage.setItem('metadata_llamadas', JSON.stringify(userData.metadata_llamadas))
+        // Guardar metadatos solo cuando se usa el cliente por defecto.
+        // Si el usuario tiene otro cliente seleccionado, el metadata correcto
+        // lo carga getClientApiKey(clientIdToUse) en CallsContext; saltarse este
+        // paso evita el flash que mostraría secciones del cliente base antes de
+        // que carguen las del cliente seleccionado.
+        if (clientIdToUse === defaultClientId) {
+          if (userData.metadata) {
+            sessionStorage.setItem('metadata', JSON.stringify(userData.metadata))
+            window.dispatchEvent(new CustomEvent('metadataUpdated', {
+              detail: { metadata: userData.metadata }
+            }))
+          }
+          if (userData.metadata_llamadas) {
+            sessionStorage.setItem('metadata_llamadas', JSON.stringify(userData.metadata_llamadas))
+          } else {
+            sessionStorage.removeItem('metadata_llamadas')
+          }
         }
 
         // Guardar estado de suscripción del cliente
@@ -255,6 +266,71 @@ export const getFullName = (): string | null => {
   return sessionStorage.getItem('fullName')
 }
 
+function normalizeAccountDateValue(value: unknown): string | null {
+  if (value == null || value === '') return null
+
+  if (typeof value === 'string') {
+    const parsed = new Date(value)
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString()
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString()
+  }
+
+  if (typeof value === 'number') {
+    const parsed = new Date(value)
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString()
+  }
+
+  return null
+}
+
+export const persistAccountCreatedAt = (
+  userData: Record<string, unknown> | null | undefined,
+): string | null => {
+  const normalized = normalizeAccountDateValue(
+    userData?.created_at ?? userData?.createdAt,
+  )
+
+  if (normalized) {
+    sessionStorage.setItem('accountCreatedAt', normalized)
+  } else {
+    sessionStorage.removeItem('accountCreatedAt')
+  }
+
+  return normalized
+}
+
+export const getAccountCreatedAt = (): string | null => {
+  const fromSession = sessionStorage.getItem('accountCreatedAt')
+  if (fromSession) {
+    const normalized = normalizeAccountDateValue(fromSession)
+    if (normalized) return normalized
+  }
+
+  const userData = getUserData()
+  if (!userData) return null
+  return normalizeAccountDateValue(userData.created_at ?? userData.createdAt)
+}
+
+export const setFullName = (fullName: string): void => {
+  sessionStorage.setItem('fullName', fullName)
+
+  const userData = getUserData()
+  if (userData) {
+    userData.fullName = fullName
+    userData.full_name = fullName
+    sessionStorage.setItem('userData', JSON.stringify(userData))
+  }
+
+  window.dispatchEvent(
+    new CustomEvent('profileUpdated', {
+      detail: { fullName },
+    }),
+  )
+}
+
 function safeJsonParse<T>(raw: string | null): T | null {
   if (raw == null || raw === '') return null
   try {
@@ -352,6 +428,9 @@ export const canAccessSeguimientos = (): boolean => canAccessFeature('seguimient
 // Función para verificar si el usuario tiene acceso a Presupuesto
 export const canAccessBudget = (): boolean => canAccessFeature('budget');
 
+// Función para verificar si el usuario tiene acceso a Agentes
+export const canAccessAgentes = (): boolean => canAccessFeature('agentes');
+
 // Obtiene el role del usuario desde userData en sessionStorage
 export const getUserRole = (): string | null => {
   try {
@@ -377,12 +456,13 @@ export const canAccess = (feature: 'agenda' | 'records' | 'num_tel' | 'callbacks
   }
 
   // Verificar metadata del cliente activo
+  // Si el cliente no tiene la feature definida en metadata → ocultar (false)
   const metadata = getMetadata()
   if (metadata && feature in metadata) {
     return metadata[feature] === true
   }
 
-  return true
+  return false
 }
 
 export const hasLaunchPermissions = (): boolean => {
@@ -458,6 +538,7 @@ export const clearSessionData = () => {
   sessionStorage.removeItem('client_test')
   sessionStorage.removeItem('clientActive')
   sessionStorage.removeItem('subscriptionExpiresAt')
+  sessionStorage.removeItem('accountCreatedAt')
   // También limpiar el client_id seleccionado y el client_test del usuario al cerrar sesión
   localStorage.removeItem('selected_client_id')
   localStorage.removeItem('user_client_test')

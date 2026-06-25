@@ -393,12 +393,11 @@ export function Callbacks({}: CallbacksProps) {
   // });
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      <div className="max-w-7xl mx-auto px-4 py-8">
+    <div className="p-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800 mb-2">
+            <h1 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800 mb-2">
               Callbacks
             </h1>
             <p className="text-slate-600">
@@ -409,7 +408,7 @@ export function Callbacks({}: CallbacksProps) {
             <button
               onClick={openExportModal}
               disabled={loading}
-              className="flex items-center gap-2 bg-gradient-to-r from-green-600 to-emerald-700 hover:from-emerald-600 hover:to-teal-700 disabled:from-slate-400 disabled:to-slate-500 px-4 py-2 rounded-lg transition-all duration-200 text-white shadow-lg hover:shadow-xl"
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg transition-colors text-white text-sm font-medium"
             >
               <Download className="w-4 h-4" />
               Exportar CSV
@@ -417,7 +416,7 @@ export function Callbacks({}: CallbacksProps) {
             <button
               onClick={loadCallbacks}
               disabled={loading}
-              className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-indigo-600 hover:to-purple-700 disabled:from-slate-400 disabled:to-slate-500 px-4 py-2 rounded-lg transition-all duration-200 text-white shadow-lg hover:shadow-xl"
+              className="flex items-center gap-2 bg-[#0a2a5a] border border-[#1e4a8a] hover:bg-[#1e4a8a] disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg transition-colors text-white text-sm font-medium"
             >
               <RefreshCw
                 className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
@@ -513,9 +512,9 @@ export function Callbacks({}: CallbacksProps) {
             {/* Botón para abrir modal de filtros de fecha */}
             <button
               onClick={() => setShowDateFilterModal(true)}
-              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 ${
+              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg transition-colors ${
                 filterStartDate || filterEndDate
-                  ? "bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-indigo-600 hover:to-purple-700 text-white"
+                  ? "bg-blue-600 hover:bg-blue-700 text-white"
                   : "bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300"
               }`}
             >
@@ -661,7 +660,7 @@ export function Callbacks({}: CallbacksProps) {
                 <button
                   onClick={loadMoreCallbacksData}
                   disabled={loadingMore}
-                  className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-700 hover:from-purple-600 hover:to-pink-700 disabled:from-slate-400 disabled:to-slate-500 px-6 py-3 rounded-lg transition-all duration-200 text-white shadow-lg hover:shadow-xl"
+                  className="flex items-center gap-2 bg-[#0a2a5a] border border-[#1e4a8a] hover:bg-[#1e4a8a] disabled:opacity-50 disabled:cursor-not-allowed px-6 py-3 rounded-lg transition-colors text-white text-sm font-medium"
                 >
                   <RefreshCw
                     className={`w-4 h-4 ${loadingMore ? "animate-spin" : ""}`}
@@ -711,7 +710,7 @@ export function Callbacks({}: CallbacksProps) {
                         onClick={() => setCurrentPage(pageNum)}
                         className={`px-3 py-1 rounded transition-colors ${
                           currentPage === pageNum
-                            ? "bg-gradient-to-r from-blue-600 to-indigo-700 text-white"
+                            ? "bg-blue-600 text-white"
                             : "bg-slate-200 text-slate-600 hover:bg-slate-300"
                         }`}
                       >
@@ -734,7 +733,6 @@ export function Callbacks({}: CallbacksProps) {
             )}
           </div>
         )}
-      </div>
 
       {/* Modal de filtro de fechas */}
       {showDateFilterModal && (
@@ -807,7 +805,7 @@ export function Callbacks({}: CallbacksProps) {
               </button>
               <button
                 onClick={() => setShowDateFilterModal(false)}
-                className="flex-1 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-md hover:from-indigo-600 hover:to-purple-700 transition-colors"
+                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors text-sm font-medium"
               >
                 Aplicar filtro
               </button>
@@ -908,7 +906,7 @@ export function Callbacks({}: CallbacksProps) {
               </button>
               <button
                 onClick={confirmExport}
-                className="flex-1 px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-700 text-white rounded-md hover:from-emerald-600 hover:to-teal-700 transition-colors disabled:opacity-50"
+                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
                 disabled={exportLoading}
               >
                 {exportLoading ? (

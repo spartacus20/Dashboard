@@ -343,11 +343,11 @@ export function Seguimientos({ onNavigate: _onNavigate }: SeguimientosProps) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="p-8 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Seguimientos</h1>
+          <h1 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800">Seguimientos</h1>
           <p className="text-sm text-gray-500 mt-1">
             Gestión de reintentos de llamada y configuración de Retell AI
           </p>

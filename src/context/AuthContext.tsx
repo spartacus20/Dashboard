@@ -10,6 +10,7 @@ import {
   updateClientSubscriptionStatus,
 } from "../lib/supabase";
 import { getClientApiKey } from "../api";
+import { updateAccountPassword } from "../services/api/account";
 
 interface AuthContextType {
   user: User | null;
@@ -28,6 +29,10 @@ interface AuthContextType {
   ) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<{ error: AuthError | null }>;
   resetPassword: (email: string) => Promise<{ error: AuthError | null }>;
+  changePassword: (
+    currentPassword: string,
+    newPassword: string,
+  ) => Promise<{ error: Error | null }>;
   changeClientId: (newClientId: string) => Promise<{ error: Error | null }>;
 }
 
@@ -111,10 +116,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setUser(session?.user ?? null);
 
       if (
-        (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") &&
+        event === "SIGNED_IN" &&
         session?.user?.email
       ) {
         // Actualizar datos del cliente en background (sin spinner)
+        // TOKEN_REFRESHED se omite intencionalmente: solo refresca el JWT, no requiere
+        // re-fetchear datos del usuario. Hacerlo resetearía metadata/apiKey al cliente base.
         try {
           await getClientId(session.user.email);
         } catch {
@@ -169,38 +176,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // Si el registro es exitoso, guardar la contraseña encriptada en la tabla users
     if (!error) {
       try {
-        // Obtener la URL base del backend
-        const IS_PRODUCTION = import.meta.env.VITE_PRODUCTION_API === "true";
-        const BASE_PROD = import.meta.env.VITE_BASE_PROD;
-        const BASE_DEV = import.meta.env.VITE_BASE_DEV;
-        const BASE_URL = IS_PRODUCTION ? BASE_PROD : BASE_DEV;
-
-        // Llamar al endpoint para actualizar la contraseña en la tabla users
-        const response = await fetch(`${BASE_URL}/api/users/update-password`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ email, password }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          // console.warn(
-            // "⚠️ No se pudo guardar la contraseña en la tabla users:",
-            // errorData,
-          // );
-          // No retornamos error aquí porque el usuario ya se creó en Supabase
-          // Solo registramos la advertencia
-        } else {
-          // console.log("✅ Contraseña guardada exitosamente en la tabla users");
-        }
-      } catch (err) {
-        // console.warn(
-        //   "⚠️ Error al guardar la contraseña en la tabla users:",
-        //   err,
-        // );
-        // No retornamos error aquí porque el usuario ya se creó en Supabase
+        await updateAccountPassword(email, password);
+      } catch {
+        // No retornamos error: el usuario ya se creó en Supabase
       }
     }
 
@@ -236,6 +214,54 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       redirectTo: `${window.location.origin}/reset-password`,
     });
     return { error };
+  };
+
+  const changePassword = async (
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<{ error: Error | null }> => {
+    const email = user?.email;
+    if (!email) {
+      return { error: new Error("No hay sesión activa") };
+    }
+
+    if (newPassword.length < 8) {
+      return {
+        error: new Error("La nueva contraseña debe tener al menos 8 caracteres"),
+      };
+    }
+
+    const { error: verifyError } = await supabase.auth.signInWithPassword({
+      email,
+      password: currentPassword,
+    });
+    if (verifyError) {
+      return { error: new Error("La contraseña actual es incorrecta") };
+    }
+
+    const { error: updateError } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+    if (updateError) {
+      return {
+        error: new Error(
+          updateError.message || "No se pudo actualizar la contraseña",
+        ),
+      };
+    }
+
+    try {
+      await updateAccountPassword(email, newPassword);
+    } catch (err) {
+      return {
+        error:
+          err instanceof Error
+            ? err
+            : new Error("No se pudo guardar la contraseña en el sistema"),
+      };
+    }
+
+    return { error: null };
   };
 
   const changeClientId = async (newClientId: string) => {
@@ -345,6 +371,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     signInWithProvider,
     signOut,
     resetPassword,
+    changePassword,
     changeClientId,
   };
 

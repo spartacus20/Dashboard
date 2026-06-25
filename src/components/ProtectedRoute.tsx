@@ -13,11 +13,10 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="flex items-center space-x-2">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
-          <span className="text-gray-600">Cargando...</span>
-        </div>
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center gap-3">
+        <span className="text-[#05163b] text-xl font-bold tracking-wide">uMindsAI Dashboard</span>
+        <img src="/favicon.ico" alt="logo" className="w-10 h-10" />
+        <div className="w-10 h-10 rounded-full border-2 border-gray-200 border-t-[#1e4a8a] animate-spin" />
       </div>
     )
   }

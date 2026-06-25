@@ -926,11 +926,11 @@ function EditPhoneModal({ phoneNumber, onClose, onSuccess }: EditPhoneModalProps
 
   // General
   const [nickname, setNickname] = useState(phoneNumber.nickname || '');
-  const [fallbackNumber, setFallbackNumber] = useState('');
+  const [fallbackNumber, setFallbackNumber] = useState(phoneNumber.fallback_number || '');
 
   // Webhooks
   const [inboundWebhookUrl, setInboundWebhookUrl] = useState(phoneNumber.inbound_webhook_url || '');
-  const [inboundSmsWebhookUrl, setInboundSmsWebhookUrl] = useState('');
+  const [inboundSmsWebhookUrl, setInboundSmsWebhookUrl] = useState(phoneNumber.inbound_sms_webhook_url || '');
 
   // Agents
   const [agents, setAgents] = useState<RetellAgent[]>([]);
@@ -941,14 +941,18 @@ function EditPhoneModal({ phoneNumber, onClose, onSuccess }: EditPhoneModalProps
   const [outboundAgentId, setOutboundAgentId] = useState(currentOutboundAgentId);
 
   // SIP / Trunk
-  const [terminationUri, setTerminationUri] = useState('');
-  const [authUsername, setAuthUsername] = useState('');
-  const [authPassword, setAuthPassword] = useState('');
-  const [transport, setTransport] = useState('');
+  const [terminationUri, setTerminationUri] = useState(phoneNumber.sip_outbound_trunk_config?.termination_uri || '');
+  const [authUsername, setAuthUsername] = useState(phoneNumber.sip_outbound_trunk_config?.auth_username || '');
+  const [authPassword, setAuthPassword] = useState(phoneNumber.sip_outbound_trunk_config?.auth_password || '');
+  const [transport, setTransport] = useState(phoneNumber.sip_outbound_trunk_config?.transport || '');
 
   // Countries (comma-separated)
-  const [allowedInboundCountries, setAllowedInboundCountries] = useState('');
-  const [allowedOutboundCountries, setAllowedOutboundCountries] = useState('');
+  const [allowedInboundCountries, setAllowedInboundCountries] = useState(
+    (phoneNumber.allowed_inbound_country_list ?? []).join(', ')
+  );
+  const [allowedOutboundCountries, setAllowedOutboundCountries] = useState(
+    (phoneNumber.allowed_outbound_country_list ?? []).join(', ')
+  );
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1118,23 +1122,6 @@ function EditPhoneModal({ phoneNumber, onClose, onSuccess }: EditPhoneModalProps
                   <option value="TLS">TLS</option>
                   <option value="UDP">UDP</option>
                 </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Países permitidos */}
-          <div>
-            <p className={sectionClass}>Países permitidos</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className={labelClass}>Entrantes (ISO 3166-1)</label>
-                <input type="text" value={allowedInboundCountries} onChange={(e) => setAllowedInboundCountries(e.target.value)} placeholder="US, CA, GB" className={inputClass} />
-                <p className="text-xs text-slate-400 mt-1">Separar por coma. Vacío = todos.</p>
-              </div>
-              <div>
-                <label className={labelClass}>Salientes (ISO 3166-1)</label>
-                <input type="text" value={allowedOutboundCountries} onChange={(e) => setAllowedOutboundCountries(e.target.value)} placeholder="US, CA" className={inputClass} />
-                <p className="text-xs text-slate-400 mt-1">Separar por coma. Vacío = todos.</p>
               </div>
             </div>
           </div>
@@ -1676,9 +1663,9 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
   };
   
   return (
-    <div className="p-8 bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
+    <div className="p-8">
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-slate-800 mb-2">Números de Teléfono</h2>
+        <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800 mb-2">Números de Teléfono</h2>
         <p className="text-slate-600">Gestiona los números de teléfono asociados a tus agentes de IA</p>
       </div>
 
@@ -1750,35 +1737,19 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
 
             <button
               onClick={() => setShowAddPhoneModal(true)}
-              className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-700 text-white rounded-lg hover:from-green-700 hover:to-emerald-800 transition-colors flex items-center"
+              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors text-white text-sm font-medium"
             >
-              <Plus className="h-5 w-5 mr-1" />
+              <Plus className="h-4 w-4" />
               Añadir Número
             </button>
             
             <button
               onClick={() => loadLocalPhoneNumbers()}
               disabled={loadingAll}
-              className={`px-4 py-2 rounded-lg text-white flex items-center ${
-                loadingAll
-                  ? 'bg-slate-400 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800'
-              }`}
+              className="flex items-center gap-1.5 bg-[#0a2a5a] border border-[#1e4a8a] hover:bg-[#1e4a8a] disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg transition-colors text-white text-sm font-medium"
             >
-              {loadingAll ? (
-                <>
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Cargando...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="h-5 w-5 mr-1" />
-                  Actualizar
-                </>
-              )}
+              <RefreshCw className={`h-4 w-4 ${loadingAll ? 'animate-spin' : ''}`} />
+              {loadingAll ? 'Cargando...' : 'Actualizar'}
             </button>
 
             <button

@@ -293,11 +293,11 @@ const NoLlamar: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="p-8 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800 flex items-center gap-2">
             No Llamar
           </h1>
           <p className="text-muted-foreground">
@@ -306,23 +306,22 @@ const NoLlamar: React.FC = () => {
         </div>
         
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
+          <button
             onClick={() => loadDontCallRecords(currentPage)}
             disabled={loading}
+            className="flex items-center gap-1.5 bg-[#0a2a5a] border border-[#1e4a8a] hover:bg-[#1e4a8a] disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg transition-colors text-white text-sm font-medium"
           >
-            <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             Actualizar
-          </Button>
-          <Button
+          </button>
+          <button
             onClick={() => setIsExportDialogOpen(true)}
             disabled={dontCallRecords.length === 0}
-            size="sm"
+            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg transition-colors text-white text-sm font-medium"
           >
-            <Download className="h-4 w-4 mr-1" />
+            <Download className="h-4 w-4" />
             Exportar CSV
-          </Button>
+          </button>
         </div>
       </div>
 
@@ -526,6 +525,7 @@ const NoLlamar: React.FC = () => {
             <Button
               onClick={exportToCSV}
               disabled={exporting}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
             >
               {exporting ? (
                 <>
@@ -630,7 +630,7 @@ const NoLlamar: React.FC = () => {
           ) : error ? (
             <div className="text-center py-12">
               <p className="text-red-500 mb-4">{error}</p>
-              <Button onClick={() => loadDontCallRecords(currentPage)}>
+              <Button onClick={() => loadDontCallRecords(currentPage)} className="bg-blue-600 hover:bg-blue-700 text-white">
                 Reintentar
               </Button>
             </div>

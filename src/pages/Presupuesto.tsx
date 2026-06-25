@@ -486,12 +486,12 @@ export function Presupuesto({ onNavigate: _onNavigate }: PresupuestoProps) {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="p-8 space-y-6">
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Presupuesto</h1>
+          <h1 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800">Presupuesto</h1>
           <p className="text-sm text-gray-500 mt-1">Costes de llamadas · {MONTH_NAMES[month - 1]} {year}</p>
         </div>
         <div className="flex items-center gap-2">
@@ -502,7 +502,7 @@ export function Presupuesto({ onNavigate: _onNavigate }: PresupuestoProps) {
           <button onClick={goNext} disabled={isCurrentMonth} className="p-2 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
             <ChevronRight className="w-4 h-4" />
           </button>
-          <button onClick={exportCSV} disabled={loading || rows.length === 0} className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-sm font-medium text-gray-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed ml-2">
+          <button onClick={exportCSV} disabled={loading || rows.length === 0} className="flex items-center gap-1.5 bg-[#0a2a5a] border border-[#1e4a8a] hover:bg-[#1e4a8a] disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg transition-colors text-white text-sm font-medium ml-2">
             <Download className="w-4 h-4" />Exportar
           </button>
           <div className="relative group ml-1">
@@ -584,8 +584,9 @@ export function Presupuesto({ onNavigate: _onNavigate }: PresupuestoProps) {
             </div>
           )}
 
-          <div className="rounded-xl border border-gray-200 shadow-sm">
-            <table className="w-full text-sm border-collapse">
+          <div className="rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse min-w-max">
               <thead>
                 <tr className="bg-[#081f47] text-white text-[9px] uppercase tracking-wider">
                   <th colSpan={2 + vBase} className="bg-[#081f47] border-b border-[#1a3570]" />
@@ -719,6 +720,7 @@ export function Presupuesto({ onNavigate: _onNavigate }: PresupuestoProps) {
                 </tr>
               </tbody>
             </table>
+            </div>
           </div>
         </>
       )}

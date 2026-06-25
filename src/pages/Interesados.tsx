@@ -687,10 +687,10 @@ export function Interesados({ onNavigate: _onNavigate }: InteresadosProps) {
   };
 
   return (
-    <div className="p-8 bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
+    <div className="p-8">
       {/* Header */}
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-slate-800 mb-1">Interesados</h2>
+        <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800 mb-1">Interesados</h2>
         <p className="text-slate-500 text-sm">Llamadas efectivas con sentimiento positivo captadas por el agente</p>
       </div>
 

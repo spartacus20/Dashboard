@@ -849,12 +849,11 @@ export function Agendas({ onNavigate }: AgendasProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      <div className="max-w-7xl mx-auto px-4 py-8">
+    <div className="p-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800 mb-2">
+            <h1 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800 mb-2">
               Agendas
             </h1>
             <p className="text-slate-600">
@@ -866,7 +865,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
               <button
                 onClick={handleExportCSV}
                 disabled={exporting || loading}
-                className="flex items-center gap-2 bg-gradient-to-r from-green-600 to-emerald-700 hover:from-emerald-600 hover:to-teal-700 disabled:from-slate-400 disabled:to-slate-500 px-4 py-2 rounded-lg transition-all duration-200 text-white shadow-lg hover:shadow-xl"
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg transition-colors text-white text-sm font-medium"
               >
                 <Download
                   className={`w-4 h-4 ${exporting ? "animate-pulse" : ""}`}
@@ -876,7 +875,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
               <button
                 onClick={loadAgendas}
                 disabled={loading}
-                className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-indigo-600 hover:to-purple-700 disabled:from-slate-400 disabled:to-slate-500 px-4 py-2 rounded-lg transition-all duration-200 text-white shadow-lg hover:shadow-xl"
+                className="flex items-center gap-2 bg-[#0a2a5a] border border-[#1e4a8a] hover:bg-[#1e4a8a] disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg transition-colors text-white text-sm font-medium"
               >
                 <RefreshCw
                   className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
@@ -1023,8 +1022,8 @@ export function Agendas({ onNavigate }: AgendasProps) {
             <Card className="shadow-lg border-slate-200 flex flex-col">
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
-                  <div className="w-10 h-10 bg-violet-600/10 rounded-lg flex items-center justify-center">
-                    <CheckCircle className="w-5 h-5 text-violet-600" />
+                  <div className="w-10 h-10 bg-blue-600/10 rounded-lg flex items-center justify-center">
+                    <CheckCircle className="w-5 h-5 text-blue-600" />
                   </div>
                   <CardTitle className="text-lg">
                     Aprobadas Paneles Solares
@@ -1051,13 +1050,13 @@ export function Agendas({ onNavigate }: AgendasProps) {
                       <p className="text-sm text-slate-600">Total aprobadas</p>
                     </div>
                     <div className="text-right">
-                      <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-violet-700">
+                      <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-700">
                         {aprobadasPanelesCount.toLocaleString("es-ES")}
                       </div>
                       <div className="text-xs text-slate-500">
                         {aprobadasPanelesCount === 1 ? "agenda" : "agendas"}
                       </div>
-                      <div className="text-xs font-semibold text-violet-600 mt-1">
+                      <div className="text-xs font-semibold text-blue-600 mt-1">
                         {panelesSolaresCount
                           ? `${Math.round(aprobadasPanelesRatio * 100)}% del total`
                           : "0% del total"}
@@ -1071,8 +1070,8 @@ export function Agendas({ onNavigate }: AgendasProps) {
             <Card className="shadow-lg border-slate-200 flex flex-col">
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
-                  <div className="w-10 h-10 bg-violet-600/10 rounded-lg flex items-center justify-center">
-                    <CheckCircle className="w-5 h-5 text-violet-600" />
+                  <div className="w-10 h-10 bg-blue-600/10 rounded-lg flex items-center justify-center">
+                    <CheckCircle className="w-5 h-5 text-blue-600" />
                   </div>
                   <CardTitle className="text-lg">Aprobadas Baterías</CardTitle>
                 </div>
@@ -1097,13 +1096,13 @@ export function Agendas({ onNavigate }: AgendasProps) {
                       <p className="text-sm text-slate-600">Total aprobadas</p>
                     </div>
                     <div className="text-right">
-                      <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-violet-700">
+                      <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-700">
                         {aprobadasBateriasCount.toLocaleString("es-ES")}
                       </div>
                       <div className="text-xs text-slate-500">
                         {aprobadasBateriasCount === 1 ? "agenda" : "agendas"}
                       </div>
-                      <div className="text-xs font-semibold text-violet-600 mt-1">
+                      <div className="text-xs font-semibold text-blue-600 mt-1">
                         {bateriasCount
                           ? `${Math.round(aprobadasBateriasRatio * 100)}% del total`
                           : "0% del total"}
@@ -1118,8 +1117,8 @@ export function Agendas({ onNavigate }: AgendasProps) {
             <Card className="shadow-lg border-slate-200 flex flex-col">
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
-                  <div className="w-10 h-10 bg-violet-600/10 rounded-lg flex items-center justify-center">
-                    <Eye className="w-5 h-5 text-violet-600" />
+                  <div className="w-10 h-10 bg-blue-600/10 rounded-lg flex items-center justify-center">
+                    <Eye className="w-5 h-5 text-blue-600" />
                   </div>
                   <CardTitle className="text-lg">Revisadas</CardTitle>
                 </div>
@@ -1144,7 +1143,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
                       <p className="text-sm text-slate-600">Total revisadas</p>
                     </div>
                     <div className="text-right">
-                      <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-violet-700">
+                      <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-700">
                         {agendas
                           .filter((a) => isReviewed(a.revisada))
                           .length.toLocaleString("es-ES")}
@@ -1154,7 +1153,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
                           ? "agenda"
                           : "agendas"}
                       </div>
-                      <div className="text-xs font-semibold text-violet-600 mt-1">
+                      <div className="text-xs font-semibold text-blue-600 mt-1">
                         {agendas.length
                           ? `${Math.round((agendas.filter((a) => isReviewed(a.revisada)).length / agendas.length) * 100)}% del total`
                           : "0% del total"}
@@ -1207,7 +1206,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
               onClick={() => setActiveTab("limits")}
               className={`flex items-center gap-2 px-6 py-3 font-medium transition-colors ${
                 activeTab === "limits"
-                  ? "text-purple-700 border-b-2 border-purple-700"
+                  ? "text-blue-700 border-b-2 border-blue-700"
                   : "text-slate-600 hover:text-slate-800"
               }`}
             >
@@ -1224,7 +1223,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
             <Card className="mb-6 shadow-lg border-slate-200">
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5 text-violet-600" />
+                  <BarChart3 className="w-5 h-5 text-blue-600" />
                   <CardTitle className="text-lg">
                     Promedio de llamadas por agenda
                   </CardTitle>
@@ -1245,7 +1244,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
                       onClick={() => applyDatePreset("today")}
                       className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
                         datePreset === "today"
-                          ? "bg-violet-600 text-white border-violet-600"
+                          ? "bg-blue-600 text-white border-blue-600"
                           : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
                       }`}
                     >
@@ -1255,7 +1254,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
                       onClick={() => applyDatePreset("week")}
                       className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
                         datePreset === "week"
-                          ? "bg-violet-600 text-white border-violet-600"
+                          ? "bg-blue-600 text-white border-blue-600"
                           : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
                       }`}
                     >
@@ -1265,7 +1264,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
                       onClick={() => applyDatePreset("month")}
                       className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
                         datePreset === "month"
-                          ? "bg-violet-600 text-white border-violet-600"
+                          ? "bg-blue-600 text-white border-blue-600"
                           : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
                       }`}
                     >
@@ -1275,7 +1274,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
                       onClick={() => applyDatePreset("all")}
                       className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
                         datePreset === "all"
-                          ? "bg-violet-600 text-white border-violet-600"
+                          ? "bg-blue-600 text-white border-blue-600"
                           : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
                       }`}
                     >
@@ -1290,7 +1289,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
                         setDateFrom(e.target.value);
                         setDatePreset("custom");
                       }}
-                      className="px-2 py-1.5 border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                      className="px-2 py-1.5 border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       title="Fecha desde"
                     />
                     <span className="text-slate-400 text-sm">–</span>
@@ -1301,7 +1300,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
                         setDateTo(e.target.value);
                         setDatePreset("custom");
                       }}
-                      className="px-2 py-1.5 border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                      className="px-2 py-1.5 border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       title="Fecha hasta"
                     />
                     {(dateFrom || dateTo) && (
@@ -1324,7 +1323,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
                 {!loadingAverage && averageStats !== null && (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
                     <div className="text-center md:text-left">
-                      <p className="text-3xl font-bold text-violet-600">
+                      <p className="text-3xl font-bold text-blue-600">
                         {averageStats.average_calls.toFixed(2)}
                       </p>
                       <p className="text-sm text-slate-600">
@@ -2022,7 +2021,7 @@ export function Agendas({ onNavigate }: AgendasProps) {
                                   {noAprobadas} no aprobada{noAprobadas !== 1 ? "s" : ""}
                                 </span>
                               )}
-                              <span className="inline-flex items-center gap-1 bg-violet-100 text-violet-700 text-xs font-semibold px-2.5 py-1 rounded-full border border-violet-200">
+                              <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-700 text-xs font-semibold px-2.5 py-1 rounded-full border border-blue-200">
                                 <Eye className="w-3 h-3" />
                                 {revisadas} revisada{revisadas !== 1 ? "s" : ""}
                               </span>
@@ -2130,13 +2129,13 @@ export function Agendas({ onNavigate }: AgendasProps) {
                                     )}
                                     {hasFiltroSolar && auditMap[agenda.id] && (
                                       <div className="relative group ml-auto">
-                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold border flex items-center gap-1 bg-violet-100 text-violet-700 border-violet-200 cursor-default">
-                                          <span className="w-1.5 h-1.5 rounded-full bg-violet-500 shrink-0" />
+                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold border flex items-center gap-1 bg-blue-100 text-blue-700 border-blue-200 cursor-default">
+                                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
                                           {auditMap[agenda.id].name}
                                         </span>
                                         <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block z-50 pointer-events-none">
                                           <div className="bg-slate-800 text-white rounded-xl px-3 py-2.5 shadow-2xl whitespace-nowrap min-w-[160px]">
-                                            <p className="flex items-center gap-1.5 text-violet-400 font-bold text-[9px] uppercase tracking-wider mb-1.5">
+                                            <p className="flex items-center gap-1.5 text-blue-400 font-bold text-[9px] uppercase tracking-wider mb-1.5">
                                               <Clock className="w-3 h-3" />
                                               Última auditoría
                                             </p>
@@ -2405,13 +2404,13 @@ export function Agendas({ onNavigate }: AgendasProps) {
                           {/* Badge de auditoría — solo si fue auditada */}
                           {hasFiltroSolar && auditMap[agenda.id] && (
                             <div className="relative group ml-auto">
-                              <div className="px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 cursor-default bg-violet-100 text-violet-800 border-violet-300">
-                                <span className="w-2 h-2 rounded-full bg-violet-500 shrink-0" />
+                              <div className="px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 cursor-default bg-blue-100 text-blue-800 border-blue-300">
+                                <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
                                 <span>Auditada por {auditMap[agenda.id].name}</span>
                               </div>
                               <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block z-50 pointer-events-none">
                                 <div className="bg-slate-800 text-white rounded-xl px-3 py-2.5 shadow-2xl whitespace-nowrap min-w-[170px]">
-                                  <p className="flex items-center gap-1.5 text-violet-400 font-bold text-[9px] uppercase tracking-wider mb-1.5">
+                                  <p className="flex items-center gap-1.5 text-blue-400 font-bold text-[9px] uppercase tracking-wider mb-1.5">
                                     <Clock className="w-3 h-3" />
                                     Última auditoría
                                   </p>
@@ -2721,7 +2720,6 @@ export function Agendas({ onNavigate }: AgendasProps) {
             </div>
           </div>
         )}
-      </div>
     </div>
   );
 }

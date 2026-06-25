@@ -178,7 +178,7 @@ export function Tickets({ onNavigate: _onNavigate }: TicketsProps) {
 
   if (!clientId) {
     return (
-      <div className="p-8 bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
+      <div className="p-8">
         <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-8 text-center text-slate-600">
           <AlertCircle className="w-12 h-12 mx-auto mb-3 text-slate-400" />
           <p>No hay client_id de sesiÃ³n. Inicia sesiÃ³n para ver los tickets.</p>
@@ -188,9 +188,9 @@ export function Tickets({ onNavigate: _onNavigate }: TicketsProps) {
   }
 
   return (
-    <div className="p-8 bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
+    <div className="p-8">
       <div className="mb-8">
-        <h2 className="text-2xl font-bold text-slate-800 mb-2">Tickets</h2>
+        <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800 mb-2">Tickets</h2>
         <p className="text-slate-600">Reporta errores o incidencias que hayas detectado</p>
       </div>
 
