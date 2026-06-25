@@ -110,6 +110,11 @@ export const getClientId = async (email: string): Promise<string | null> => {
           sessionStorage.setItem('email', userData.email)
         }
         sessionStorage.setItem('fullName', fullName)
+        if (fullName) {
+          window.dispatchEvent(
+            new CustomEvent('profileUpdated', { detail: { fullName } }),
+          )
+        }
         
         // Guardar metadatos solo cuando se usa el cliente por defecto.
         // Si el usuario tiene otro cliente seleccionado, el metadata correcto
@@ -258,6 +263,29 @@ export const getEmail = (): string | null => {
 
 export const getFullName = (): string | null => {
   return sessionStorage.getItem('fullName')
+}
+
+export const getAccountCreatedAt = (): string | null => {
+  const userData = getUserData()
+  if (!userData) return null
+  return userData.created_at || userData.createdAt || null
+}
+
+export const setFullName = (fullName: string): void => {
+  sessionStorage.setItem('fullName', fullName)
+
+  const userData = getUserData()
+  if (userData) {
+    userData.fullName = fullName
+    userData.full_name = fullName
+    sessionStorage.setItem('userData', JSON.stringify(userData))
+  }
+
+  window.dispatchEvent(
+    new CustomEvent('profileUpdated', {
+      detail: { fullName },
+    }),
+  )
 }
 
 function safeJsonParse<T>(raw: string | null): T | null {

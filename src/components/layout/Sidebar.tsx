@@ -24,6 +24,8 @@ import {
   Search,
   PhoneForwarded,
   BrainCircuit,
+  Settings,
+  MoreVertical,
 } from "lucide-react";
 import { useCallsContext } from "../../context/CallsContext";
 import { useAuth } from "../../context/AuthContext";
@@ -40,6 +42,9 @@ import {
   hasPermissionsDefined,
   getClientTest,
   getClientIdFromSession,
+  getFullName,
+  getUserData,
+  getEmail,
 } from "../../lib/supabase";
 
 interface SidebarProps {
@@ -87,12 +92,20 @@ export function Sidebar({
   const [isChangingClient, setIsChangingClient] = useState(false);
   const [clientSearch, setClientSearch] = useState("");
   const [isClientDropdownOpen, setIsClientDropdownOpen] = useState(false);
+  const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
+  const [profileName, setProfileName] = useState(
+    () => sessionStorage.getItem("fullName") || "",
+  );
   const clientDropdownRef = useRef<HTMLDivElement>(null);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
       if (clientDropdownRef.current && !clientDropdownRef.current.contains(e.target as Node)) {
         setIsClientDropdownOpen(false);
+      }
+      if (accountMenuRef.current && !accountMenuRef.current.contains(e.target as Node)) {
+        setIsAccountMenuOpen(false);
       }
     };
     document.addEventListener("mousedown", handleOutsideClick);
@@ -348,13 +361,53 @@ export function Sidebar({
     setIsMobileMenuOpen(!isMobileMenuOpen);
   };
 
+  useEffect(() => {
+    const syncProfileName = () => {
+      const userData = getUserData();
+      const name =
+        getFullName() ||
+        userData?.fullName ||
+        userData?.full_name ||
+        "";
+      if (name) setProfileName(name);
+    };
+
+    const handleProfileUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ fullName?: string }>).detail;
+      if (detail?.fullName) {
+        setProfileName(detail.fullName);
+      } else {
+        syncProfileName();
+      }
+    };
+
+    syncProfileName();
+    window.addEventListener("profileUpdated", handleProfileUpdated);
+    return () => {
+      window.removeEventListener("profileUpdated", handleProfileUpdated);
+    };
+  }, [user?.email]);
+
   const handleSignOut = async () => {
     try {
+      setIsAccountMenuOpen(false);
       await signOut();
     } catch (error) {
       // console.error("Error al cerrar sesión:", error);
     }
   };
+
+  const resolvedProfileName =
+    profileName ||
+    getFullName() ||
+    getUserData()?.fullName ||
+    getUserData()?.full_name ||
+    "";
+  const userEmail = user?.email || getEmail() || "";
+  const userDisplayName = resolvedProfileName || userEmail || "Usuario";
+  const userInitial = (resolvedProfileName || userEmail || "U")[0].toUpperCase();
+  const showEmailSubtitle =
+    Boolean(userEmail) && userDisplayName.toLowerCase() !== userEmail.toLowerCase();
 
   return (
     <>
@@ -730,26 +783,70 @@ export function Sidebar({
           )}
         </nav>
 
-        {/* Información del usuario y botón de logout */}
-        <div className="mt-auto pt-4 border-t border-[#0a2a5a]">
-          <div className="mb-3 px-3 py-2 bg-[#0a2a5a] rounded-md flex items-center gap-3">
-            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#1e4a8a] flex items-center justify-center text-white text-sm font-semibold">
-              {(sessionStorage.getItem("fullName") || user?.email || "U")[0].toUpperCase()}
-            </div>
-            <div className="min-w-0">
-              <div className="text-sm text-white font-medium truncate">
-                {sessionStorage.getItem("fullName") || user?.email || "Usuario"}
+        {/* Información del usuario */}
+        <div ref={accountMenuRef} className="relative mt-auto pt-4 border-t border-[#0a2a5a]">
+          {isAccountMenuOpen && (
+            <div className="absolute left-full bottom-0 ml-5 w-56 rounded-lg border border-[#0a2a5a] bg-[#05163b] shadow-xl overflow-hidden z-50">
+              <div className="px-3 py-3 flex items-center gap-3 border-b border-[#0a2a5a]">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#1e4a8a] flex items-center justify-center text-white text-sm font-semibold">
+                  {userInitial}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm text-white font-medium truncate">
+                    {userDisplayName}
+                  </div>
+                  {showEmailSubtitle && (
+                    <div className="text-xs text-gray-400 truncate">{userEmail}</div>
+                  )}
+                </div>
               </div>
-              <div className="text-xs text-gray-400 truncate">{user?.email}</div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  navigateWithParams("configuracion");
+                  setIsAccountMenuOpen(false);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-gray-200 hover:bg-[#0a2a5a] transition-colors"
+              >
+                <Settings className="w-4 h-4 shrink-0 text-gray-400" />
+                Configuración
+              </button>
+
+              <div className="border-t border-[#0a2a5a]" />
+
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-gray-200 hover:bg-[#0a2a5a] transition-colors"
+              >
+                <LogOut className="w-4 h-4 shrink-0 text-gray-400" />
+                Cerrar sesión
+              </button>
             </div>
-          </div>
+          )}
 
           <button
-            onClick={handleSignOut}
-            className="group flex w-full items-center gap-2 px-4 py-2 text-gray-300 hover:bg-red-600 hover:text-white rounded-lg transition-colors"
+            type="button"
+            onClick={() => setIsAccountMenuOpen((open) => !open)}
+            className={`w-full px-3 py-2 rounded-md flex items-center gap-3 transition-colors ${
+              isAccountMenuOpen
+                ? "bg-[#1e4a8a]/60"
+                : "bg-[#0a2a5a] hover:bg-[#1e4a8a]/40"
+            }`}
           >
-            <LogOut className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
-            Cerrar Sesión
+            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#1e4a8a] flex items-center justify-center text-white text-sm font-semibold">
+              {userInitial}
+            </div>
+            <div className="min-w-0 flex-1 text-left">
+              <div className="text-sm text-white font-medium truncate">
+                {userDisplayName}
+              </div>
+              {showEmailSubtitle && (
+                <div className="text-xs text-gray-400 truncate">{userEmail}</div>
+              )}
+            </div>
+            <MoreVertical className="w-4 h-4 text-gray-400 shrink-0" />
           </button>
         </div>
       </div>

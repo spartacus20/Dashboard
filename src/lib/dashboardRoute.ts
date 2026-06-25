@@ -24,6 +24,7 @@ export const PAGE_IDS = [
   'presupuesto',
   'seguimientos',
   'agentes',
+  'configuracion',
 ] as const;
 
 export type PageId = (typeof PAGE_IDS)[number];
