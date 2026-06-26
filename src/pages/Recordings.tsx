@@ -150,36 +150,32 @@ function formatCost(cost: number): string {
 
 // Componente de skeleton para las grabaciones
 const RecordingsSkeleton = () => {
+  const cols = ['w-28', 'w-12', 'w-24', 'w-24', 'w-48', 'w-16'];
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <Skeleton className="h-6 w-48" />
-        <Skeleton className="h-4 w-72" />
-      </div>
-      
-      {[...Array(5)].map((_, index) => (
-        <Card key={index} className="overflow-hidden">
-          <CardHeader className="pb-2">
-            <Skeleton className="h-5 w-1/3 mb-1" />
-            <Skeleton className="h-4 w-1/4" />
-          </CardHeader>
-          <CardContent>
-            <div className="flex justify-between">
-              <div className="space-y-2 w-2/3">
-                <Skeleton className="h-4 w-1/2" />
-                <Skeleton className="h-4 w-1/3" />
-                <Skeleton className="h-4 w-1/4" />
-              </div>
-              <Skeleton className="h-8 w-24" />
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-      
-      <div className="flex flex-col items-center space-y-2 py-8">
-        <div className="h-10 w-10 rounded-full border-4 border-gray-800 border-t-purple-500 animate-spin" />
-        <Skeleton className="h-5 w-48" />
-        <Skeleton className="h-4 w-72" />
+    <div className="rounded-xl overflow-hidden border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 border-b border-slate-200">
+            <tr>
+              {['Fecha', 'Duración', 'Motivo fin', 'Teléfono', 'Session ID', 'Estado'].map((h) => (
+                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {[...Array(8)].map((_, i) => (
+              <tr key={i}>
+                {cols.map((w, j) => (
+                  <td key={j} className="px-4 py-3">
+                    <Skeleton className={`h-3.5 ${w} rounded`} />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -200,6 +196,7 @@ function normalizeE164(num: string): string {
 }
 
 function RecallModal({ call, onClose, clientId, phoneNumbers }: RecallModalProps) {
+  const { apiKey, apiKeyTest } = useCallsContext();
   const [fromNumber, setFromNumber] = React.useState(normalizeE164(call.from_number || ''));
   const [toNumber, setToNumber] = React.useState(normalizeE164(call.to_number || ''));
   const [overrideAgentId, setOverrideAgentId] = React.useState(call.agent_id || '');
@@ -1040,7 +1037,8 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   const togglePlayPause = async (callId: string) => {
     if (!audioRef.current) return;
 
-    const callToPlay = allCalls.find(c => c.call_id === callId);
+    const callToPlay = allCalls.find(c => c.call_id === callId)
+      || filteredCallsData.find(c => c.call_id === callId);
     if (!callToPlay?.recording_url) {
       // console.error('Recording URL not found for callId:', callId);
       setPlayingId(null);
@@ -2060,230 +2058,109 @@ export function Recordings({ onNavigate }: RecordingsProps) {
 
   return (
     <div className="p-8">
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800 mb-2">Grabaciones</h2>
-        <div className="flex flex-wrap items-center gap-2 text-slate-600">
-          <p>Escucha y analiza las conversaciones de IA</p>
-          
-          {/* Estado de carga de todas las llamadas */}
-          {loadingAllCalls ? (
-            <div className="flex items-center">
-              <Badge variant="secondary" className="animate-pulse">
-                <svg className="animate-spin mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span className="font-bold">Cargando TODAS las llamadas: </span>
-                <span className="font-bold ml-1">{loadingProgress.toLocaleString()}</span> hasta ahora
-              </Badge>
-            </div>
-          ) : (
-            <>
-              {/* Número total de llamadas */}
-              <Badge variant="default">
-                <span className="mr-1">{totalCallsDisplay?.toLocaleString()}</span> 
-                {totalCallsLabel}
-                {allCallsLoaded && (
-                  <svg className="ml-2 w-4 h-4 text-green-300" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                )}
-              </Badge>
-              
-              {/* Indicador de filtros activos y totales */}
-              {activeFiltersCount > 0 && (
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary">
-                    {activeFiltersCount} {activeFiltersCount === 1 ? 'filtro' : 'filtros'} activo{activeFiltersCount !== 1 ? 's' : ''}
-                  </Badge>
-                  <Badge variant="secondary">
-                    {filteredCalls.length.toLocaleString()} {filteredCalls.length === 1 ? 'coincidencia' : 'coincidencias'}
-                  </Badge>
+      <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800">Grabaciones</h2>
+          <p className="text-sm text-slate-500 mt-0.5">Escucha y analiza las conversaciones de IA</p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => loadAllCalls(true)}
+            disabled={loadingAllCalls}
+            className="flex items-center gap-1.5 bg-[#0a2a5a] border border-[#1e4a8a] hover:bg-[#1e4a8a] disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg transition-colors text-white text-sm font-medium"
+          >
+            <RefreshCw className={`h-4 w-4 ${loadingAllCalls ? 'animate-spin' : ''}`} />
+            {loadingAllCalls ? 'Cargando...' : 'Actualizar datos'}
+          </button>
+
+          <button
+            onClick={openExportModal}
+            disabled={loadingAllCalls}
+            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg transition-colors text-white text-sm font-medium border border-transparent"
+          >
+            <Download className="h-4 w-4" />
+            Exportar CSV
+          </button>
+
+          <div className="relative">
+            <button
+              onClick={() => setShowColumnCustomizer(!showColumnCustomizer)}
+              className="flex items-center gap-1.5 bg-[#0a2a5a] border border-[#1e4a8a] hover:bg-[#1e4a8a] px-4 py-2 rounded-lg transition-colors text-white text-sm font-medium column-customizer-button"
+            >
+              <ListFilter className="h-4 w-4" />
+              Columnas
+            </button>
+
+            {showColumnCustomizer && (
+              <div className="absolute right-0 mt-2 w-64 bg-white rounded-md shadow-xl z-50 border border-slate-200 column-customizer-dropdown">
+                <div className="p-3 border-b border-slate-200">
+                  <h3 className="text-sm font-medium text-slate-800">Personalizar columnas</h3>
+                  <p className="text-xs text-slate-600 mt-1">Selecciona las columnas que deseas ver</p>
                 </div>
-              )}
-            </>
-          )}
+                <div className="p-3 space-y-2">
+                  {Object.entries({
+                    callId: 'ID de llamada',
+                    status: 'Estado',
+                    timestamp: 'Fecha y hora',
+                    duration: 'Duración',
+                    disconnectionReason: 'Razón de desconexión',
+                    callType: 'Tipo de llamada',
+                    agent: 'Agente',
+                    fromNumber: 'Número de Origen',
+                    toNumber: 'Número de Teléfono'
+                  }).map(([key, label]) => (
+                    <div key={key} className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id={`column-${key}`}
+                        checked={visibleColumns[key as keyof typeof visibleColumns]}
+                        onChange={() => {
+                          setVisibleColumns({
+                            ...visibleColumns,
+                            [key]: !visibleColumns[key as keyof typeof visibleColumns]
+                          });
+                        }}
+                        className="rounded bg-white border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <label htmlFor={`column-${key}`} className="ml-2 text-sm text-slate-700">
+                        {label}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+                <div className="p-3 border-t border-slate-200 flex justify-between">
+                  <Button
+                    onClick={() => {
+                      setVisibleColumns({
+                        callId: true,
+                        status: false,
+                        timestamp: true,
+                        duration: true,
+                        disconnectionReason: true,
+                        callType: true,
+                        agent: false,
+                        fromNumber: false,
+                        toNumber: true
+                      });
+                    }}
+                    variant="outline"
+                    size="sm"
+                  >
+                    Restablecer
+                  </Button>
+                  <Button onClick={() => setShowColumnCustomizer(false)} size="sm">
+                    Aplicar
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+
         </div>
       </div>
 
       <Card className="bg-white shadow-lg border-0">
-        <CardHeader className="border-b border-slate-200 pb-4 bg-gradient-to-r from-slate-50 to-blue-50">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <CardTitle className="text-slate-800">Grabaciones</CardTitle>
-            
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => loadAllCalls(true)}
-                disabled={loadingAllCalls}
-                className="flex items-center gap-1.5 bg-[#0a2a5a] border border-[#1e4a8a] hover:bg-[#1e4a8a] disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg transition-colors text-white text-sm font-medium"
-              >
-                <RefreshCw className={`h-4 w-4 ${loadingAllCalls ? 'animate-spin' : ''}`} />
-                {loadingAllCalls ? 'Cargando...' : 'Actualizar datos'}
-              </button>
-              
-              {/* Botón para exportar a Excel */}
-              <button
-                onClick={openExportModal}
-                disabled={loadingAllCalls}
-                className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg transition-colors text-white text-sm font-medium border border-transparent"
-              >
-                <Download className="h-4 w-4" />
-                Exportar CSV
-              </button>
-              
-              {/* Botón para personalizar columnas */}
-              <div className="relative">
-                <button
-                  onClick={() => setShowColumnCustomizer(!showColumnCustomizer)}
-                  className="flex items-center gap-1.5 bg-[#0a2a5a] border border-[#1e4a8a] hover:bg-[#1e4a8a] px-4 py-2 rounded-lg transition-colors text-white text-sm font-medium column-customizer-button"
-                >
-                  <ListFilter className="h-4 w-4" />
-                  Columnas
-                </button>
-                
-                {showColumnCustomizer && (
-                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-md shadow-xl z-50 border border-slate-200 column-customizer-dropdown">
-                    <div className="p-3 border-b border-slate-200">
-                      <h3 className="text-sm font-medium text-slate-800">Personalizar columnas</h3>
-                      <p className="text-xs text-slate-600 mt-1">Selecciona las columnas que deseas ver</p>
-                    </div>
-                    <div className="p-3 space-y-2">
-                      {Object.entries({
-                        callId: 'ID de llamada',
-                        status: 'Estado',
-                        timestamp: 'Fecha y hora',
-                        duration: 'Duración',
-                        disconnectionReason: 'Razón de desconexión',
-                        callType: 'Tipo de llamada',
-                        agent: 'Agente',
-                        fromNumber: 'Número de Origen',
-                        toNumber: 'Número de Teléfono' // Etiqueta actualizada
-                      }).map(([key, label]) => (
-                        <div key={key} className="flex items-center">
-                          <input
-                            type="checkbox"
-                            id={`column-${key}`}
-                            checked={visibleColumns[key as keyof typeof visibleColumns]}
-                            onChange={() => {
-                              setVisibleColumns({
-                                ...visibleColumns,
-                                [key]: !visibleColumns[key as keyof typeof visibleColumns]
-                              });
-                            }}
-                            className="rounded bg-white border-slate-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          <label htmlFor={`column-${key}`} className="ml-2 text-sm text-slate-700">
-                            {label}
-                          </label>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="p-3 border-t border-slate-200 flex justify-between">
-                      <Button 
-                        onClick={() => {
-                          setVisibleColumns({
-                            callId: true,
-                            status: false,
-                            timestamp: true,
-                            duration: true,
-                            disconnectionReason: true,
-                            callType: true,
-                            agent: false,
-                            fromNumber: false,
-                            toNumber: true // Asegurar que el reset también lo ponga visible
-                          });
-                        }}
-                        variant="outline" 
-                        size="sm"
-                      >
-                        Restablecer
-                      </Button>
-                      <Button 
-                        onClick={() => setShowColumnCustomizer(false)} 
-                        size="sm"
-                      >
-                        Aplicar
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-              
-              {activeFiltersCount > 0 && (
-                <Button 
-                  onClick={resetAllFilters} 
-                  variant="outline" 
-                  size="sm"
-                  className="h-8 px-3 text-xs font-medium bg-red-500 text-white border-red-500 hover:bg-red-600 hover:border-red-600 transition-colors gap-1.5"
-                >
-                  <X className="h-3.5 w-3.5" />
-                  Limpiar filtros
-                </Button>
-              )}
-            </div>
-          </div>
-          
-          {/* Mostrar progreso de carga si está cargando */}
-          {loadingAllCalls && (
-            <div className="mt-4">
-              <div className="flex justify-between items-center text-xs text-slate-700 mb-1">
-                <span className="font-medium">Cargando grabaciones...</span>
-                <span>Página {contextCurrentPage} de {contextTotalPages || '?'}</span>
-              </div>
-              <div className="w-full bg-slate-200 rounded-full h-3 mb-1 overflow-hidden border border-slate-300">
-                <div 
-                  className="bg-gradient-to-r from-blue-600 to-indigo-600 h-3 rounded-full transition-all duration-500 ease-in-out"
-                  style={{ 
-                    width: '100%',
-                    animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite"
-                  }}
-                ></div>
-              </div>
-              <div className="flex justify-between items-center text-xs text-slate-600">
-                <p className="flex items-center">
-                  <svg className="animate-spin mr-1 h-3 w-3 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Obteniendo datos...
-                </p>
-                <p className="text-blue-600 font-medium">
-                  {allCalls.length} llamadas cargadas
-                </p>
-              </div>
-            </div>
-          )}
-          
-          {/* Mostrar progreso de filtros si está cargando filtros */}
-          {loadingFilters && (
-            <div className="mt-4">
-              <div className="flex justify-between items-center text-xs text-slate-700 mb-1">
-                <span className="font-medium">Aplicando filtros...</span>
-              </div>
-              <div className="w-full bg-slate-200 rounded-full h-3 mb-1 overflow-hidden border border-slate-300">
-                <div 
-                  className="bg-gradient-to-r from-green-600 to-emerald-600 h-3 rounded-full transition-all duration-500 ease-in-out"
-                  style={{ 
-                    width: '100%',
-                    animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite"
-                  }}
-                ></div>
-              </div>
-              <div className="flex justify-between items-center text-xs text-slate-600">
-                <p className="flex items-center">
-                  <svg className="animate-spin mr-1 h-3 w-3 text-green-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Consultando API...
-                </p>
-                <p className="text-green-600 font-medium">
-                  Filtros en progreso
-                </p>
-              </div>
-            </div>
-          )}
-        </CardHeader>
         <CardContent className="pt-6 bg-white">
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-3 mb-6">
@@ -2351,11 +2228,11 @@ export function Recordings({ onNavigate }: RecordingsProps) {
             </div>
 
             {/* Filtros unificados */}
-            <div className={`${hasFiltroSolar ? 'lg:col-span-6' : 'lg:col-span-10'} relative unified-filters-dropdown`}>
+            <div className={`${hasFiltroSolar ? 'lg:col-span-6' : 'lg:col-span-10'} relative unified-filters-dropdown flex items-center gap-2`}>
               <Button
                 onClick={() => setShowUnifiedFiltersDropdown(!showUnifiedFiltersDropdown)}
                 variant="outline"
-                className="w-full h-10 flex items-center justify-center gap-2 text-xs unified-filters-button"
+                className="flex-1 h-10 flex items-center justify-center gap-2 text-xs unified-filters-button"
               >
                 <ListFilter className="w-4 h-4" />
                 <span className="text-xs">Filtros</span>
@@ -2370,7 +2247,19 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                   <ChevronDown className="w-4 h-4" />
                 )}
               </Button>
-              
+
+              {activeFiltersCount > 0 && (
+                <Button
+                  onClick={resetAllFilters}
+                  variant="outline"
+                  size="sm"
+                  className="h-10 px-3 text-xs font-medium bg-red-500 text-white border-red-500 hover:bg-red-600 hover:border-red-600 transition-colors gap-1.5 shrink-0"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Limpiar filtros
+                </Button>
+              )}
+
               {showUnifiedFiltersDropdown && (
                 <div className="absolute top-full left-0 mt-2 w-72 bg-white rounded-xl shadow-xl z-50 border border-slate-200 overflow-hidden">
                   {/* Header del panel */}
@@ -2824,124 +2713,81 @@ export function Recordings({ onNavigate }: RecordingsProps) {
             </div>
           ) : (
             <>
-              <div className="space-y-4 mb-6">
-                {calls.map((call) => (
-                  <Card 
-                    key={call.call_id} 
-                    className={`overflow-hidden transition-all duration-200 hover:border-blue-400 cursor-pointer bg-white shadow-sm ${selectedCall === call.call_id ? 'border-blue-500 ring-2 ring-blue-200' : 'border-slate-200'}`}
-                    onClick={() => openCallModal(call)}
-                  >
-                    <CardContent className="p-4">
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            {visibleColumns.status && (
-                              <Badge variant={call.call_status === 'completed' ? 'default' : 'secondary'}>
-                                {call.call_status === 'completed' ? 'Completada' : 'En progreso'}
-                              </Badge>
-                            )}
-                            {visibleColumns.timestamp && (
-                              <span className="text-sm text-slate-600">
-                                {(() => {
-                                  const raw = (call as any).start_time || (call as any).created_at || (call as any).metadata?.created_at || call.start_timestamp;
-                                  const d = new Date(raw);
-                                  return isNaN(d.getTime()) ? '' : d.toLocaleString('es-ES', { timeZone: 'UTC' });
-                                })()}
-                              </span>
-                            )}
-                          </div>
-                          
-                          {visibleColumns.callId && (
-                            <h3 className="text-lg font-medium text-slate-800">
-                              ID: {call.call_id.substring(0, 14)}...
-                            </h3>
-                          )}
-                          
-                          {visibleColumns.agent && call.agent_id && (
-                            <div className="text-sm text-slate-600">
-                              <span className="font-medium">Agente:</span> <span className="text-blue-600">{call.agent_id}</span>
-                            </div>
-                          )}
-                          
-                          {visibleColumns.fromNumber && call.from_number && (
-                            <div className="text-sm text-slate-600">
-                              <span className="font-medium">Origen:</span> {call.from_number}
-                            </div>
-                          )}
-                          
-                          {visibleColumns.toNumber && call.to_number && (
-                            <div className="text-sm text-slate-600">
-                              <span className="font-medium">Teléfono:</span> {call.to_number} {/* Etiqueta actualizada en la tabla */}
-                            </div>
-                          )}
-                          
-                          <div className="flex flex-wrap gap-2">
-                            {visibleColumns.duration && (
-                              <div className="flex items-center text-sm text-slate-600">
-                                <Clock className="w-4 h-4 mr-1" />
-                                {getDuration(call)}
-                              </div>
-                            )}
-                            
-                            {visibleColumns.disconnectionReason && call.disconnection_reason && (
-                              <div className="flex items-center text-sm text-slate-600">
-                                <PhoneOff className="w-4 h-4 mr-1" />
-                                {call.disconnection_reason}
-                              </div>
-                            )}
-                            
-                            {visibleColumns.callType && call.tipo_vivienda && (
-                              <div className="text-sm text-slate-600">
-                                Tipo: {call.tipo_vivienda}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-center gap-2">
-                          {call.recording_url && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                togglePlayPause(call.call_id);
-                              }}
-                              className="p-2 rounded-full bg-slate-100 hover:bg-blue-100 transition-colors"
-                            >
-                              {playingId === call.call_id ? (
-                                <Pause className="w-5 h-5 text-blue-600" />
-                              ) : (
-                                <Play className="w-5 h-5 text-blue-600" />
-                              )}
-                            </button>
-                          )}
-                          
-                          <Button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openCallModal(call);
-                            }}
-                            variant="default"
-                            size="sm"
-                          >
-                            Ver detalles
-                          </Button>
+              {/* Tabla de grabaciones */}
+              <div className="mb-6 rounded-xl overflow-hidden border border-slate-200 bg-white shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Fecha</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Duración</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Motivo fin</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Teléfono</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Session ID</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {calls.map((call) => {
+                        const timeRaw = (call as any).start_time || (call as any).created_at || (call as any).metadata?.created_at || call.start_timestamp;
+                        const timeDate = new Date(timeRaw);
+                        const timeStr = isNaN(timeDate.getTime()) ? '—' : timeDate.toLocaleString('es-ES', { timeZone: 'UTC' });
 
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setRecallCall(call);
-                            }}
-                            title="Rellamar"
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white border border-emerald-200 hover:border-emerald-600 text-xs font-medium transition-all"
+                        const endReason = call.disconnection_reason || '—';
+                        const endReasonColor = endReason.includes('user') ? 'bg-green-400'
+                          : endReason.includes('agent') ? 'bg-amber-400'
+                          : endReason === 'dial_no_answer' ? 'bg-red-400'
+                          : 'bg-slate-300';
+
+                        const status = call.call_status || call.status || '—';
+                        const statusColor = status === 'efectiva' || status === 'completed' || status === 'ended'
+                          ? 'bg-emerald-400' : status === 'failed' || status === 'fallida'
+                          ? 'bg-red-400' : 'bg-slate-300';
+
+                        return (
+                          <tr
+                            key={call.call_id}
+                            onClick={() => openCallModal(call)}
+                            className={`cursor-pointer transition-colors hover:bg-slate-50 ${selectedCall === call.call_id ? 'bg-blue-50' : ''}`}
                           >
-                            <PhoneCall className="w-3.5 h-3.5" />
-                            Rellamar
-                          </button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                            {/* Fecha */}
+                            <td className="px-4 py-3 text-slate-600 whitespace-nowrap text-xs">{timeStr}</td>
+
+                            {/* Duración */}
+                            <td className="px-4 py-3 text-slate-700 whitespace-nowrap font-medium">{getDuration(call)}</td>
+
+                            {/* Motivo fin */}
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <span className="inline-flex items-center gap-1.5 text-slate-600 text-xs">
+                                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${endReasonColor}`} />
+                                {endReason}
+                              </span>
+                            </td>
+
+                            {/* Teléfono */}
+                            <td className="px-4 py-3 text-slate-600 whitespace-nowrap font-mono text-xs">
+                              {call.to_number || '—'}
+                            </td>
+
+                            {/* Session ID */}
+                            <td className="px-4 py-3">
+                              <span className="font-mono text-xs text-blue-600">{call.call_id}</span>
+                            </td>
+
+                            {/* Estado */}
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <span className="inline-flex items-center gap-1.5 text-xs text-slate-600">
+                                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${statusColor}`} />
+                                {status}
+                              </span>
+                            </td>
+
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
               
               {/* Paginación */}
@@ -3059,16 +2905,25 @@ export function Recordings({ onNavigate }: RecordingsProps) {
             }`}
           >
             <div className="border-b border-slate-200 flex justify-between items-center sticky top-0 bg-gradient-to-r from-slate-50 to-blue-50 p-4">
-              <div className="flex items-center">
-                <Phone className="w-5 h-5 text-blue-600 mr-2" />
-                <h2 className="text-xl font-bold text-slate-800 break-all">{modalCallForTransition.call_id}</h2>
+              <div className="flex items-center gap-2 min-w-0">
+                <Phone className="w-5 h-5 text-blue-600 shrink-0" />
+                <h2 className="text-sm font-bold text-slate-800 truncate">{modalCallForTransition.call_id}</h2>
               </div>
-              <button 
-                onClick={closeCallModal}
-                className="p-1 hover:bg-slate-200 rounded-full transition-colors"
-              >
-                <X className="w-6 h-6 text-slate-500 hover:text-slate-700" />
-              </button>
+              <div className="flex items-center gap-2 shrink-0 ml-2">
+                <button
+                  onClick={() => setRecallCall(modalCallForTransition)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white border border-emerald-200 hover:border-emerald-600 text-xs font-medium transition-all"
+                >
+                  <PhoneCall className="w-3.5 h-3.5" />
+                  Rellamar
+                </button>
+                <button
+                  onClick={closeCallModal}
+                  className="p-1 hover:bg-slate-200 rounded-full transition-colors"
+                >
+                  <X className="w-6 h-6 text-slate-500 hover:text-slate-700" />
+                </button>
+              </div>
             </div>
             
             <div className="overflow-y-auto p-6 flex-grow bg-white" onClick={(e) => e.stopPropagation()}>
@@ -3088,9 +2943,9 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                   <h3 className="text-lg font-semibold text-slate-800 mb-4">Información Básica</h3>
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                     {modalCallForTransition.agent_id && (
-                      <div>
+                      <div className="col-span-full">
                         <p className="text-sm text-slate-600">ID del Agente</p>
-                        <p className="text-slate-800 font-medium text-blue-600">{modalCallForTransition.agent_id}</p>
+                        <p className="text-xs font-mono text-blue-600 break-all">{modalCallForTransition.agent_id}</p>
                       </div>
                     )}
                     <div>

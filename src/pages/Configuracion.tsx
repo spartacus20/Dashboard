@@ -180,7 +180,8 @@ export function Configuracion() {
         Gestiona los datos básicos de tu cuenta.
       </p>
 
-      <div className="max-w-2xl bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-6 py-5 border-b border-slate-100">
           <h2 className="text-lg font-semibold text-slate-900">Tu cuenta</h2>
           <p className="text-sm text-slate-500 mt-1">
@@ -270,7 +271,7 @@ export function Configuracion() {
         </div>
       </div>
 
-      <div className="max-w-2xl mt-6 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-6 py-5 border-b border-slate-100">
           <h2 className="text-lg font-semibold text-slate-900">Seguridad</h2>
           <p className="text-sm text-slate-500 mt-1">
@@ -354,6 +355,7 @@ export function Configuracion() {
             </p>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

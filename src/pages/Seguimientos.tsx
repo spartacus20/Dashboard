@@ -128,7 +128,7 @@ export function Seguimientos({ onNavigate: _onNavigate }: SeguimientosProps) {
   const [loadingNumbers, setLoadingNumbers] = useState(false);
 
   const PER_PAGE = 50;
-  const webhookUrl = `${BASE_URL}/api/callback/webhook`;
+  const webhookUrl = `${BASE_URL}/api/callback/webhook/${clientId}`;
   const userIsAdmin = isAdmin();
 
   const globalMetrics = useMemo(() => {
