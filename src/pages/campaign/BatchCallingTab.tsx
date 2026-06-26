@@ -53,6 +53,15 @@ interface RetellAgent {
   agent_name?: string;
   name?: string;
   display_name?: string;
+  webhook_url?: string;
+}
+
+type WebhookCheckState = 'idle' | 'checking' | 'ok' | 'mismatch' | 'error';
+interface WebhookCheck {
+  state: WebhookCheckState;
+  currentUrl?: string;
+  expectedUrl?: string;
+  fixing?: boolean;
 }
 
 interface RetellOptionsByKey {
@@ -233,6 +242,9 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
   const [retellErrorByKey, setRetellErrorByKey] = useState<Record<string, string | null>>({});
 
   const hasSeguimientos = canAccessSeguimientos();
+
+  // — Validación de webhook por batch —
+  const [webhookChecks, setWebhookChecks] = useState<Record<string, WebhookCheck>>({});
 
   // — Estado del modal de configuración de seguimiento —
   const [showConfigModal, setShowConfigModal] = useState(false);
@@ -443,6 +455,53 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
     }
   };
 
+  async function validateAgentWebhook(batchId: string, agentId: string, apiKey: string) {
+    const clientId = getStoredClientId();
+    if (!clientId || !agentId || !apiKey || !BASE_URL) return;
+    const expectedUrl = `${BASE_URL}/api/callback/webhook/${clientId}`;
+    setWebhookChecks((prev) => ({ ...prev, [batchId]: { state: 'checking', expectedUrl } }));
+    try {
+      const res = await fetch(`${BASE_URL}/api/microtools/retell/get-agent?apiKey=${encodeURIComponent(apiKey)}&agent_id=${encodeURIComponent(agentId)}`);
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || 'Error al consultar agente');
+      const currentUrl: string = data.agent?.webhook_url || '';
+      const matches = currentUrl === expectedUrl;
+      setWebhookChecks((prev) => ({
+        ...prev,
+        [batchId]: { state: matches ? 'ok' : 'mismatch', currentUrl, expectedUrl },
+      }));
+    } catch {
+      setWebhookChecks((prev) => ({
+        ...prev,
+        [batchId]: { state: 'error', expectedUrl },
+      }));
+    }
+  }
+
+  async function fixAgentWebhook(batchId: string, agentId: string, apiKey: string) {
+    const check = webhookChecks[batchId];
+    if (!check?.expectedUrl || !BASE_URL) return;
+    setWebhookChecks((prev) => ({ ...prev, [batchId]: { ...prev[batchId], fixing: true } }));
+    try {
+      const res = await fetch(`${BASE_URL}/api/microtools/retell/update-agent`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey, agent_id: agentId, webhook_url: check.expectedUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || 'Error al actualizar agente');
+      setWebhookChecks((prev) => ({
+        ...prev,
+        [batchId]: { state: 'ok', currentUrl: check.expectedUrl, expectedUrl: check.expectedUrl, fixing: false },
+      }));
+    } catch {
+      setWebhookChecks((prev) => ({
+        ...prev,
+        [batchId]: { ...prev[batchId], fixing: false, state: 'error' },
+      }));
+    }
+  }
+
   async function handleFileUpload(file: File | null) {
     if (!file) return;
     if (!/\.csv$/i.test(file.name)) {
@@ -512,7 +571,7 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
       if (canAccessSeguimientos() && data.batch_call_id) {
         const clientId = getStoredClientId();
         if (clientId) {
-          await saveBatchCallSettings(data.batch_call_id, clientId, target.config.seguimiento);
+          await saveBatchCallSettings(data.batch_call_id, clientId, target.config.seguimiento, target.config.batchName.trim() || undefined);
         }
       }
       return true;
@@ -559,6 +618,27 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
     }, 500);
     return () => window.clearTimeout(timeout);
   }, [batches]);
+
+  // Validar webhook del agente cuando seguimiento está activo y hay agente seleccionado
+  const seguimientoAgentKey = batches
+    .map((b) => `${b.id}|${b.config.seguimiento}|${b.config.agentId}|${b.config.apiKey}`)
+    .join('~');
+
+  useEffect(() => {
+    if (!hasSeguimientos) return;
+    batches.forEach((batch) => {
+      if (batch.config.seguimiento && batch.config.agentId.trim() && batch.config.apiKey.trim()) {
+        void validateAgentWebhook(batch.id, batch.config.agentId.trim(), batch.config.apiKey.trim());
+      } else if (!batch.config.seguimiento) {
+        setWebhookChecks((prev) => {
+          if (!prev[batch.id]) return prev;
+          const { [batch.id]: _, ...next } = prev;
+          return next;
+        });
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seguimientoAgentKey]);
 
   return (
     <div className="space-y-6">
@@ -750,6 +830,50 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
                             ? 'Los contactos que no contesten serán reintentados automáticamente'
                             : 'Esta campaña no generará reintentos automáticos'}
                         </p>
+                        {batch.config.seguimiento && batch.config.agentId && (() => {
+                          const check = webhookChecks[batch.id];
+                          if (!check || check.state === 'idle') return null;
+                          if (check.state === 'checking') return (
+                            <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-1">
+                              <RefreshCw className="w-3 h-3 animate-spin" />
+                              Verificando webhook del agente…
+                            </div>
+                          );
+                          if (check.state === 'ok') return (
+                            <div className="flex items-center gap-1.5 text-xs text-green-700 mt-1">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Webhook configurado correctamente
+                            </div>
+                          );
+                          if (check.state === 'mismatch') return (
+                            <div className="rounded-md border border-orange-200 bg-orange-50 p-3 mt-1 space-y-2">
+                              <div className="flex items-center gap-1.5 text-xs text-orange-700 font-medium">
+                                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                                El webhook del agente no coincide con el de seguimientos
+                              </div>
+                              <div className="space-y-1 text-xs text-orange-600">
+                                <p>Actual: <code className="bg-orange-100 px-1 rounded break-all">{check.currentUrl || '(vacío)'}</code></p>
+                                <p>Requerido: <code className="bg-orange-100 px-1 rounded break-all">{check.expectedUrl}</code></p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => void fixAgentWebhook(batch.id, batch.config.agentId, batch.config.apiKey)}
+                                disabled={check.fixing}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:opacity-50 transition-colors"
+                              >
+                                {check.fixing && <RefreshCw className="w-3 h-3 animate-spin" />}
+                                {check.fixing ? 'Corrigiendo…' : 'Corregir automáticamente'}
+                              </button>
+                            </div>
+                          );
+                          if (check.state === 'error') return (
+                            <div className="flex items-center gap-1.5 text-xs text-gray-400 mt-1">
+                              <AlertCircle className="w-3 h-3" />
+                              No se pudo verificar el webhook del agente
+                            </div>
+                          );
+                          return null;
+                        })()}
                       </div>
                     )}
                   </div>

@@ -269,7 +269,7 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
             }`}
           >
             <Upload className="w-4 h-4" />
-            Batch Calling
+            Crear Campaña
           </button>
         </div>
       </div>
