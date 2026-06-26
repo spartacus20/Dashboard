@@ -435,8 +435,13 @@ export function Seguimientos({ onNavigate: _onNavigate }: SeguimientosProps) {
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <p className={`font-semibold text-sm truncate ${isSinCampana ? 'italic text-gray-400' : 'text-gray-900'}`}>
-                              {isSinCampana ? 'Sin campaña asignada' : truncateBatchId(c.batch_call_id!)}
+                              {isSinCampana ? 'Sin campaña asignada' : (c.campaign_name || 'Sin nombre')}
                             </p>
+                            {!isSinCampana && c.batch_call_id && (
+                              <p className="text-xs font-mono text-gray-400 mt-0.5 truncate" title={c.batch_call_id}>
+                                {c.batch_call_id}
+                              </p>
+                            )}
                             <p className="text-xs text-gray-400 mt-0.5">
                               {c.first_created ? formatDate(c.first_created) : '—'}
                             </p>
@@ -586,7 +591,7 @@ export function Seguimientos({ onNavigate: _onNavigate }: SeguimientosProps) {
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50 border-b border-gray-200">
                         <tr>
-                          {['Contacto', 'Teléfono', 'Intentos', 'Estado', 'Última llamada'].map(h => (
+                          {['Contacto', 'Teléfono', 'Intentos', 'Estado', 'Primera llamada', 'Última llamada'].map(h => (
                             <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                               {h}
                             </th>
@@ -620,6 +625,9 @@ export function Seguimientos({ onNavigate: _onNavigate }: SeguimientosProps) {
                                 {STATUS_ICON[r.status]}
                                 {STATUS_LABELS[r.status] || r.status}
                               </span>
+                            </td>
+                            <td className="px-4 py-3 text-gray-500 text-xs">
+                              {formatDate(r.created_at)}
                             </td>
                             <td className="px-4 py-3 text-gray-500 text-xs">
                               {formatDate(r.updated_at || r.created_at)}

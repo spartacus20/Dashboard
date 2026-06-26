@@ -26,6 +26,7 @@ export interface CallBackRecord {
 
 export interface CampaignSummary {
   batch_call_id: string | null;
+  campaign_name: string | null;
   total: number;
   pending: number;
   answered: number;
@@ -142,12 +143,13 @@ export async function getCampaignsSummary(clientId: string): Promise<CampaignSum
 export async function saveBatchCallSettings(
   batchCallId: string,
   clientId: string,
-  seguimiento: boolean
+  seguimiento: boolean,
+  campaignName?: string
 ): Promise<void> {
   const response = await fetch(`${BASE_URL}/api/callback/batch-settings/save`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ batch_call_id: batchCallId, client_id: clientId, seguimiento }),
+    body: JSON.stringify({ batch_call_id: batchCallId, client_id: clientId, seguimiento, campaign_name: campaignName || null }),
   });
   if (!response.ok) throw new Error('Error al guardar configuración de seguimiento');
 }

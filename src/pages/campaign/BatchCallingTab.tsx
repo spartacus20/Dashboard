@@ -571,7 +571,7 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
       if (canAccessSeguimientos() && data.batch_call_id) {
         const clientId = getStoredClientId();
         if (clientId) {
-          await saveBatchCallSettings(data.batch_call_id, clientId, target.config.seguimiento);
+          await saveBatchCallSettings(data.batch_call_id, clientId, target.config.seguimiento, target.config.batchName.trim() || undefined);
         }
       }
       return true;
