@@ -15,6 +15,7 @@ interface CallStat {
   num_llamadas: number;
   minutos: string;
   gasto_total: string;
+  llamadas_efectivas: number;
 }
 
 interface AgendaStat {
@@ -40,6 +41,7 @@ interface TelefoniaRecord {
 interface DayRow {
   dia: string;
   llamadas: number;
+  llamadas_efectivas: number;
   minutos: number;
   gastoUSD: number;
   gastoEUR: number;
@@ -68,6 +70,7 @@ interface WeekGroup {
 
 const COL_TOOLTIPS: Record<string, string> = {
   'llamadas':            'Total de llamadas realizadas ese día',
+  'llamadas-efectivas':  'Llamadas con duración ≥ 11 s (status = efectiva)',
   'minutos':             'Duración total de las llamadas en minutos',
   'gasto-usd':           'Costo de la IA en dólares — suma de cost en call_logs',
   'gasto-eur':           'Costo de la IA en euros = Gasto $ × tipo de cambio USD/EUR',
@@ -197,7 +200,7 @@ export function Presupuesto({ onNavigate: _onNavigate }: PresupuestoProps) {
 
     const [callRes, agendaRes, telRes] = await Promise.all([
       supabase.from('mas_sol_call_stats')
-        .select('dia, num_llamadas, minutos, gasto_total')
+        .select('dia, num_llamadas, minutos, gasto_total, llamadas_efectivas')
         .gte('dia', firstDay).lte('dia', lastDay).order('dia'),
       supabase.from('mas_sol_agenda_stats')
         .select('dia, agendas, captadas, agendas_por_fecha, captadas_por_fecha, agendas_generadas, captadas_generadas, citas_revisadas, placas_por_fecha, baterias_por_fecha, placas_generadas, baterias_generadas')
@@ -308,8 +311,9 @@ export function Presupuesto({ onNavigate: _onNavigate }: PresupuestoProps) {
       const gastoUSD = call ? parseFloat(call.gasto_total) : 0;
       return {
         dia,
-        llamadas:           call   ? call.num_llamadas           : 0,
-        minutos:            call   ? parseFloat(call.minutos)    : 0,
+        llamadas:            call  ? call.num_llamadas           : 0,
+        llamadas_efectivas:  call  ? (call.llamadas_efectivas ?? 0) : 0,
+        minutos:             call  ? parseFloat(call.minutos)    : 0,
         gastoUSD,
         gastoEUR:           gastoUSD * exchangeRate,
         telefonia:          telMap[dia] !== undefined ? telMap[dia] : null,
@@ -363,8 +367,9 @@ export function Presupuesto({ onNavigate: _onNavigate }: PresupuestoProps) {
       baterias_gen: rows.reduce((s, r) => s + r.baterias_generadas, 0),
       mediaAgenda:  agendas  > 0 && rows.length > 0 ? sumDiarioAgenda  / rows.length : null,
       mediaCaptada: captadas > 0 && rows.length > 0 ? sumDiarioCaptada / rows.length : null,
-      llamadas:     rows.reduce((s, r) => s + r.llamadas, 0),
-      minutos:      rows.reduce((s, r) => s + r.minutos,  0),
+      llamadas:            rows.reduce((s, r) => s + r.llamadas,            0),
+      llamadas_efectivas:  rows.reduce((s, r) => s + r.llamadas_efectivas,  0),
+      minutos:             rows.reduce((s, r) => s + r.minutos,             0),
     };
   }, [rows]);
 
@@ -383,8 +388,9 @@ export function Presupuesto({ onNavigate: _onNavigate }: PresupuestoProps) {
       baterias_pf: weekRows.reduce((s, r) => s + r.baterias_por_fecha, 0),
       placas_gen:  weekRows.reduce((s, r) => s + r.placas_generadas,   0),
       bat_gen:     weekRows.reduce((s, r) => s + r.baterias_generadas, 0),
-      llamadas:    weekRows.reduce((s, r) => s + r.llamadas, 0),
-      minutos:     weekRows.reduce((s, r) => s + r.minutos,  0),
+      llamadas:            weekRows.reduce((s, r) => s + r.llamadas,            0),
+      llamadas_efectivas:  weekRows.reduce((s, r) => s + r.llamadas_efectivas,  0),
+      minutos:             weekRows.reduce((s, r) => s + r.minutos,             0),
     };
   }
 
@@ -398,15 +404,16 @@ export function Presupuesto({ onNavigate: _onNavigate }: PresupuestoProps) {
     lines.push(`Tipo de cambio USD/EUR${S}${n(exchangeRate, 4)}`);
     lines.push('');
     lines.push(['', '', '', '', '', '', '', 'Agendado / fecha cita', '', '', '', 'Captado / generado ese día', '', '', ''].join(S));
-    lines.push(['Semana','Fecha','Llamadas','Minutos','Gasto IA ($)','Gasto IA (€)','Gasto Telefonía','Placas','Baterías','Total','Confirmadas','Placas','Baterías','Total','Revisadas'].join(S));
+    lines.push(['Semana','Fecha','Llamadas','Contestadas','Minutos','Gasto IA ($)','Gasto IA (€)','Gasto Telefonía','Placas','Baterías','Total','Confirmadas','Placas','Baterías','Total','Revisadas'].join(S));
 
     for (const group of weekGroups) {
       group.rows.forEach((row, idx) => {
         lines.push([
           idx === 0 ? group.label : '',
           fmtDate(row.dia),
-          row.llamadas || '',
-          row.minutos  || '',
+          row.llamadas            || '',
+          row.llamadas_efectivas  || '',
+          row.minutos             || '',
           n(row.gastoUSD),
           n(row.gastoEUR),
           row.telefonia !== null ? n(row.telefonia) : '',
@@ -423,7 +430,7 @@ export function Presupuesto({ onNavigate: _onNavigate }: PresupuestoProps) {
       const sub = weekSub(group.rows);
       lines.push([
         'SUBTOTAL', group.label,
-        sub.llamadas, sub.minutos,
+        sub.llamadas, sub.llamadas_efectivas, sub.minutos,
         n(sub.gastoUSD), n(sub.gastoEUR),
         sub.telefonia > 0 ? n(sub.telefonia) : '',
         sub.placas_pf  || 0, sub.baterias_pf || 0, (sub.placas_pf + sub.baterias_pf) || 0,
@@ -434,7 +441,7 @@ export function Presupuesto({ onNavigate: _onNavigate }: PresupuestoProps) {
     }
     lines.push([
       'TOTAL', '',
-      totals.llamadas, totals.minutos,
+      totals.llamadas, totals.llamadas_efectivas, totals.minutos,
       n(totals.gastoUSD), n(totals.gastoEUR),
       totals.telefonia > 0 ? n(totals.telefonia) : '',
       totals.placas_pf  || 0, totals.baterias_pf || 0, (totals.placas_pf + totals.baterias_pf) || 0,
@@ -462,7 +469,7 @@ export function Presupuesto({ onNavigate: _onNavigate }: PresupuestoProps) {
 
   const vB2   = (['placas-por-fecha','baterias-por-fecha','total-agendado','confirmadas'] as const).filter(showCol).length;
   const vB3   = (['placas-generadas','baterias-generadas','total-captado','citas-revisadas'] as const).filter(showCol).length;
-  const vBase = (['llamadas','minutos','gasto-usd','gasto-eur','telefonia'] as const).filter(showCol).length;
+  const vBase = (['llamadas','llamadas-efectivas','minutos','gasto-usd','gasto-eur','telefonia'] as const).filter(showCol).length;
 
   const ColTh = ({ colKey, tooltip, borderLeft, children }: { colKey: string; tooltip?: string; borderLeft?: boolean; children: React.ReactNode }) => (
     <th className={`px-3 py-3 text-center font-semibold whitespace-nowrap relative group/th${borderLeft ? ' border-l-2 border-blue-400/40' : ''}`}>
@@ -596,8 +603,9 @@ export function Presupuesto({ onNavigate: _onNavigate }: PresupuestoProps) {
                 <tr className="bg-[#0a2a5a] text-white text-xs">
                   <th className="px-3 py-3 text-left font-semibold whitespace-nowrap w-20"></th>
                   <th className="px-3 py-3 text-center font-semibold whitespace-nowrap">Fecha</th>
-                  {showCol('llamadas')  && <ColTh colKey="llamadas"  tooltip={COL_TOOLTIPS['llamadas']}>Llamadas</ColTh>}
-                  {showCol('minutos')   && <ColTh colKey="minutos"   tooltip={COL_TOOLTIPS['minutos']}>Minutos</ColTh>}
+                  {showCol('llamadas')           && <ColTh colKey="llamadas"           tooltip={COL_TOOLTIPS['llamadas']}>Llamadas</ColTh>}
+                  {showCol('llamadas-efectivas') && <ColTh colKey="llamadas-efectivas" tooltip={COL_TOOLTIPS['llamadas-efectivas']}>Contestadas</ColTh>}
+                  {showCol('minutos')            && <ColTh colKey="minutos"            tooltip={COL_TOOLTIPS['minutos']}>Minutos</ColTh>}
                   {showCol('gasto-usd') && <ColTh colKey="gasto-usd" tooltip={COL_TOOLTIPS['gasto-usd']}>Gasto IA ($)</ColTh>}
                   {showCol('gasto-eur') && <ColTh colKey="gasto-eur" tooltip={COL_TOOLTIPS['gasto-eur']}>Gasto IA (€)</ColTh>}
                   {showCol('telefonia') && (
@@ -643,8 +651,9 @@ export function Presupuesto({ onNavigate: _onNavigate }: PresupuestoProps) {
                             ) : null}
                             <td className={`px-3 py-2 text-center font-medium whitespace-nowrap ${row.isWeekend ? 'text-gray-400' : 'text-gray-700'}`}>{fmtDate(row.dia)}</td>
 
-                            {showCol('llamadas')  && <td className={`px-3 py-2 text-center ${wkColor}`}>{row.llamadas  > 0 ? fmtNum(row.llamadas) : dash}</td>}
-                            {showCol('minutos')   && <td className={`px-3 py-2 text-center ${wkColor}`}>{row.minutos   > 0 ? fmtNum(row.minutos)  : dash}</td>}
+                            {showCol('llamadas')           && <td className={`px-3 py-2 text-center ${wkColor}`}>{row.llamadas           > 0 ? fmtNum(row.llamadas)           : dash}</td>}
+                            {showCol('llamadas-efectivas') && <td className={`px-3 py-2 text-center ${wkColor}`}>{row.llamadas_efectivas > 0 ? fmtNum(row.llamadas_efectivas) : dash}</td>}
+                            {showCol('minutos')            && <td className={`px-3 py-2 text-center ${wkColor}`}>{row.minutos            > 0 ? fmtNum(row.minutos)            : dash}</td>}
                             {showCol('gasto-usd') && <td className={`px-3 py-2 text-center ${wkColor}`}>{row.gastoUSD  > 0 ? fmtUSD(row.gastoUSD) : dash}</td>}
                             {showCol('gasto-eur') && <td className={`px-3 py-2 text-center ${wkColor}`}>{row.gastoEUR  > 0 ? fmtEUR(row.gastoEUR) : dash}</td>}
 
@@ -684,6 +693,7 @@ export function Presupuesto({ onNavigate: _onNavigate }: PresupuestoProps) {
                         <td className="px-3 py-2 text-center text-[10px] font-bold tracking-wide uppercase text-[#0a2a5a]/60">subtotal</td>
                         <td className="px-3 py-2 text-center">{group.label}</td>
                         {showCol('llamadas')           && <td className="px-3 py-2 text-center">{fmtNum(sub.llamadas)}</td>}
+                        {showCol('llamadas-efectivas') && <td className="px-3 py-2 text-center">{fmtNum(sub.llamadas_efectivas)}</td>}
                         {showCol('minutos')            && <td className="px-3 py-2 text-center">{fmtNum(sub.minutos)}</td>}
                         {showCol('gasto-usd')          && <td className="px-3 py-2 text-center">{fmtUSD(sub.gastoUSD)}</td>}
                         {showCol('gasto-eur')          && <td className="px-3 py-2 text-center">{fmtEUR(sub.gastoEUR)}</td>}
@@ -705,6 +715,7 @@ export function Presupuesto({ onNavigate: _onNavigate }: PresupuestoProps) {
                 <tr className="bg-[#0a2a5a] text-white text-xs font-bold">
                   <td className="px-3 py-3 text-center" colSpan={2}>TOTAL</td>
                   {showCol('llamadas')           && <td className="px-3 py-3 text-center">{fmtNum(totals.llamadas)}</td>}
+                  {showCol('llamadas-efectivas') && <td className="px-3 py-3 text-center">{fmtNum(totals.llamadas_efectivas)}</td>}
                   {showCol('minutos')            && <td className="px-3 py-3 text-center">{fmtNum(totals.minutos)}</td>}
                   {showCol('gasto-usd')          && <td className="px-3 py-3 text-center">{fmtUSD(totals.gastoUSD)}</td>}
                   {showCol('gasto-eur')          && <td className="px-3 py-3 text-center">{fmtEUR(totals.gastoEUR)}</td>}
