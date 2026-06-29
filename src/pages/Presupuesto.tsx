@@ -404,7 +404,7 @@ export function Presupuesto({ onNavigate: _onNavigate }: PresupuestoProps) {
     lines.push(`Tipo de cambio USD/EUR${S}${n(exchangeRate, 4)}`);
     lines.push('');
     lines.push(['', '', '', '', '', '', '', 'Agendado / fecha cita', '', '', '', 'Captado / generado ese día', '', '', ''].join(S));
-    lines.push(['Semana','Fecha','Llamadas','Efectivas','Minutos','Gasto IA ($)','Gasto IA (€)','Gasto Telefonía','Placas','Baterías','Total','Confirmadas','Placas','Baterías','Total','Revisadas'].join(S));
+    lines.push(['Semana','Fecha','Llamadas','Contestadas','Minutos','Gasto IA ($)','Gasto IA (€)','Gasto Telefonía','Placas','Baterías','Total','Confirmadas','Placas','Baterías','Total','Revisadas'].join(S));
 
     for (const group of weekGroups) {
       group.rows.forEach((row, idx) => {
@@ -604,7 +604,7 @@ export function Presupuesto({ onNavigate: _onNavigate }: PresupuestoProps) {
                   <th className="px-3 py-3 text-left font-semibold whitespace-nowrap w-20"></th>
                   <th className="px-3 py-3 text-center font-semibold whitespace-nowrap">Fecha</th>
                   {showCol('llamadas')           && <ColTh colKey="llamadas"           tooltip={COL_TOOLTIPS['llamadas']}>Llamadas</ColTh>}
-                  {showCol('llamadas-efectivas') && <ColTh colKey="llamadas-efectivas" tooltip={COL_TOOLTIPS['llamadas-efectivas']}>Efectivas</ColTh>}
+                  {showCol('llamadas-efectivas') && <ColTh colKey="llamadas-efectivas" tooltip={COL_TOOLTIPS['llamadas-efectivas']}>Contestadas</ColTh>}
                   {showCol('minutos')            && <ColTh colKey="minutos"            tooltip={COL_TOOLTIPS['minutos']}>Minutos</ColTh>}
                   {showCol('gasto-usd') && <ColTh colKey="gasto-usd" tooltip={COL_TOOLTIPS['gasto-usd']}>Gasto IA ($)</ColTh>}
                   {showCol('gasto-eur') && <ColTh colKey="gasto-eur" tooltip={COL_TOOLTIPS['gasto-eur']}>Gasto IA (€)</ColTh>}
