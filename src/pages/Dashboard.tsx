@@ -2710,7 +2710,7 @@ export function Dashboard({
 
           {/* Gráficos de distribución */}
           {/* Gráfico de agendas por canal — solo clientes FIT — ancho completo */}
-          {hasFit && agendaEnabled && hourlyAgendasByChannelData.length > 0 && (
+          {hasFit && agendaEnabled && (
             <Card className="mb-8 shadow-lg border border-slate-200">
               <CardHeader>
                 <CardTitle className="text-base font-semibold text-slate-800">
@@ -2746,9 +2746,7 @@ export function Dashboard({
             }`}
           >
             {/* Gráfico de agendamientos por hora */}
-            {agendaEnabled &&
-              hourlyAgendasData &&
-              hourlyAgendasData.length > 0 && (
+            {agendaEnabled && (
                 <Card className="mb-8 shadow-lg border border-slate-200">
                   <CardHeader>
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -2840,7 +2838,7 @@ export function Dashboard({
               )}
 
             {/* Gráfico de tipos de vivienda */}
-            {agendaEnabled && housingTypeData && housingTypeData.length > 0 && (
+            {agendaEnabled && (
               <Card className="mb-8 shadow-lg border border-slate-200">
                 <CardHeader>
                   <CardTitle className="text-base font-semibold text-slate-800">
@@ -2873,7 +2871,7 @@ export function Dashboard({
             )}
 
             {/* Gráfico de interés */}
-            {interestData && interestData.length > 0 && (
+            {(
               <Card className="mb-8 shadow-lg border border-slate-200">
                 <CardHeader>
                   <CardTitle className="text-base font-semibold text-slate-800">
@@ -2910,6 +2908,7 @@ export function Dashboard({
               const identidadData: { identidad: string; cantidad: number }[] =
                 dashboardData?.dashboard_data?.identidad || [];
               const total = identidadData.reduce((sum, item) => sum + (item.cantidad || 0), 0);
+
               const pieData = identidadData.map((item, i) => ({
                 name: item.identidad,
                 value: item.cantidad,
@@ -2948,9 +2947,7 @@ export function Dashboard({
             })()}
 
             {/* Gráfico de agentes por agendas */}
-            {agendaEnabled &&
-              agentesPorAgendasData &&
-              agentesPorAgendasData.length > 0 && (
+            {agendaEnabled && (
                 <Card className="mb-8 shadow-lg border border-slate-200">
                   <CardHeader>
                     <CardTitle className="text-base font-semibold text-slate-800">
@@ -2993,7 +2990,7 @@ export function Dashboard({
             }`}
           >
             {/* Gráfico de llamadas efectivas por hora */}
-            {effectiveCallsData && effectiveCallsData.length > 0 && (
+            {(
               <Card className="mb-8 shadow-lg border border-slate-200">
                 <CardHeader>
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -3086,9 +3083,7 @@ export function Dashboard({
             )}
 
             {/* Gráfico de clicks de asistencia por hora (si el cliente tiene launch habilitado) */}
-            {launchEnabled &&
-              asistenciaByHour &&
-              asistenciaByHour.length > 0 && (
+            {launchEnabled && (
                 <Card className="mb-8 shadow-lg border border-slate-200">
                   <CardHeader>
                     <CardTitle className="text-base font-semibold text-slate-800">
@@ -3131,7 +3126,7 @@ export function Dashboard({
               )}
 
             {/* Gráfico de razones de desconexión */}
-            {disconnectionData && disconnectionData.length > 0 && (
+            {(
               <Card className="mb-8 shadow-lg border border-slate-200">
                 <CardHeader>
                   <CardTitle className="text-base font-semibold text-slate-800">
@@ -3166,24 +3161,14 @@ export function Dashboard({
           </div>
 
           {/* Bloque: Llamadas contestadas / Agendas + Agendas por tipo de propiedad */}
-          {(combinedCallsAgendasData && combinedCallsAgendasData.length > 0) ||
-          (hasAgendasInPeriod &&
-            agendaPropertyTypeData &&
-            agendaPropertyTypeData.length > 0) ? (
-            <div
-              className={`grid gap-4 mb-8 ${
-                isLongRange
-                  ? "md:grid-cols-1"
-                  : hasAgendasInPeriod &&
-                      agendaPropertyTypeData &&
-                      agendaPropertyTypeData.length > 0
-                    ? "md:grid-cols-2"
-                    : "md:grid-cols-1"
-              }`}
-            >
-              {combinedCallsAgendasData &&
-                combinedCallsAgendasData.length > 0 && (
-                  <Card className="shadow-lg border border-slate-200">
+          <div
+            className={`grid gap-4 mb-8 ${
+              isLongRange || !agendaEnabled
+                ? "md:grid-cols-1"
+                : "md:grid-cols-2"
+            }`}
+          >
+              <Card className="shadow-lg border border-slate-200">
                     <CardHeader>
                       <CardTitle className="text-base font-semibold text-slate-800">
                         Llamadas contestadas / Agendas
@@ -3273,12 +3258,8 @@ export function Dashboard({
                       </div>
                     </CardContent>
                   </Card>
-                )}
 
-              {agendaEnabled &&
-                hasAgendasInPeriod &&
-                agendaPropertyTypeData &&
-                agendaPropertyTypeData.length > 0 && (
+              {agendaEnabled && (
                   <Card className="shadow-lg border border-slate-200">
                     <CardHeader>
                       <CardTitle className="text-base font-semibold text-slate-800">
@@ -3378,11 +3359,10 @@ export function Dashboard({
                     </CardContent>
                   </Card>
                 )}
-            </div>
-          ) : null}
+          </div>
 
           {/* Card de Motivos de Rechazo (solo clientes con filtro_solar) */}
-          {hasFiltroSolar && (motivosRechazoLoading || motivosRechazo.length > 0) && (
+          {hasFiltroSolar && (
             <Card className="mb-8 shadow-lg border border-slate-200">
               <CardHeader>
                 <CardTitle className="text-base font-semibold text-slate-800">
