@@ -13,3 +13,4 @@ export * from './launch';
 export * from './tickets';
 export * from './soporteIA';
 export * from './whatsappBot';
+export * from './billing';

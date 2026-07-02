@@ -25,6 +25,7 @@ import {
   PhoneForwarded,
   BrainCircuit,
   Settings,
+  CreditCard,
   MoreVertical,
 } from "lucide-react";
 import { useCallsContext } from "../../context/CallsContext";
@@ -811,6 +812,18 @@ export function Sidebar({
               >
                 <Settings className="w-4 h-4 shrink-0 text-gray-400" />
                 Configuración
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  navigateWithParams("planes");
+                  setIsAccountMenuOpen(false);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-gray-200 hover:bg-[#0a2a5a] transition-colors"
+              >
+                <CreditCard className="w-4 h-4 shrink-0 text-gray-400" />
+                Planes y facturación
               </button>
 
               <div className="border-t border-[#0a2a5a]" />
