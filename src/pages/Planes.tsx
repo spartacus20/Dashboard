@@ -270,10 +270,14 @@ export function Planes() {
                       {usagePrices.map((price) => {
                         const unit = USAGE_UNIT_DISPLAY[price.kind] || USAGE_UNIT_DISPLAY.per_minute;
                         return price.included_units ? (
-                          <p key={price.id} className="text-sm text-slate-600">
-                            Incluye {price.included_units.toLocaleString("es-ES")} {unit.plural}/mes ·
-                            excedente {formatAmount(price.unit_amount, price.currency)}/{unit.singular}
-                          </p>
+                          <div key={price.id} className="text-sm text-slate-600 space-y-0.5">
+                            <p>
+                              Incluye {price.included_units.toLocaleString("es-ES")} {unit.plural}/mes
+                            </p>
+                            <p className="text-slate-500">
+                              Excedente: {formatAmount(price.unit_amount, price.currency)} por {unit.singular}
+                            </p>
+                          </div>
                         ) : (
                           <p key={price.id} className="text-sm text-slate-600">
                             + {formatAmount(price.unit_amount, price.currency)} por {unit.singular}

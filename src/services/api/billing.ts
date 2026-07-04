@@ -1,7 +1,19 @@
 import { BASE_URL } from './config';
+import { supabase } from '../../lib/supabase';
 
 // Facturación de la PLATAFORMA (suscripción del cliente a uMindsAI vía Stripe).
 // No confundir con "facturación" de Ventas (revenue del negocio del cliente).
+
+// El backend deriva el client_id del token de Supabase (el del body se ignora;
+// se sigue enviando por compatibilidad con backends sin actualizar).
+async function authHeaders(): Promise<Record<string, string>> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
 
 export type BillingPriceKind = 'monthly' | 'per_minute' | 'per_call' | 'per_whatsapp';
 
@@ -55,7 +67,7 @@ async function parseError(response: Response, fallback: string): Promise<Error> 
 export async function listBillingProducts(clientId: string): Promise<BillingProduct[]> {
   const response = await fetch(`${BASE_URL}/api/billing/available-plans`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({ client_id: clientId }),
   });
   if (!response.ok) {
@@ -69,7 +81,7 @@ export async function listBillingProducts(clientId: string): Promise<BillingProd
 export async function createBillingCheckout(clientId: string, productId: string): Promise<{ url: string }> {
   const response = await fetch(`${BASE_URL}/api/billing/checkout`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({ client_id: clientId, product_id: productId }),
   });
   if (!response.ok) {
@@ -82,7 +94,7 @@ export async function createBillingCheckout(clientId: string, productId: string)
 export async function createBillingPortal(clientId: string): Promise<{ url: string }> {
   const response = await fetch(`${BASE_URL}/api/billing/portal`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({ client_id: clientId }),
   });
   if (!response.ok) {
@@ -95,7 +107,7 @@ export async function createBillingPortal(clientId: string): Promise<{ url: stri
 export async function getMyBillingSubscription(clientId: string): Promise<BillingSubscription | null> {
   const response = await fetch(`${BASE_URL}/api/billing/my-subscription`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({ client_id: clientId }),
   });
   if (!response.ok) {
@@ -108,7 +120,7 @@ export async function getMyBillingSubscription(clientId: string): Promise<Billin
 export async function getMyBillingInvoices(clientId: string): Promise<BillingInvoice[]> {
   const response = await fetch(`${BASE_URL}/api/billing/my-invoices`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({ client_id: clientId }),
   });
   if (!response.ok) {
