@@ -215,7 +215,9 @@ export function Planes() {
         </div>
       </div>
 
-      {/* Planes disponibles */}
+      {/* Planes disponibles: solo si NO hay plan activo. Con un plan activo, todo
+          se gestiona desde el botón "Gestionar suscripción" (portal de Stripe). */}
+      {!hasActiveSubscription && (
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-6">
         <div className="px-6 py-5 border-b border-slate-100">
           <h2 className="text-lg font-semibold text-slate-900">Planes disponibles</h2>
@@ -309,6 +311,7 @@ export function Planes() {
           )}
         </div>
       </div>
+      )}
 
       {/* Historial de facturas */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
