@@ -4,6 +4,7 @@ import { RetellPhoneNumber, RetellAgent, BlockedNumber } from '../types';
 import { fetchAgents, getCallCountForNumber, listBlockedNumbers, createBlockedNumber, updateBlockedNumber, deleteBlockedNumber } from '../api';
 import { fetchPhoneNumbers, updatePhoneNumber, createPhoneCall, importPhoneNumber, deletePhoneNumber } from '../services/api/telephony';
 import { getClientId, BASE_URL } from '../services/api/config';
+import { authHeaders } from '../services/api/http';
 import { useCallsContext } from '../context/CallsContext';
 import { getUserData } from '../lib/supabase';
 import { PHONES_PAGE_SIZE as PHONES_PER_PAGE, DEFAULT_TERMINATION_URIS } from '../lib/constants';
@@ -1439,16 +1440,18 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
   useEffect(() => {
     if (localLoading || !clientId) return;
 
-    fetch(`${BASE_URL}/api/telephony/${encodeURIComponent(clientId)}/workspaces`)
-      .then((r) => r.json())
-      .then((result) => {
-        const map: Record<number, string> = {};
-        (result.data || []).forEach((ws: { index: number; name: string }) => {
-          map[ws.index] = ws.name;
-        });
-        setWorkspaceNameByIndex(map);
-      })
-      .catch(() => {});
+    (async () => {
+      const r = await fetch(
+        `${BASE_URL}/api/telephony/${encodeURIComponent(clientId)}/workspaces`,
+        { headers: await authHeaders() }
+      );
+      const result = await r.json();
+      const map: Record<number, string> = {};
+      (result.data || []).forEach((ws: { index: number; name: string }) => {
+        map[ws.index] = ws.name;
+      });
+      setWorkspaceNameByIndex(map);
+    })().catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localLoading, clientId]);
 
