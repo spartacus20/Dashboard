@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import { User, Session, AuthError } from "@supabase/supabase-js";
 import {
   supabase,
@@ -54,6 +54,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  // Evita que getInitialSession corra dos veces por el doble-montaje de React.StrictMode
+  // (dev). Dos refrescos casi simultáneos pueden gatillar la detección de "refresh token
+  // reutilizado" de Supabase y revocar la sesión → te saca al login al hacer F5.
+  const didInit = useRef(false);
 
   useEffect(() => {
     // Función para recuperar datos del usuario (incluyendo permissions)
@@ -116,29 +120,34 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           return;
         }
 
-        // Refrescar activamente al montar. getSession() puede devolver un access_token ya
-        // VENCIDO sin haberlo refrescado todavía; usarlo así hacía que /get-client y todo lo
-        // demás dieran 401 (parecía logueado pero no cargaba nada, y cambiar de cliente
-        // fallaba en silencio). refreshSession() usa el refresh token: si sigue válido,
-        // seguimos logueados con un token nuevo por toda su vigencia; si ya no sirve,
-        // devuelve error → login limpio (sin borrar localStorage a mano).
-        const { data: refreshed, error: refreshError } = await withTimeout(
-          supabase.auth.refreshSession(),
-          8000,
-          "refreshSession",
-        );
-
-        if (refreshError || !refreshed.session?.user) {
-          await forceLocalLogout();
-          return;
+        // Garantizar un token vivo. getSession() puede devolver un access_token ya VENCIDO
+        // sin haberlo refrescado todavía; usarlo así hacía que /get-client y todo lo demás
+        // dieran 401 (parecía logueado pero no cargaba nada, y cambiar de cliente fallaba).
+        // Solo refrescamos si está vencido/por vencer: evita refrescos redundantes que
+        // podrían disparar la detección de "refresh token reutilizado" y revocar la sesión.
+        // Si el refresh token ya no sirve, refreshSession devuelve error → login limpio.
+        let live = session;
+        const expMs = (session.expires_at ?? 0) * 1000;
+        const necesitaRefresh = !session.expires_at || expMs - Date.now() < 30_000;
+        if (necesitaRefresh) {
+          const { data: refreshed, error: refreshError } = await withTimeout(
+            supabase.auth.refreshSession(),
+            8000,
+            "refreshSession",
+          );
+          if (refreshError || !refreshed.session?.user) {
+            await forceLocalLogout();
+            return;
+          }
+          live = refreshed.session;
         }
 
-        setSession(refreshed.session);
-        setUser(refreshed.session.user);
+        setSession(live);
+        setUser(live.user);
         // Datos del usuario (permissions) — no bloqueantes: si tardan/fallan, seguimos.
-        if (refreshed.session.user.email) {
+        if (live.user.email) {
           try {
-            await withTimeout(restoreUserData(refreshed.session.user.email), 10000, "restoreUserData");
+            await withTimeout(restoreUserData(live.user.email), 10000, "restoreUserData");
           } catch {
             /* se reintenta en el próximo evento de auth */
           }
@@ -151,7 +160,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
     };
 
-    getInitialSession();
+    // Solo una vez, aunque StrictMode monte el efecto dos veces (evita doble refresh).
+    if (!didInit.current) {
+      didInit.current = true;
+      getInitialSession();
+    }
 
     // Escuchar cambios en la autenticación.
     // IMPORTANTE: nunca tocamos `loading` aquí. El loading solo existe durante

@@ -6,12 +6,30 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'your-anon-key
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
+// Devuelve un access_token FRESCO. getSession() puede devolver uno ya vencido (todavía sin
+// refrescar); en ese caso se refresca antes de devolverlo para no mandar un token muerto al
+// backend. Esto elimina la carrera del F5: CallsContext pide datos apenas monta —antes de que
+// AuthProvider termine de refrescar— y con esto igual usa un token válido (no recibe 401).
+// refreshSession() está serializado por el lock de supabase-js, así que llamadas concurrentes
+// no re-refrescan de más ni disparan la detección de "refresh token reutilizado".
+export async function getFreshAccessToken(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession()
+  let session = data.session
+  if (!session) return null
+  const expMs = (session.expires_at ?? 0) * 1000
+  const vencidoOPorVencer = !session.expires_at || expMs - Date.now() < 30_000
+  if (vencidoOPorVencer) {
+    const { data: refreshed } = await supabase.auth.refreshSession()
+    if (refreshed.session) session = refreshed.session
+  }
+  return session.access_token ?? null
+}
+
 // Headers con el token de sesión de Supabase para autenticar llamadas al backend.
 // Se define local aquí (en vez de importar services/api/http) para evitar un import
 // circular: http.ts importa este mismo módulo.
 async function authHeaders(): Promise<Record<string, string>> {
-  const { data } = await supabase.auth.getSession()
-  const token = data.session?.access_token
+  const token = await getFreshAccessToken()
   return { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
 }
 
