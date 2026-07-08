@@ -54,9 +54,7 @@ export async function fetchAsistenciaClicksByHour(
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(body)
     });
 
@@ -145,9 +143,7 @@ export async function fetchAsistenciaFunnelMetrics(params?: {
 
     const response = await fetch(ASISTENCIA_FUNNEL_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(body)
     });
 

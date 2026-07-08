@@ -1,4 +1,5 @@
 import { getClientId, BASE_URL, GET_DASHBOARD_WEBHOOK_URL, GET_DASHBOARD_CUSTOM_WEBHOOK_URL, PROMEDIO_DURACION_LLAMADAS_EFECTIVAS_URL } from './config';
+import { authHeaders } from './http';
 
 
 
@@ -54,9 +55,7 @@ export async function getDashboardData(
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(requestBody),
     });
 
@@ -112,9 +111,7 @@ export async function getDashboardCustom(
 
     const response = await fetch(GET_DASHBOARD_CUSTOM_WEBHOOK_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(requestBody),
     });
 
@@ -153,9 +150,7 @@ export async function getDashboardToday(clientId?: string, bdd?: string, cliente
     
     const response = await fetch(`${BASE_URL}/api/dashboard/get-dashboard-today`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(requestBody),
     });
 
@@ -196,9 +191,7 @@ export async function getDashboardWeek(clientId?: string, bdd?: string, cliente?
     
     const response = await fetch(`${BASE_URL}/api/dashboard/get-dashboard-week`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(requestBody),
     });
 
@@ -239,9 +232,7 @@ export async function getDashboardMonth(clientId?: string, bdd?: string, cliente
     
     const response = await fetch(`${BASE_URL}/api/dashboard/get-dashboard-month`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(requestBody),
     });
 
@@ -283,7 +274,7 @@ export async function getPromedioDuracionLlamadasEfectivas(
 
   const response = await fetch(PROMEDIO_DURACION_LLAMADAS_EFECTIVAS_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify(body),
   });
   if (!response.ok) {
@@ -309,7 +300,7 @@ export async function getAvailableClientes(clientId: string): Promise<string[]> 
   try {
     const response = await fetch(`${BASE_URL}/api/dashboard/available-clientes`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify({ client_id: clientId }),
     });
     if (!response.ok) return [];
