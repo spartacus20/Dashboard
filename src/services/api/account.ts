@@ -46,7 +46,7 @@ export async function updateProfileName(
 ): Promise<UpdateProfileResponse> {
   const response = await fetch(`${BASE_URL}/api/users/update-profile`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({ email, full_name: fullName.trim() }),
   });
 
@@ -71,7 +71,7 @@ export async function updateAccountPassword(
 ): Promise<UpdatePasswordResponse> {
   const response = await fetch(`${BASE_URL}/api/users/update-password`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({ email, password }),
   });
 
