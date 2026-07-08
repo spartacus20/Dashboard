@@ -82,24 +82,50 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
     };
 
-    // Obtener la sesión inicial
-    const getInitialSession = async () => {
-      const {
-        data: { session },
-        error,
-      } = await supabase.auth.getSession();
-      if (error) {
-        // console.error('Error obteniendo sesión:', error)
-      } else {
-        setSession(session);
-        setUser(session?.user ?? null);
+    // Corre una promesa con tope de tiempo: si se cuelga, rechaza en vez de bloquear la UI.
+    const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> =>
+      Promise.race([
+        promise,
+        new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`timeout:${label}`)), ms)),
+      ]);
 
-        // Si hay una sesión activa, recuperar los datos del usuario (incluyendo permissions)
-        if (session?.user?.email) {
-          await restoreUserData(session.user.email);
+    // Obtener la sesión inicial. Robusto: nunca deja la app colgada en "Cargando...".
+    // Si getSession se cuelga o falla (p. ej. refresh token viejo tras inactividad), se
+    // limpia la sesión local y se muestra el login — sin tener que borrar localStorage a mano.
+    const getInitialSession = async () => {
+      try {
+        const {
+          data: { session },
+          error,
+        } = await withTimeout(supabase.auth.getSession(), 8000, "getSession");
+
+        if (error || !session?.user) {
+          setSession(null);
+          setUser(null);
+        } else {
+          setSession(session);
+          setUser(session.user);
+          // Datos del usuario (permissions) — no bloqueantes: si tardan/fallan, seguimos.
+          if (session.user.email) {
+            try {
+              await withTimeout(restoreUserData(session.user.email), 10000, "restoreUserData");
+            } catch {
+              /* se reintenta en el próximo evento de auth */
+            }
+          }
         }
+      } catch (e) {
+        // Sesión vencida/no renovable o getSession colgado → limpiar sesión local y mostrar login
+        setSession(null);
+        setUser(null);
+        try {
+          await withTimeout(supabase.auth.signOut({ scope: "local" }), 3000, "signOut");
+        } catch {
+          /* si signOut también se cuelga, no bloqueamos igual */
+        }
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     getInitialSession();
