@@ -194,9 +194,7 @@ export async function getCallsByPhone(
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(body),
     });
 
@@ -221,7 +219,7 @@ export async function getCallTranscript(
 
   const response = await fetch(GET_CALL_TRANSCRIPT_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({ call_id, client_id }),
   });
 

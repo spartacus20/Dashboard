@@ -1,5 +1,6 @@
 import { RetellCall, FilterCriteria, CallStats } from '../../types';
 import { getClientId, BASE_URL, WEBHOOK_URL } from './config';
+import { authHeaders } from './http';
 
 // Códigos de análisis para Recoveries (definición del negocio)
 export const RECOVERY_CODIGOS: Record<string, string> = {
@@ -159,7 +160,7 @@ export async function fetchCalls(
       `${BASE_URL}/api/telephony/${encodeURIComponent(fallbackClientId)}/list-calls`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authHeaders(),
         body: JSON.stringify(retellBody),
       }
     );
@@ -307,10 +308,7 @@ export async function listCalls(
     
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(params),
     });
 
@@ -377,10 +375,7 @@ export async function listAllCalls(
     const url = `${BASE_URL}/api/calls/list-calls-all`;
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(params),
     });
     if (!response.ok) {
@@ -501,10 +496,7 @@ export async function getDisconnectionReasons(
     const url = `${BASE_URL}/api/calls/get-disconnection-reasons`;
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify({ client_id: clientId }),
     });
 
@@ -534,10 +526,7 @@ export async function getRecoveryCountsByAnalisisCodigo(
   const url = `${BASE_URL}/api/calls/recovery-counts-by-analisis-codigo`;
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
+    headers: await authHeaders(),
     body: JSON.stringify(params),
   });
   if (!response.ok) {
@@ -575,10 +564,7 @@ export async function listRecoveryCalls(
   const url = `${BASE_URL}/api/calls/recovery-list-calls`;
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
+    headers: await authHeaders(),
     body: JSON.stringify(params),
   });
   if (!response.ok) {
@@ -626,10 +612,7 @@ export async function listInteresadosCalls(
   const url = `${BASE_URL}/api/calls/interesados-list-calls`;
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
+    headers: await authHeaders(),
     body: JSON.stringify(params),
   });
   if (!response.ok) {
@@ -657,10 +640,7 @@ export async function getInteresadosMotivos(
   const url = `${BASE_URL}/api/calls/interesados-motivos`;
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
+    headers: await authHeaders(),
     body: JSON.stringify({ client_id: clientId }),
   });
   if (!response.ok) {
@@ -675,7 +655,7 @@ export async function getCallCountsByFromNumber(clientId: string): Promise<CallC
   try {
     const response = await fetch(`${BASE_URL}/api/calls/call-counts-by-from-number`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify({ client_id: clientId }),
     });
     if (!response.ok) {
@@ -696,7 +676,7 @@ export async function getCallCountForNumber(
 ): Promise<{ total: number; efectivas: number; fallidas: number }> {
   const response = await fetch(`${BASE_URL}/api/calls/call-count-for-number`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({ client_id: clientId, from_number: fromNumber }),
   });
   if (!response.ok) {
@@ -738,10 +718,7 @@ export async function exportCallsWithColumns(
     const url = `${BASE_URL}/api/calls/export-calls-with-columns`;
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(params),
     });
 
