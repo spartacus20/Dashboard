@@ -173,28 +173,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // desmontar el dashboard ni cerrar modales abiertos.
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
 
-      if (
-        event === "SIGNED_IN" &&
-        session?.user?.email
-      ) {
-        // Actualizar datos del cliente en background (sin spinner)
-        // TOKEN_REFRESHED se omite intencionalmente: solo refresca el JWT, no requiere
-        // re-fetchear datos del usuario. Hacerlo resetearía metadata/apiKey al cliente base.
-        try {
-          await getClientId(session.user.email);
-        } catch {
-          // silencioso
-        }
-
-        if (event === "SIGNED_IN") {
+      if (event === "SIGNED_IN" && session?.user?.email) {
+        // CRÍTICO: este callback corre DENTRO del lock interno de supabase-js. NO se debe
+        // await-ear (ni llamar sin diferir) otra función de supabase auth acá adentro:
+        // getClientId → authHeaders → getSession()/refreshSession() intentan tomar el MISMO
+        // lock → deadlock. En el F5 eso colgaba el getSession() de getInitialSession hasta
+        // el timeout de 8s → forceLocalLogout → te sacaba al login (primera carga OK, F5 no).
+        // Se difiere con setTimeout(0): el callback retorna, se libera el lock, y recién ahí
+        // corre getClientId. TOKEN_REFRESHED se omite a propósito (solo refresca el JWT).
+        const email = session.user.email;
+        setTimeout(() => {
+          getClientId(email).catch(() => {
+            // silencioso: se reintenta en el próximo evento/carga
+          });
           try {
             localStorage.setItem("dashboard_time_period", "today");
           } catch {}
-        }
+        }, 0);
         return;
       }
 
