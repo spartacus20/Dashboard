@@ -21,6 +21,8 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
     const response = await fetch(GET_CLIENT_WEBHOOK_URL, {
       method: 'POST',
       headers: await authHeaders(),
+      // no-store: nunca cachear/revalidar /get-client (un 304 daría body vacío → apiKey null).
+      cache: 'no-store',
       body: JSON.stringify(requestBody),
     });
 

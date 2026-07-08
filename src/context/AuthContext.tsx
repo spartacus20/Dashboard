@@ -113,33 +113,38 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (error || !session?.user) {
           setSession(null);
           setUser(null);
-        } else {
-          // getSession() puede devolver una sesión con access_token VENCIDO sin lanzar error
-          // (difiere el fallo a la primera request). Eso dejaba la app "logueada" pero con
-          // /get-client y todo lo demás en 401 → no cargaba nada y cambiar de cliente fallaba.
-          // getUser() valida el token contra el servidor: si está muerto/no renovable, error.
-          const {
-            data: { user },
-            error: userError,
-          } = await withTimeout(supabase.auth.getUser(), 8000, "getUser");
+          return;
+        }
 
-          if (userError || !user) {
-            await forceLocalLogout();
-          } else {
-            setSession(session);
-            setUser(user);
-            // Datos del usuario (permissions) — no bloqueantes: si tardan/fallan, seguimos.
-            if (user.email) {
-              try {
-                await withTimeout(restoreUserData(user.email), 10000, "restoreUserData");
-              } catch {
-                /* se reintenta en el próximo evento de auth */
-              }
-            }
+        // Refrescar activamente al montar. getSession() puede devolver un access_token ya
+        // VENCIDO sin haberlo refrescado todavía; usarlo así hacía que /get-client y todo lo
+        // demás dieran 401 (parecía logueado pero no cargaba nada, y cambiar de cliente
+        // fallaba en silencio). refreshSession() usa el refresh token: si sigue válido,
+        // seguimos logueados con un token nuevo por toda su vigencia; si ya no sirve,
+        // devuelve error → login limpio (sin borrar localStorage a mano).
+        const { data: refreshed, error: refreshError } = await withTimeout(
+          supabase.auth.refreshSession(),
+          8000,
+          "refreshSession",
+        );
+
+        if (refreshError || !refreshed.session?.user) {
+          await forceLocalLogout();
+          return;
+        }
+
+        setSession(refreshed.session);
+        setUser(refreshed.session.user);
+        // Datos del usuario (permissions) — no bloqueantes: si tardan/fallan, seguimos.
+        if (refreshed.session.user.email) {
+          try {
+            await withTimeout(restoreUserData(refreshed.session.user.email), 10000, "restoreUserData");
+          } catch {
+            /* se reintenta en el próximo evento de auth */
           }
         }
       } catch (e) {
-        // Sesión vencida/no renovable o getSession/getUser colgado → login limpio.
+        // Sesión vencida/no renovable o getSession/refresh colgado → login limpio.
         await forceLocalLogout();
       } finally {
         setLoading(false);

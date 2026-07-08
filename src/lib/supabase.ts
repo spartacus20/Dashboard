@@ -46,6 +46,9 @@ export const getClientId = async (email: string): Promise<string | null> => {
     const response = await fetch(GET_CLIENT_WEBHOOK_URL, {
       method: 'POST',
       headers: await authHeaders(),
+      // no-store: /get-client es data de sesión/tenant, nunca debe cachearse ni
+      // revalidarse (un 304 devolvería body vacío/viejo → apiKey no cargaría).
+      cache: 'no-store',
       body: JSON.stringify({ email })
     })
 
