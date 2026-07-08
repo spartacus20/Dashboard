@@ -92,6 +92,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // Obtener la sesión inicial. Robusto: nunca deja la app colgada en "Cargando...".
     // Si getSession se cuelga o falla (p. ej. refresh token viejo tras inactividad), se
     // limpia la sesión local y se muestra el login — sin tener que borrar localStorage a mano.
+    // Cierra la sesión local (limpia el token viejo) y muestra el login, sin colgar.
+    const forceLocalLogout = async () => {
+      setSession(null);
+      setUser(null);
+      try {
+        await withTimeout(supabase.auth.signOut({ scope: "local" }), 3000, "signOut");
+      } catch {
+        /* si signOut también se cuelga, no bloqueamos igual */
+      }
+    };
+
     const getInitialSession = async () => {
       try {
         const {
@@ -103,26 +114,33 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           setSession(null);
           setUser(null);
         } else {
-          setSession(session);
-          setUser(session.user);
-          // Datos del usuario (permissions) — no bloqueantes: si tardan/fallan, seguimos.
-          if (session.user.email) {
-            try {
-              await withTimeout(restoreUserData(session.user.email), 10000, "restoreUserData");
-            } catch {
-              /* se reintenta en el próximo evento de auth */
+          // getSession() puede devolver una sesión con access_token VENCIDO sin lanzar error
+          // (difiere el fallo a la primera request). Eso dejaba la app "logueada" pero con
+          // /get-client y todo lo demás en 401 → no cargaba nada y cambiar de cliente fallaba.
+          // getUser() valida el token contra el servidor: si está muerto/no renovable, error.
+          const {
+            data: { user },
+            error: userError,
+          } = await withTimeout(supabase.auth.getUser(), 8000, "getUser");
+
+          if (userError || !user) {
+            await forceLocalLogout();
+          } else {
+            setSession(session);
+            setUser(user);
+            // Datos del usuario (permissions) — no bloqueantes: si tardan/fallan, seguimos.
+            if (user.email) {
+              try {
+                await withTimeout(restoreUserData(user.email), 10000, "restoreUserData");
+              } catch {
+                /* se reintenta en el próximo evento de auth */
+              }
             }
           }
         }
       } catch (e) {
-        // Sesión vencida/no renovable o getSession colgado → limpiar sesión local y mostrar login
-        setSession(null);
-        setUser(null);
-        try {
-          await withTimeout(supabase.auth.signOut({ scope: "local" }), 3000, "signOut");
-        } catch {
-          /* si signOut también se cuelga, no bloqueamos igual */
-        }
+        // Sesión vencida/no renovable o getSession/getUser colgado → login limpio.
+        await forceLocalLogout();
       } finally {
         setLoading(false);
       }
