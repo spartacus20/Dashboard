@@ -1,19 +1,8 @@
 import { BASE_URL } from './config';
-import { supabase } from '../../lib/supabase';
+import { authHeaders } from './http';
 
 // Facturación de la PLATAFORMA (suscripción del cliente a uMindsAI vía Stripe).
 // No confundir con "facturación" de Ventas (revenue del negocio del cliente).
-
-// El backend deriva el client_id del token de Supabase (el del body se ignora;
-// se sigue enviando por compatibilidad con backends sin actualizar).
-async function authHeaders(): Promise<Record<string, string>> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-  return {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-}
 
 export type BillingPriceKind = 'monthly' | 'per_minute' | 'per_call' | 'per_whatsapp';
 
