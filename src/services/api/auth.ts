@@ -1,5 +1,6 @@
 import { ClientData } from '../../types';
 import { BASE_URL, GET_CLIENT_WEBHOOK_URL } from './config';
+import { authHeaders } from './http';
 
 
 
@@ -19,9 +20,7 @@ export async function getClientApiKey(identifier: string): Promise<{ apiKey: str
     // console.log('BASE_URL que se está usando:', BASE_URL); // si usas la config que te pasé
     const response = await fetch(GET_CLIENT_WEBHOOK_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(requestBody),
     });
 

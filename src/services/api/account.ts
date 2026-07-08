@@ -1,4 +1,5 @@
 import { BASE_URL, GET_CLIENT_WEBHOOK_URL } from './config';
+import { authHeaders } from './http';
 
 export interface AccountProfile {
   fullName: string;
@@ -8,7 +9,7 @@ export interface AccountProfile {
 export async function fetchAccountProfile(email: string): Promise<AccountProfile> {
   const response = await fetch(GET_CLIENT_WEBHOOK_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({ email }),
   });
 

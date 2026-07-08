@@ -6,6 +6,15 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'your-anon-key
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
+// Headers con el token de sesión de Supabase para autenticar llamadas al backend.
+// Se define local aquí (en vez de importar services/api/http) para evitar un import
+// circular: http.ts importa este mismo módulo.
+async function authHeaders(): Promise<Record<string, string>> {
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  return { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+}
+
 // Configuración de Get-Client
 export const GET_CLIENT_CONFIG = {
   apiUrl: import.meta.env.VITE_GET_CLIENT_API_URL || 'https://api.get-client.com',
@@ -36,9 +45,7 @@ export const getClientId = async (email: string): Promise<string | null> => {
     // Hacer petición POST al endpoint correcto
     const response = await fetch(GET_CLIENT_WEBHOOK_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify({ email })
     })
 
@@ -507,7 +514,7 @@ export const updateClientSubscriptionStatus = async (clientId: string): Promise<
   try {
     const response = await fetch(`${BASE_URL}/get-client`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify({ client_id: clientId })
     })
     if (!response.ok) return
