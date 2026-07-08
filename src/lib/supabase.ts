@@ -65,7 +65,6 @@ export const getClientId = async (email: string): Promise<string | null> => {
       
       // Normalizar los nombres de campos (el backend puede devolver clientId o client_id)
       const defaultClientId = userData.clientId || userData.client_id
-      const apiKey = userData.apiKey || userData.api_key
       const fullName = userData.fullName || userData.full_name || ''
       
       if (defaultClientId) {
@@ -107,12 +106,14 @@ export const getClientId = async (email: string): Promise<string | null> => {
         // Guardar el client_id que vamos a usar (puede ser el seleccionado o el por defecto)
         setClientId(clientIdToUse)
         
-        // Guardar TODOS los datos en sessionStorage
-        sessionStorage.setItem('userData', JSON.stringify(userData))
+        // Guardar los datos en sessionStorage, SIN las claves de Retell.
+        // Chunk 13a: la API key nunca debe quedar at-rest en el navegador.
+        const userDataToStore = { ...userData }
+        delete userDataToStore.api_key
+        delete userDataToStore.apiKey
+        delete userDataToStore.api_key_test
+        sessionStorage.setItem('userData', JSON.stringify(userDataToStore))
         persistAccountCreatedAt(userData)
-        if (apiKey) {
-          sessionStorage.setItem('apiKey', apiKey)
-        }
         sessionStorage.setItem('clientId', clientIdToUse)
         if (userData.email) {
           sessionStorage.setItem('email', userData.email)
@@ -239,27 +240,14 @@ export const getUserData = () => {
   return userData ? JSON.parse(userData) : null
 }
 
-export const getApiKey = (): string | null => {
-  return sessionStorage.getItem('apiKey')
-}
+// Chunk 13a: la Retell API key ya no se persiste en el navegador (ni en
+// sessionStorage ni en el blob userData). Estos helpers quedan como no-ops —
+// nada del cliente debe leer la key desde storage. La key vive solo en memoria
+// (estado de CallsContext) mientras el selector de workspaces la necesita, hasta
+// que 13b termine de sacarla del backend.
+export const getApiKey = (): string | null => null
 
-export const getApiKeyTest = (): string[] | null => {
-  const apiKeyTest = sessionStorage.getItem('apiKeyTest')
-  if (apiKeyTest) {
-    try {
-      return JSON.parse(apiKeyTest)
-    } catch (e) {
-      // console.warn('Error parseando apiKeyTest:', e)
-      return null
-    }
-  }
-  // También verificar en userData por si acaso
-  const userData = getUserData()
-  if (userData && userData.api_key_test && Array.isArray(userData.api_key_test)) {
-    return userData.api_key_test
-  }
-  return null
-}
+export const getApiKeyTest = (): string[] | null => null
 
 export const getClientIdFromSession = (): string | null => {
   return sessionStorage.getItem('clientId')
@@ -536,6 +524,7 @@ export const updateClientSubscriptionStatus = async (clientId: string): Promise<
 export const clearSessionData = () => {
   sessionStorage.removeItem('userData')
   sessionStorage.removeItem('apiKey')
+  sessionStorage.removeItem('apiKeyTest')
   sessionStorage.removeItem('clientId')
   sessionStorage.removeItem('email')
   sessionStorage.removeItem('fullName')

@@ -297,13 +297,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         // console.log(
         //   `📞 AuthContext - Usando ${result.apiKeyTest.length} API keys de api_key_test`,
         // );
-        // Guardar la primera API key en sessionStorage para compatibilidad
-        sessionStorage.setItem("apiKey", result.apiKeyTest[0]);
-        // Guardar el array completo de apiKeyTest en sessionStorage
-        sessionStorage.setItem("apiKeyTest", JSON.stringify(result.apiKeyTest));
-        // console.log(
-        //   "✅ AuthContext - API keys actualizadas para nuevo client_id",
-        // );
+        // Chunk 13a: la key NO se persiste en sessionStorage; viaja solo en el
+        // evento clientIdChanged (memoria) hacia CallsContext.
 
         // Disparar evento personalizado para notificar el cambio de client_id
         const eventDetail = {
@@ -324,10 +319,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
         return { error: null };
       } else if (result.apiKey) {
-        sessionStorage.setItem("apiKey", result.apiKey);
-        // console.log(
-        //   "✅ AuthContext - API key actualizada para nuevo client_id",
-        // );
+        // Chunk 13a: la key NO se persiste en sessionStorage (solo va en el evento).
 
         // Disparar evento personalizado para notificar el cambio de client_id
         const eventDetail = {

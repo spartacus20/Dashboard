@@ -170,18 +170,13 @@ export function CallsProvider({ children }: CallsProviderProps) {
             // console.log('API key obtenida exitosamente para client_id:', storedClientId);
             // Usar apiKeyTest si está disponible, sino usar apiKey
             if (result.apiKeyTest && result.apiKeyTest.length > 0) {
-              // console.log(`📞 Usando ${result.apiKeyTest.length} API keys de api_key_test`);
+              // Chunk 13a: la key vive solo en memoria; no se persiste en sessionStorage.
               setApiKeyTest(result.apiKeyTest);
-              // Establecer la primera API key en apiKey para compatibilidad con funciones que necesitan API key individual
-              const firstApiKey = result.apiKeyTest[0];
-              setApiKey(firstApiKey);
-              sessionStorage.setItem('apiKeyTest', JSON.stringify(result.apiKeyTest));
-              sessionStorage.setItem('apiKey', firstApiKey); // Guardar primera para compatibilidad
+              // Primera key en apiKey para compatibilidad con funciones que la reciben (param vestigial).
+              setApiKey(result.apiKeyTest[0]);
             } else if (result.apiKey) {
               setApiKey(result.apiKey);
-              sessionStorage.setItem('apiKey', result.apiKey);
-              sessionStorage.removeItem('apiKeyTest'); // Limpiar apiKeyTest si usamos apiKey individual
-              setApiKeyTest(null); // Limpiar apiKeyTest si usamos apiKey individual
+              setApiKeyTest(null);
             }
             
             // Procesar configuración del cliente
@@ -223,18 +218,13 @@ export function CallsProvider({ children }: CallsProviderProps) {
                   // console.log('API key obtenida exitosamente para client_id:', newClientId);
                   // Usar apiKeyTest si está disponible, sino usar apiKey
                   if (result.apiKeyTest && result.apiKeyTest.length > 0) {
-                    // console.log(`📞 Usando ${result.apiKeyTest.length} API keys de api_key_test`);
+                    // Chunk 13a: la key vive solo en memoria; no se persiste en sessionStorage.
                     setApiKeyTest(result.apiKeyTest);
-                    // Establecer la primera API key en apiKey para compatibilidad con funciones que necesitan API key individual
-                    const firstApiKey = result.apiKeyTest[0];
-                    setApiKey(firstApiKey);
-                    sessionStorage.setItem('apiKeyTest', JSON.stringify(result.apiKeyTest));
-                    sessionStorage.setItem('apiKey', firstApiKey); // Guardar primera para compatibilidad
+                    // Primera key en apiKey para compatibilidad con funciones que la reciben (param vestigial).
+                    setApiKey(result.apiKeyTest[0]);
                   } else if (result.apiKey) {
                     setApiKey(result.apiKey);
-                    sessionStorage.setItem('apiKey', result.apiKey);
-                    sessionStorage.removeItem('apiKeyTest'); // Limpiar apiKeyTest si usamos apiKey individual
-                    setApiKeyTest(null); // Limpiar apiKeyTest si usamos apiKey individual
+                    setApiKeyTest(null);
                   }
                   
                   // Procesar configuración del cliente
@@ -296,18 +286,13 @@ export function CallsProvider({ children }: CallsProviderProps) {
               if (result.apiKey || result.apiKeyTest) {
                 // Usar apiKeyTest si está disponible, sino usar apiKey
                 if (result.apiKeyTest && result.apiKeyTest.length > 0) {
-                  // console.log(`📞 Usando ${result.apiKeyTest.length} API keys de api_key_test tras inicio de sesión`);
+                  // Chunk 13a: la key vive solo en memoria; no se persiste en sessionStorage.
                   setApiKeyTest(result.apiKeyTest);
-                  // Establecer la primera API key en apiKey para compatibilidad con funciones que necesitan API key individual
-                  const firstApiKey = result.apiKeyTest[0];
-                  setApiKey(firstApiKey);
-                  sessionStorage.setItem('apiKeyTest', JSON.stringify(result.apiKeyTest));
-                  sessionStorage.setItem('apiKey', firstApiKey); // Guardar primera para compatibilidad
+                  // Primera key en apiKey para compatibilidad con funciones que la reciben (param vestigial).
+                  setApiKey(result.apiKeyTest[0]);
                 } else if (result.apiKey) {
                   setApiKey(result.apiKey);
-                  sessionStorage.setItem('apiKey', result.apiKey);
-                  sessionStorage.removeItem('apiKeyTest'); // Limpiar apiKeyTest si usamos apiKey individual
-                  setApiKeyTest(null); // Limpiar apiKeyTest si usamos apiKey individual
+                  setApiKeyTest(null);
                 }
                 // console.log('API key establecida tras inicio de sesión');
                 
@@ -359,18 +344,13 @@ export function CallsProvider({ children }: CallsProviderProps) {
       setClientId(newClientId);
       // Usar apiKeyTest si está disponible, sino usar apiKey
       if (newApiKeyTest && newApiKeyTest.length > 0) {
-        // console.log(`📞 CallsContext: Usando ${newApiKeyTest.length} API keys de api_key_test`);
+        // Chunk 13a: la key vive solo en memoria; no se persiste en sessionStorage.
         setApiKeyTest(newApiKeyTest);
-        // Establecer la primera API key en apiKey para compatibilidad con funciones que necesitan API key individual
-        const firstApiKey = newApiKeyTest[0];
-        setApiKey(firstApiKey);
-        sessionStorage.setItem('apiKeyTest', JSON.stringify(newApiKeyTest));
-        sessionStorage.setItem('apiKey', firstApiKey); // Guardar primera para compatibilidad
+        // Primera key en apiKey para compatibilidad con funciones que la reciben (param vestigial).
+        setApiKey(newApiKeyTest[0]);
       } else if (newApiKey) {
         setApiKey(newApiKey);
-        sessionStorage.setItem('apiKey', newApiKey);
-        sessionStorage.removeItem('apiKeyTest'); // Limpiar apiKeyTest si usamos apiKey individual
-        setApiKeyTest(null); // Limpiar apiKeyTest si usamos apiKey individual
+        setApiKeyTest(null);
       }
       
       // Actualizar configuración si está disponible
