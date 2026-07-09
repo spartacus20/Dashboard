@@ -1436,15 +1436,19 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId]);
 
-  // Cargar nombres de workspaces desde el backend una vez que los teléfonos terminaron de cargar
+  // Cargar nombres de workspaces EN PARALELO con los números (no esperar a que terminen).
+  // Antes dependía de localLoading: el filtro por workspace recién aparecía cuando los
+  // teléfonos habían cargado, y la lista se recortaba de golpe (workspaceOptions pasaba
+  // de 1 a N y recién ahí empezaba a filtrar). Ahora sale apenas hay clientId.
   useEffect(() => {
-    if (localLoading || !clientId) return;
+    if (!clientId) return;
 
     (async () => {
       const r = await fetch(
         `${BASE_URL}/api/telephony/${encodeURIComponent(clientId)}/workspaces`,
         { headers: await authHeaders() }
       );
+      if (!r.ok) return;
       const result = await r.json();
       const map: Record<number, string> = {};
       (result.data || []).forEach((ws: { index: number; name: string }) => {
@@ -1452,8 +1456,7 @@ export function PhoneNumbers({ onNavigate: _onNavigate }: PhoneNumbersProps) {
       });
       setWorkspaceNameByIndex(map);
     })().catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localLoading, clientId]);
+  }, [clientId]);
 
   // Cargar números bloqueados
   useEffect(() => {
