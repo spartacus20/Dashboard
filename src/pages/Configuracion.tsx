@@ -12,6 +12,7 @@ import {
   setFullName,
 } from "../lib/supabase";
 import { fetchAccountProfile, updateProfileName } from "../services/api/account";
+import { ApiTokensCard } from "../components/ApiTokensCard";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 
@@ -356,6 +357,11 @@ export function Configuracion() {
           </div>
         )}
       </div>
+      </div>
+
+      {/* Ancho completo: la tabla de tokens necesita más espacio que las tarjetas de arriba */}
+      <div className="mt-6">
+        <ApiTokensCard />
       </div>
     </div>
   );
