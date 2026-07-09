@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, Session } from '@supabase/supabase-js'
 
 // Configuración de Supabase
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://your-project.supabase.co'
@@ -6,23 +6,57 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'your-anon-key
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-// Devuelve un access_token FRESCO. getSession() puede devolver uno ya vencido (todavía sin
-// refrescar); en ese caso se refresca antes de devolverlo para no mandar un token muerto al
-// backend. Esto elimina la carrera del F5: CallsContext pide datos apenas monta —antes de que
-// AuthProvider termine de refrescar— y con esto igual usa un token válido (no recibe 401).
-// refreshSession() está serializado por el lock de supabase-js, así que llamadas concurrentes
-// no re-refrescan de más ni disparan la detección de "refresh token reutilizado".
+// Margen amplio: el access_token dura 1h, pero lo renovamos con 60s de anticipación para
+// cubrir el desfasaje entre el reloj del navegador y el de Supabase (con 30s, un reloj
+// atrasado hacía que el front creyera que el token seguía vivo y el servidor lo rechazara).
+const MARGEN_EXPIRACION_MS = 60_000
+
+const dormir = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+function estaPorVencer(session: Session | null): boolean {
+  if (!session?.expires_at) return true
+  return session.expires_at * 1000 - Date.now() < MARGEN_EXPIRACION_MS
+}
+
+// Devuelve un access_token FRESCO, o null si no hay ninguno utilizable.
+//
+// NUNCA devuelve un token vencido: mandarlo solo produce un 401 confuso.
+//
+// El refresh_token de Supabase es de UN SOLO USO y rota en cada renovación. Cuando volvés
+// a una pestaña que estuvo oculta, supabase-js reanuda su auto-refresh justo cuando los
+// componentes se re-montan y piden datos: dos refrescos compiten por el mismo refresh_token
+// y uno falla. En ese caso la sesión nueva YA quedó en storage, así que la releemos en vez
+// de reintentar el refresh (que volvería a fallar con el token ya consumido).
 export async function getFreshAccessToken(): Promise<string | null> {
   const { data } = await supabase.auth.getSession()
-  let session = data.session
+  const session = data.session
   if (!session) return null
-  const expMs = (session.expires_at ?? 0) * 1000
-  const vencidoOPorVencer = !session.expires_at || expMs - Date.now() < 30_000
-  if (vencidoOPorVencer) {
-    const { data: refreshed } = await supabase.auth.refreshSession()
-    if (refreshed.session) session = refreshed.session
-  }
-  return session.access_token ?? null
+  if (!estaPorVencer(session)) return session.access_token ?? null
+
+  const { data: refrescada, error } = await supabase.auth.refreshSession()
+  if (!error && refrescada.session) return refrescada.session.access_token ?? null
+
+  // Falló el refresh: probablemente otro lo ganó. Le damos un respiro y releemos storage.
+  await dormir(150)
+  const { data: reintento } = await supabase.auth.getSession()
+  const nueva = reintento.session
+  if (nueva && !estaPorVencer(nueva)) return nueva.access_token ?? null
+
+  return null
+}
+
+// Fuerza una renovación, ignorando el margen. La usa el reintento ante un 401: si el token
+// murió entre que armamos los headers y el servidor lo validó, esto consigue uno nuevo.
+// Si el refresh falla porque otro lo ganó, devolvemos el que haya quedado en storage.
+export async function forceRefreshAccessToken(): Promise<string | null> {
+  const { data, error } = await supabase.auth.refreshSession()
+  if (!error && data.session) return data.session.access_token ?? null
+
+  await dormir(150)
+  const { data: actual } = await supabase.auth.getSession()
+  const session = actual.session
+  if (session && !estaPorVencer(session)) return session.access_token ?? null
+  return null
 }
 
 // Headers con el token de sesión de Supabase para autenticar llamadas al backend.

@@ -1,5 +1,5 @@
 import { BASE_URL, getClientId } from './config';
-import { authHeaders } from './http';
+import { authedFetch } from './http';
 
 const BASE = () => `${BASE_URL}/api/tokens`;
 
@@ -39,7 +39,7 @@ export async function listApiTokens(): Promise<ApiToken[]> {
   const clientId = clienteActivo();
   if (clientId) url.searchParams.set('client_id', clientId);
 
-  const response = await fetch(url.toString(), { headers: await authHeaders(), cache: 'no-store' });
+  const response = await authedFetch(url.toString(), { cache: 'no-store' });
   if (!response.ok) await parseError(response, 'No se pudieron obtener los tokens');
   const data = await response.json();
   return Array.isArray(data.tokens) ? data.tokens : [];
@@ -49,9 +49,8 @@ export async function createApiToken(
   name: string,
   expiresInDays: number,
 ): Promise<CreatedApiToken> {
-  const response = await fetch(BASE(), {
+  const response = await authedFetch(BASE(), {
     method: 'POST',
-    headers: await authHeaders(),
     body: JSON.stringify({ name, expiresInDays, client_id: clienteActivo() }),
   });
   if (!response.ok) await parseError(response, 'No se pudo crear el token');
@@ -63,9 +62,6 @@ export async function revokeApiToken(jti: string): Promise<void> {
   const clientId = clienteActivo();
   if (clientId) url.searchParams.set('client_id', clientId);
 
-  const response = await fetch(url.toString(), {
-    method: 'DELETE',
-    headers: await authHeaders(),
-  });
+  const response = await authedFetch(url.toString(), { method: 'DELETE' });
   if (!response.ok) await parseError(response, 'No se pudo revocar el token');
 }
