@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Calendar, Lock, Mail, User } from "lucide-react";
+import { Calendar, KeyRound, Lock, Mail, User } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import {
   getAccountCreatedAt,
@@ -27,7 +27,10 @@ function formatAccountDate(dateString: string | null): string {
   });
 }
 
+type ConfigTab = "cuenta" | "tokens";
+
 export function Configuracion() {
+  const [activeTab, setActiveTab] = useState<ConfigTab>("cuenta");
   const { user, changePassword } = useAuth();
   const sessionEmail = getEmail() || user?.email || "";
   const initialName = getFullName() || getCurrentUserInfo().name || "";
@@ -177,10 +180,39 @@ export function Configuracion() {
       <h1 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800 mb-2">
         Configuración
       </h1>
-      <p className="text-slate-600 mb-8">
-        Gestiona los datos básicos de tu cuenta.
+      <p className="text-slate-600 mb-6">
+        {activeTab === "cuenta"
+          ? "Gestiona los datos básicos de tu cuenta."
+          : "Genera tokens para leer tus datos desde otro sistema."}
       </p>
 
+      {/* Pestañas */}
+      <div className="flex border-b border-slate-200 mb-6">
+        <button
+          onClick={() => setActiveTab("cuenta")}
+          className={`flex items-center gap-2 px-6 py-3 font-medium transition-colors ${
+            activeTab === "cuenta"
+              ? "text-blue-600 border-b-2 border-blue-600"
+              : "text-slate-600 hover:text-slate-800"
+          }`}
+        >
+          <User className="w-5 h-5" />
+          Mi cuenta
+        </button>
+        <button
+          onClick={() => setActiveTab("tokens")}
+          className={`flex items-center gap-2 px-6 py-3 font-medium transition-colors ${
+            activeTab === "tokens"
+              ? "text-blue-600 border-b-2 border-blue-600"
+              : "text-slate-600 hover:text-slate-800"
+          }`}
+        >
+          <KeyRound className="w-5 h-5" />
+          Tokens de API
+        </button>
+      </div>
+
+      {activeTab === "cuenta" && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-6 py-5 border-b border-slate-100">
@@ -358,11 +390,9 @@ export function Configuracion() {
         )}
       </div>
       </div>
+      )}
 
-      {/* Ancho completo: la tabla de tokens necesita más espacio que las tarjetas de arriba */}
-      <div className="mt-6">
-        <ApiTokensCard />
-      </div>
+      {activeTab === "tokens" && <ApiTokensCard />}
     </div>
   );
 }

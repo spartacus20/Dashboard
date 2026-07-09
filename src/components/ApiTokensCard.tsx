@@ -124,11 +124,11 @@ export function ApiTokensCard() {
         <div>
           <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
             <KeyRound className="w-5 h-5 text-slate-400" />
-            Tokens de API
+            Tus tokens
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            Generá un token para leer tus datos desde otro sistema (un CRM, n8n, etc.).
-            Son de <strong>solo lectura</strong> y solo acceden a los datos de tu cuenta.
+            Conectá tus datos con un CRM, n8n o tu propio sistema. Los tokens son de{" "}
+            <strong>solo lectura</strong> y solo acceden a los datos de tu cuenta.
           </p>
         </div>
         {!showForm && (
