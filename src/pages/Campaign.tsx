@@ -244,7 +244,7 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
       <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800 mb-2">Campaña</h2>
-          <p className="text-slate-600">Lista de batch calls y creación de nuevas campañas desde CSV</p>
+          <p className="text-slate-600">Lista de campañas y creación de nuevas desde CSV</p>
         </div>
         <div className="flex gap-2">
           <button
@@ -350,7 +350,7 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
           {!loading && !error && displayBatchCalls.length === 0 && (
             <div className="p-6 text-center text-slate-600">
               {batchCallsByWorkspace.length === 0
-                ? 'No hay campañas (batch calls) en ninguno de los workspaces configurados.'
+                ? 'No hay campañas en ninguno de los workspaces configurados.'
                 : 'No se encontraron campañas con los filtros aplicados.'}
             </div>
           )}
