@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Button } from '../components/ui/button';
-import { RefreshCw, Filter, Search, X, Phone, User, Calendar, Clock, FileText, ChevronDown, ChevronUp, Play, Pause } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { RefreshCw, Filter, Search, X, Phone, User, Calendar, Clock, FileText, ChevronDown, ChevronUp, Play, Pause, Download } from 'lucide-react';
 import { useCallsContext } from '../context/CallsContext';
 import {
   getRecoveryCountsByAnalisisCodigo,
@@ -53,6 +54,8 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
   const [llamadas, setLlamadas] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingTable, setLoadingTable] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [showAllMetrics, setShowAllMetrics] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [timePeriod, setTimePeriod] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('today');
   const [dateFrom, setDateFrom] = useState<string>(() => formatMadridDateYYYYMMDD(getMadridMidnight()));
@@ -307,9 +310,92 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
     }
   };
 
+  // Exporta TODOS los registros que matchean los filtros actuales, no solo la página
+  // visible: se pagina contra el backend hasta traerlos a todos.
+  const handleExportCSV = async () => {
+    if (!apiKey || !clientId) return;
+    setExporting(true);
+    setError(null);
+
+    try {
+      const PER_PAGE = 500;
+      const base = { ...buildParams(), per_page: PER_PAGE };
+      const todas: any[] = [];
+      let page = 1;
+      let totalPaginas = 1;
+
+      do {
+        const res = await listRecoveryCalls(apiKey, { ...base, page });
+        todas.push(...(res.llamadas || []));
+        totalPaginas = res.total_paginas ?? 1;
+        page++;
+      } while (page <= totalPaginas);
+
+      if (todas.length === 0) {
+        setError('No hay registros para exportar con los filtros actuales.');
+        return;
+      }
+
+      const cabeceras = [
+        'Fecha', 'Nombre', 'Teléfono', 'Código', 'Descripción del código',
+        'Asesor', 'Duración', 'Call ID', 'Motivo de fin', 'Coste', 'Resumen',
+      ];
+
+      const escapar = (valor: unknown) => {
+        const s = String(valor ?? '').replace(/\r?\n/g, ' ').trim();
+        return /[",;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+
+      const filas = todas.map((row) => {
+        const meta = parseMetadata(row.metadata);
+        const codigo = row.analisis_codigo || meta?.analisis?.analisis || '';
+        const nombre = meta?.datos?.last_name
+          ? `${row.name || meta?.datos?.name || ''} ${meta.datos.last_name}`
+          : (row.name || meta?.datos?.name || '');
+
+        return [
+          formatDate(row.created_at || ''),
+          nombre,
+          row.to_number || row.phone_number || '',
+          codigo,
+          RECOVERY_CODIGOS[codigo] || '',
+          meta?.datos?.NOMBRE_ASESOR || '',
+          formatDuration(row.duration),
+          row.call_id || '',
+          row.end_reason || '',
+          row.cost ?? '',
+          row.summary || meta?.analisis?.resumen || '',
+        ].map(escapar).join(',');
+      });
+
+      // BOM al inicio para que Excel abra bien los acentos
+      const csv = '﻿' + [cabeceras.join(','), ...filas].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const enlace = document.createElement('a');
+      const rango = dateFrom && dateTo ? `_${dateFrom}_${dateTo}` : '';
+      enlace.href = url;
+      enlace.download = `recobros${rango}.csv`;
+      enlace.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al exportar los recobros');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const countsToShow = (counts.length > 0 ? counts : countsFromList)
     .filter((c) => c.analisis_codigo.length <= MAX_CODE_LENGTH);
+  // El total se calcula sobre TODOS los códigos, no solo los visibles.
   const totalRegistros = countsToShow.reduce((acc, c) => acc + c.total, 0);
+
+  // Se muestran los primeros 6; el resto queda detrás de "Ver más".
+  const METRICAS_VISIBLES = 6;
+  const metricasOcultas = Math.max(0, countsToShow.length - METRICAS_VISIBLES);
+  const metricasARenderizar = showAllMetrics
+    ? countsToShow
+    : countsToShow.slice(0, METRICAS_VISIBLES);
   const mayorCodigo = countsToShow[0];
   const mayorPorcentaje = totalRegistros > 0 && mayorCodigo ? Math.round((mayorCodigo.total / totalRegistros) * 100) : 0;
 
@@ -359,33 +445,45 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[10px] uppercase font-bold text-slate-400 mr-1">Período:</span>
-              {([
-                { key: 'today', label: 'Hoy' },
-                { key: 'week', label: 'Última semana' },
-                { key: 'month', label: 'Este mes' },
-                { key: 'custom', label: 'Personalizado' },
-                { key: 'all', label: 'Todos' },
-              ] as const).map(({ key, label }) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => { setTimePeriod(key); applyPeriod(key); }}
-                  className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors ${
-                    timePeriod === key
-                      ? 'bg-[#ec5b13] text-white border-[#ec5b13]'
-                      : 'bg-white text-slate-600 border-slate-200 hover:border-[#ec5b13]/50 hover:text-[#ec5b13]'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
+              <Select
+                value={timePeriod}
+                onValueChange={(value) => {
+                  const periodo = value as 'all' | 'today' | 'week' | 'month' | 'custom';
+                  setTimePeriod(periodo);
+                  applyPeriod(periodo);
+                }}
+              >
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Seleccionar período" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="today">Hoy</SelectItem>
+                  <SelectItem value="week">Última semana</SelectItem>
+                  <SelectItem value="month">Este mes</SelectItem>
+                  <SelectItem value="custom">Personalizado</SelectItem>
+                  <SelectItem value="all">Todos</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Rango aplicado, al lado del selector de período */}
+              {timePeriod !== 'custom' && (dateFrom || dateTo || timePeriod === 'all') && (
+                <div className="flex items-center gap-2 text-sm text-slate-500 ml-1">
+                  <Calendar className="h-4 w-4 text-slate-400" />
+                  <span>
+                    {timePeriod === 'all' && 'Todos los registros'}
+                    {timePeriod === 'today' && `Hoy: ${dateFrom}`}
+                    {timePeriod === 'week' && `${dateFrom} → ${dateTo}`}
+                    {timePeriod === 'month' && `${dateFrom} → ${dateTo}`}
+                  </span>
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] uppercase font-bold text-slate-400">Código:</span>
               <select
                 value={analisisCodigoFilter}
                 onChange={(e) => { setAnalisisCodigoFilter(e.target.value); setCurrentPage(1); }}
-                className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#ec5b13]/30 focus:border-[#ec5b13] cursor-pointer text-slate-700 bg-white"
+                className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#1e4a8a]/30 focus:border-[#1e4a8a] cursor-pointer text-slate-700 bg-white"
               >
                 <option value="">Todos</option>
                 {Object.keys(RECOVERY_CODIGOS).map((code) => (
@@ -405,7 +503,7 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
                       type="date"
                       value={dateFrom}
                       onChange={(e) => { setDateFrom(e.target.value); setCurrentPage(1); }}
-                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#ec5b13]/30 focus:border-[#ec5b13] cursor-pointer text-slate-700"
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#1e4a8a]/30 focus:border-[#1e4a8a] cursor-pointer text-slate-700"
                     />
                   </div>
                   <div className="flex flex-col min-w-[140px]">
@@ -414,31 +512,29 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
                       type="date"
                       value={dateTo}
                       onChange={(e) => { setDateTo(e.target.value); setCurrentPage(1); }}
-                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#ec5b13]/30 focus:border-[#ec5b13] cursor-pointer text-slate-700"
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#1e4a8a]/30 focus:border-[#1e4a8a] cursor-pointer text-slate-700"
                     />
                   </div>
                 </>
-              )}
-              {timePeriod !== 'custom' && (dateFrom || dateTo || timePeriod === 'all') && (
-                <div className="flex items-center gap-2 text-sm text-slate-500">
-                  <Calendar className="h-4 w-4 text-slate-400" />
-                  <span>
-                    {timePeriod === 'all' && 'Todos los registros'}
-                    {timePeriod === 'today' && `Hoy: ${dateFrom}`}
-                    {timePeriod === 'week' && `${dateFrom} → ${dateTo}`}
-                    {timePeriod === 'month' && `${dateFrom} → ${dateTo}`}
-                  </span>
-                </div>
               )}
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
               <Button
                 onClick={() => { loadCounts(); loadLlamadas(currentPage); }}
                 disabled={loading || loadingTable}
-                className="bg-[#ec5b13] hover:bg-[#ec5b13]/90 text-white px-5 py-2 rounded-lg font-bold text-sm flex items-center gap-2"
+                className="bg-[#0a2a5a] hover:bg-[#1e4a8a] text-white px-5 py-2 rounded-lg font-bold text-sm flex items-center gap-2"
               >
                 <Filter className="h-4 w-4" />
                 Filtrar
+              </Button>
+              <Button
+                onClick={() => void handleExportCSV()}
+                disabled={exporting || loading || loadingTable}
+                title="Descargar todos los recobros que cumplen los filtros actuales"
+                className="bg-[#0a2a5a] hover:bg-[#1e4a8a] text-white px-5 py-2 rounded-lg font-bold text-sm flex items-center gap-2"
+              >
+                <Download className={`h-4 w-4 ${exporting ? 'animate-pulse' : ''}`} />
+                {exporting ? 'Exportando...' : 'Exportar CSV'}
               </Button>
               {hasActiveFilters && (
                 <Button
@@ -477,7 +573,7 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
             </div>
             {loading ? (
               <div className="flex justify-center items-center h-[320px]">
-                <RefreshCw className="animate-spin h-10 w-10 text-[#ec5b13]" />
+                <RefreshCw className="animate-spin h-10 w-10 text-[#0a2a5a]" />
               </div>
             ) : countsToShow.length === 0 ? (
               <div className="flex justify-center items-center h-[320px] text-slate-500">
@@ -515,7 +611,7 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
                     type="button"
                     onClick={() => setSelectedCodeInfo(isSelected ? null : code)}
                     className={`bg-slate-50 p-2 rounded-lg border flex flex-col items-center justify-center transition-colors cursor-pointer text-left w-full ${
-                      isSelected ? 'border-[#ec5b13] ring-2 ring-[#ec5b13]/30' : 'border-slate-200 hover:border-[#ec5b13]/50'
+                      isSelected ? 'border-[#1e4a8a] ring-2 ring-[#1e4a8a]/30' : 'border-slate-200 hover:border-[#1e4a8a]/50'
                     }`}
                   >
                     <span className="text-xs font-bold text-slate-500 mb-1">{code}</span>
@@ -551,7 +647,7 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
                 <h3 className="text-lg font-bold text-slate-900">Resumen Métricas</h3>
               </div>
               <div className="space-y-3">
-                {countsToShow.map((c, i) => {
+                {metricasARenderizar.map((c, i) => {
                   const color = getColorForCode(c.analisis_codigo, i);
                   const badge = c.analisis_codigo.replace(/[^a-zA-Z0-9]/g, '').slice(0, 3).toUpperCase();
                   const pct = totalRegistros > 0 ? ((c.total / totalRegistros) * 100).toFixed(1) : '0';
@@ -590,11 +686,31 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
                     Sin registros
                   </div>
                 )}
+
+                {metricasOcultas > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllMetrics((abierto) => !abierto)}
+                    className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-[#0a2a5a] hover:bg-slate-50 transition-colors"
+                  >
+                    {showAllMetrics ? (
+                      <>
+                        <ChevronUp className="h-4 w-4" />
+                        Ver menos
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="h-4 w-4" />
+                        Ver {metricasOcultas} más
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
               <div className="mt-8 pt-6 border-t border-slate-200">
                 <div className="flex items-center justify-between">
                   <span className="text-slate-500 font-medium">Total Registros</span>
-                  <span className="text-2xl font-black text-[#ec5b13]">{totalRegistros.toLocaleString()}</span>
+                  <span className="text-2xl font-black text-[#0a2a5a]">{totalRegistros.toLocaleString()}</span>
                 </div>
               </div>
             </div>
@@ -611,7 +727,7 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
                 <select
                   value={searchCodigo}
                   onChange={(e) => setSearchCodigo(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[#ec5b13]/30 focus:border-[#ec5b13] cursor-pointer"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[#1e4a8a]/30 focus:border-[#1e4a8a] cursor-pointer"
                 >
                   <option value="">Código (Todos)</option>
                   {Object.keys(CODE_COLORS).map((code) => (
@@ -623,7 +739,7 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
                 <select
                   value={searchStatus}
                   onChange={(e) => setSearchStatus(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[#ec5b13]/30 focus:border-[#ec5b13] cursor-pointer"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[#1e4a8a]/30 focus:border-[#1e4a8a] cursor-pointer"
                 >
                   <option value="">Estado (Todos)</option>
                   <option value="fallida">Fallida</option>
@@ -637,14 +753,14 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
                   placeholder="Teléfono..."
                   value={searchPhone}
                   onChange={(e) => setSearchPhone(e.target.value)}
-                  className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[#ec5b13]/30 focus:border-[#ec5b13] w-full"
+                  className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[#1e4a8a]/30 focus:border-[#1e4a8a] w-full"
                 />
               </div>
               <div className="min-w-[160px] sm:max-w-[180px]">
                 <select
                   value={searchDuration}
                   onChange={(e) => setSearchDuration(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[#ec5b13]/30 focus:border-[#ec5b13] cursor-pointer"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[#1e4a8a]/30 focus:border-[#1e4a8a] cursor-pointer"
                 >
                   <option value="">Duración (Todos)</option>
                   <option value="mayor_1min">Mayor a 1 min</option>
@@ -661,7 +777,7 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
           )}
           {loadingTable ? (
             <div className="flex justify-center items-center py-16">
-              <RefreshCw className="animate-spin h-8 w-8 text-[#ec5b13]" />
+              <RefreshCw className="animate-spin h-8 w-8 text-[#0a2a5a]" />
             </div>
           ) : filteredLlamadas.length === 0 ? (
             <div className="text-center py-16 text-slate-500">
@@ -692,7 +808,7 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
                     <div className="p-6">
                       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-4">
                         <div className="flex items-start gap-4">
-                          <div className="p-3 bg-[#ec5b13]/10 rounded-xl text-[#ec5b13]">
+                          <div className="p-3 bg-[#0a2a5a]/10 rounded-xl text-[#0a2a5a]">
                             <Phone className="w-6 h-6" />
                           </div>
                           <div>
@@ -718,7 +834,7 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
                                   <span className="h-4 w-px bg-slate-200" />
                                   <div className="flex items-center gap-2">
                                     <User className="w-4 h-4 text-slate-400" />
-                                    <span className="text-sm font-medium text-[#ec5b13]">{meta.datos.NOMBRE_ASESOR}</span>
+                                    <span className="text-sm font-medium text-[#0a2a5a]">{meta.datos.NOMBRE_ASESOR}</span>
                                   </div>
                                 </>
                               )}
@@ -855,7 +971,7 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
                           <button
                             type="button"
                             onClick={() => setExpandedId(isExpanded ? null : row.id)}
-                            className="flex items-center gap-2 text-sm font-medium text-[#ec5b13] hover:text-[#ec5b13]/80 transition-colors"
+                            className="flex items-center gap-2 text-sm font-medium text-[#0a2a5a] hover:text-[#0a2a5a]/80 transition-colors"
                           >
                             <FileText className="w-4 h-4" />
                             {isExpanded ? (
