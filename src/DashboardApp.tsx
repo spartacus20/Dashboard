@@ -21,6 +21,7 @@ const Interesados = lazy(() => import('./pages/Interesados').then((m) => ({ defa
 const Presupuesto = lazy(() => import('./pages/Presupuesto').then((m) => ({ default: m.Presupuesto })));
 const Agentes = lazy(() => import('./pages/Agentes').then((m) => ({ default: m.Agentes })));
 const Configuracion = lazy(() => import('./pages/Configuracion').then((m) => ({ default: m.Configuracion })));
+const Planes = lazy(() => import('./pages/Planes').then((m) => ({ default: m.Planes })));
 import { useCallsContext } from './context/CallsContext';
 import { toast } from 'sonner';
 import {
@@ -1484,6 +1485,9 @@ function DashboardApp() {
         )}
         {currentPage === 'configuracion' && (
           <Configuracion />
+        )}
+        {currentPage === 'planes' && (
+          <Planes />
         )}
         </Suspense>
       </div>

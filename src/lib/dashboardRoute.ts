@@ -25,6 +25,7 @@ export const PAGE_IDS = [
   'seguimientos',
   'agentes',
   'configuracion',
+  'planes',
 ] as const;
 
 export type PageId = (typeof PAGE_IDS)[number];
