@@ -56,6 +56,8 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
   const [loadingTable, setLoadingTable] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [showAllMetrics, setShowAllMetrics] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const filtersRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [timePeriod, setTimePeriod] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('today');
   const [dateFrom, setDateFrom] = useState<string>(() => formatMadridDateYYYYMMDD(getMadridMidnight()));
@@ -151,6 +153,17 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
       setLoadingTable(false);
     }
   }, [apiKey, clientId, buildParams]);
+
+  // Cerrar el popup de filtros al hacer click afuera
+  useEffect(() => {
+    const onOutside = (e: MouseEvent) => {
+      if (filtersRef.current && !filtersRef.current.contains(e.target as Node)) {
+        setShowFilters(false);
+      }
+    };
+    document.addEventListener('mousedown', onOutside);
+    return () => document.removeEventListener('mousedown', onOutside);
+  }, []);
 
   useEffect(() => {
     if (apiKey && clientId) loadCounts();
@@ -451,6 +464,9 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
                   const periodo = value as 'all' | 'today' | 'week' | 'month' | 'custom';
                   setTimePeriod(periodo);
                   applyPeriod(periodo);
+                  // En "Personalizado" las fechas viven dentro del popup: lo abrimos
+                  // para que no queden escondidas.
+                  setShowFilters(periodo === 'custom');
                 }}
               >
                 <SelectTrigger className="w-48">
@@ -478,55 +494,81 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] uppercase font-bold text-slate-400">Código:</span>
-              <select
-                value={analisisCodigoFilter}
-                onChange={(e) => { setAnalisisCodigoFilter(e.target.value); setCurrentPage(1); }}
-                className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#1e4a8a]/30 focus:border-[#1e4a8a] cursor-pointer text-slate-700 bg-white"
-              >
-                <option value="">Todos</option>
-                {Object.keys(RECOVERY_CODIGOS).map((code) => (
-                  <option key={code} value={code}>{code}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="flex flex-col sm:flex-row sm:items-end gap-4 sm:gap-6 sm:justify-between">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-8">
-              {timePeriod === 'custom' && (
-                <>
-                  <div className="flex flex-col min-w-[140px]">
-                    <label className="text-[10px] uppercase font-bold text-slate-400 mb-1">Desde</label>
-                    <input
-                      type="date"
-                      value={dateFrom}
-                      onChange={(e) => { setDateFrom(e.target.value); setCurrentPage(1); }}
-                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#1e4a8a]/30 focus:border-[#1e4a8a] cursor-pointer text-slate-700"
-                    />
-                  </div>
-                  <div className="flex flex-col min-w-[140px]">
-                    <label className="text-[10px] uppercase font-bold text-slate-400 mb-1">Hasta</label>
-                    <input
-                      type="date"
-                      value={dateTo}
-                      onChange={(e) => { setDateTo(e.target.value); setCurrentPage(1); }}
-                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#1e4a8a]/30 focus:border-[#1e4a8a] cursor-pointer text-slate-700"
-                    />
-                  </div>
-                </>
-              )}
-            </div>
+            {/* Acciones: filtros (popup), exportar y refrescar */}
             <div className="flex items-center gap-2 sm:gap-3">
-              <Button
-                onClick={() => { loadCounts(); loadLlamadas(currentPage); }}
-                disabled={loading || loadingTable}
-                className="bg-[#0a2a5a] hover:bg-[#1e4a8a] text-white px-5 py-2 rounded-lg font-bold text-sm flex items-center gap-2"
-              >
-                <Filter className="h-4 w-4" />
-                Filtrar
-              </Button>
+              <div ref={filtersRef} className="relative">
+                <Button
+                  onClick={() => setShowFilters((abierto) => !abierto)}
+                  className="bg-[#0a2a5a] hover:bg-[#1e4a8a] text-white px-5 py-2 rounded-lg font-bold text-sm flex items-center gap-2"
+                >
+                  <Filter className="h-4 w-4" />
+                  Filtros
+                  {analisisCodigoFilter && (
+                    <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold leading-none">
+                      1
+                    </span>
+                  )}
+                  <ChevronDown className={`h-4 w-4 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+                </Button>
+
+                {showFilters && (
+                  <div className="absolute right-0 top-full mt-2 w-72 rounded-xl border border-slate-200 bg-white shadow-xl z-50 p-4 space-y-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] uppercase font-bold text-slate-400">Código</label>
+                      <select
+                        value={analisisCodigoFilter}
+                        onChange={(e) => { setAnalisisCodigoFilter(e.target.value); setCurrentPage(1); }}
+                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#1e4a8a]/30 focus:border-[#1e4a8a] cursor-pointer text-slate-700 bg-white"
+                      >
+                        <option value="">Todos</option>
+                        {Object.keys(RECOVERY_CODIGOS).map((code) => (
+                          <option key={code} value={code}>{code}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Las fechas manuales solo aplican al período personalizado */}
+                    {timePeriod === 'custom' && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[10px] uppercase font-bold text-slate-400">Desde</label>
+                          <input
+                            type="date"
+                            value={dateFrom}
+                            onChange={(e) => { setDateFrom(e.target.value); setCurrentPage(1); }}
+                            className="w-full px-2 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#1e4a8a]/30 focus:border-[#1e4a8a] cursor-pointer text-slate-700"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[10px] uppercase font-bold text-slate-400">Hasta</label>
+                          <input
+                            type="date"
+                            value={dateTo}
+                            onChange={(e) => { setDateTo(e.target.value); setCurrentPage(1); }}
+                            className="w-full px-2 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#1e4a8a]/30 focus:border-[#1e4a8a] cursor-pointer text-slate-700"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {hasActiveFilters && (
+                      <div className="pt-3 border-t border-slate-100">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => { clearFilters(); setShowFilters(false); }}
+                          disabled={loading || loadingTable}
+                          className="w-full py-2 text-sm flex items-center justify-center gap-2 border-slate-300 hover:bg-slate-50"
+                        >
+                          <X className="h-4 w-4" />
+                          Limpiar filtros
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <Button
                 onClick={() => void handleExportCSV()}
                 disabled={exporting || loading || loadingTable}
@@ -536,23 +578,13 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
                 <Download className={`h-4 w-4 ${exporting ? 'animate-pulse' : ''}`} />
                 {exporting ? 'Exportando...' : 'Exportar CSV'}
               </Button>
-              {hasActiveFilters && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={clearFilters}
-                  disabled={loading || loadingTable}
-                  className="px-4 py-2 text-sm flex items-center gap-2 border-slate-300 hover:bg-slate-50"
-                >
-                  <X className="h-4 w-4" />
-                  Limpiar filtros
-                </Button>
-              )}
+
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => { loadCounts(); loadLlamadas(currentPage); }}
                 disabled={loading || loadingTable}
+                title="Actualizar datos"
                 className="px-3 py-2"
               >
                 <RefreshCw className={`h-4 w-4 ${(loading || loadingTable) ? 'animate-spin' : ''}`} />
