@@ -1,4 +1,5 @@
 import { WHATSAPP_BOT_STATS_URL } from './config';
+import { authHeaders } from './http';
 
 export type WhatsappBotPeriod = 'today' | 'week' | 'month' | 'all';
 
@@ -28,7 +29,7 @@ export async function fetchWhatsappBotStats(
   url.searchParams.set('client_id', clientId);
   url.searchParams.set('period', period);
 
-  const res = await fetch(url.toString());
+  const res = await fetch(url.toString(), { headers: await authHeaders() });
   if (!res.ok) throw new Error(`WhatsApp Bot Stats error: ${res.status}`);
 
   const json: WhatsappBotStatsResponse = await res.json();

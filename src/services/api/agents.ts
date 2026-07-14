@@ -1,4 +1,5 @@
 import { BASE_URL } from './config';
+import { authHeaders } from './http';
 
 export interface RetellAgent {
   agent_id: string;
@@ -30,7 +31,8 @@ export interface RetellLLM {
 
 export async function fetchAgentsList(clientId: string, workspaceIndex = 0): Promise<RetellAgent[]> {
   const response = await fetch(
-    `${BASE_URL}/api/agents/${encodeURIComponent(clientId)}/list?workspaceIndex=${workspaceIndex}`
+    `${BASE_URL}/api/agents/${encodeURIComponent(clientId)}/list?workspaceIndex=${workspaceIndex}`,
+    { headers: await authHeaders() }
   );
   const data = await response.json();
   if (!data.success) throw new Error(data.error || 'Error al obtener los agentes');
@@ -39,7 +41,8 @@ export async function fetchAgentsList(clientId: string, workspaceIndex = 0): Pro
 
 export async function fetchAgentLLM(clientId: string, llmId: string, workspaceIndex = 0): Promise<RetellLLM> {
   const response = await fetch(
-    `${BASE_URL}/api/agents/${encodeURIComponent(clientId)}/llm/${encodeURIComponent(llmId)}?workspaceIndex=${workspaceIndex}`
+    `${BASE_URL}/api/agents/${encodeURIComponent(clientId)}/llm/${encodeURIComponent(llmId)}?workspaceIndex=${workspaceIndex}`,
+    { headers: await authHeaders() }
   );
   const data = await response.json();
   if (!data.success) throw new Error(data.error || 'Error al obtener el LLM');
@@ -56,7 +59,7 @@ export async function updateAgentLLM(
     `${BASE_URL}/api/agents/${encodeURIComponent(clientId)}/llm/${encodeURIComponent(llmId)}`,
     {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify({ workspaceIndex, ...updates }),
     }
   );

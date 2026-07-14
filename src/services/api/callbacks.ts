@@ -1,5 +1,6 @@
 import { Callback, CallbackResponse } from '../../types';
 import { getClientId, BASE_URL } from './config';
+import { authHeaders } from './http';
 
 
 
@@ -55,9 +56,7 @@ export async function fetchCallbacks(
     
     const response = await fetch(`${BASE_URL}/api/calls/list-callback`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(requestBody),
     });
 
@@ -274,9 +273,7 @@ export async function exportAllCallbacks(
     const url = `${BASE_URL}/api/calls/list-callbacks-all`;
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify({
         client_id: clientId,
         ...params

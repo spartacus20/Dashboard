@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, ChangeEvent, Suspense, lazy } from 'react';
-import { fetchCalls, fetchAllCalls, calculateStats, fetchBatchCalls, fetchBatchCallTasks, createBatchCall, fetchPhoneNumbers, deleteBatchCall } from './api';
+import { calculateStats, fetchBatchCallTasks, createBatchCall, deleteBatchCall } from './api';
 import type { RetellCall, CallStats, FilterCriteria, RetellBatchCall, BatchCallTask, RetellPhoneNumber } from './types';
 import { Sidebar } from './components/layout/Sidebar';
 // Páginas cargadas de forma diferida (code-splitting): cada una genera su
@@ -48,8 +48,8 @@ function DashboardApp() {
   const [calls, setCalls] = React.useState<RetellCall[]>([]);
   const [filteredCalls, setFilteredCalls] = React.useState<RetellCall[]>([]);
   const [stats, setStats] = React.useState<CallStats | null>(null);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  // El loading/error de las llamadas los maneja CallsContext (loadingAllCalls / contextError).
+  // Antes había estados locales que solo los seteaba el cargador legacy ya eliminado.
   const [filterCriteria, setFilterCriteria] = React.useState<FilterCriteria>({});
   const [disconnectionReasons, setDisconnectionReasons] = React.useState<string[]>([]);
   
@@ -242,43 +242,13 @@ function DashboardApp() {
       return;
     }
     
-    // Si no hay datos en el contexto, cargamos datos a través del contexto
+    // Si no hay datos en el contexto, los cargamos a través del contexto.
+    // Cuando lleguen, este mismo callback vuelve a correr (allCalls está en las deps)
+    // y toma la rama de arriba.
     if (!loadingAllCalls) {
-      // console.log('Iniciando carga de datos desde el contexto');
       loadAllCalls();
     }
-    
-    // El código original para cargar llamadas queda como respaldo
-    if (!apiKey) {
-      setError('API key no configurada. Añade ?apikey=TU_API_KEY a la URL.');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetchCalls(apiKey);
-      const callsData = response.calls; // Extraemos el array de llamadas
-      setCalls(callsData);
-      setFilteredCalls(callsData);
-      setStats(calculateStats(callsData));
-
-      // Extract unique disconnection reasons
-      const allReasons = [...new Set(
-        callsData
-          .map(call => call.disconnection_reason)
-          .filter((reason): reason is string => Boolean(reason))
-      )].sort();
-      
-      setDisconnectionReasons(allReasons);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
-      // console.error('Error loading calls:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [apiKey, allCalls, contextDisconnectionReasons, loadAllCalls, loadingAllCalls]);
+  }, [allCalls, contextDisconnectionReasons, loadAllCalls, loadingAllCalls]);
 
   const loadAllCallsFromApi = React.useCallback(async () => {
     // Usamos la función de cargar todas las llamadas del contexto en lugar de hacer peticiones duplicadas
@@ -1095,9 +1065,9 @@ function DashboardApp() {
                   <span className="text-white">Cargando datos...</span>
                 </div>
               </div>
-            ) : error ? (
+            ) : contextError ? (
               <div className="text-center py-12">
-                <p className="text-red-500 mb-4">{error}</p>
+                <p className="text-red-500 mb-4">{contextError}</p>
                 <button 
                   onClick={() => refreshBatchCalls()}
                   className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
@@ -1374,7 +1344,7 @@ function DashboardApp() {
         currentPage={currentPage} 
         onPageChange={goToPage}
         cacheStatus={cacheStatus}
-        isLoading={loading || loadingAllCalls}
+        isLoading={loadingAllCalls}
       />
 
       <div className="md:ml-64 p-4 md:p-8 transition-all">
@@ -1407,8 +1377,8 @@ function DashboardApp() {
         {currentPage === 'dashboard' && dashboardEnabled && (
           <Dashboard
             stats={stats || { total: 0, completed: 0, failed: 0, averageDuration: '0:00', averageDurationSeconds: 0 }}
-            loading={loading || loadingAllCalls || loadingDashboardData}
-            error={error}
+            loading={loadingAllCalls || loadingDashboardData}
+            error={contextError}
             onReload={() => loadAllCalls(true)}
             filterCriteria={filterCriteria}
             onFilterChange={handleFilterChangeForDashboard}

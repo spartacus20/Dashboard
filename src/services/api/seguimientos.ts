@@ -1,4 +1,5 @@
-import { BASE_URL } from './config';
+import { BASE_URL, getClientId } from './config';
+import { authHeaders } from './http';
 
 export interface CallBackRecord {
   id: number;
@@ -64,7 +65,7 @@ export async function listSeguimientos(
 ): Promise<CallBackListResponse> {
   const response = await fetch(`${BASE_URL}/api/callback/list`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({ client_id: clientId, ...params }),
   });
   if (!response.ok) throw new Error('Error al cargar seguimientos');
@@ -74,7 +75,7 @@ export async function listSeguimientos(
 export async function cancelAllPending(clientId: string): Promise<{ cancelled: number }> {
   const response = await fetch(`${BASE_URL}/api/callback/cancel-all`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({ client_id: clientId }),
   });
   if (!response.ok) throw new Error('Error al cancelar pendientes');
@@ -88,7 +89,7 @@ export async function bulkUpdateMaxIntentos(
 ): Promise<{ updated: number }> {
   const response = await fetch(`${BASE_URL}/api/callback/bulk-update`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({ client_id: clientId, max_intentos, ...filters }),
   });
   if (!response.ok) throw new Error('Error al actualizar en bulk');
@@ -101,8 +102,8 @@ export async function updateSeguimiento(
 ): Promise<void> {
   const response = await fetch(`${BASE_URL}/api/callback/update`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, ...params }),
+    headers: await authHeaders(),
+    body: JSON.stringify({ id, client_id: getClientId(), ...params }),
   });
   if (!response.ok) throw new Error('Error al actualizar seguimiento');
 }
@@ -110,7 +111,7 @@ export async function updateSeguimiento(
 export async function getRetellConfig(clientId: string): Promise<RetellConfig> {
   const response = await fetch(`${BASE_URL}/api/callback/config/get`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({ client_id: clientId }),
   });
   if (!response.ok) throw new Error('Error al obtener configuración');
@@ -123,7 +124,7 @@ export async function updateRetellConfig(
 ): Promise<void> {
   const response = await fetch(`${BASE_URL}/api/callback/config/update`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({ client_id: clientId, ...data }),
   });
   if (!response.ok) throw new Error('Error al guardar configuración');
@@ -132,7 +133,7 @@ export async function updateRetellConfig(
 export async function getCampaignsSummary(clientId: string): Promise<CampaignSummary[]> {
   const response = await fetch(`${BASE_URL}/api/callback/campaigns-summary`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({ client_id: clientId }),
   });
   if (!response.ok) throw new Error('Error al cargar resumen de campañas');
@@ -148,7 +149,7 @@ export async function saveBatchCallSettings(
 ): Promise<void> {
   const response = await fetch(`${BASE_URL}/api/callback/batch-settings/save`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({ batch_call_id: batchCallId, client_id: clientId, seguimiento, campaign_name: campaignName || null }),
   });
   if (!response.ok) throw new Error('Error al guardar configuración de seguimiento');
@@ -160,7 +161,7 @@ export async function listRetellPhoneNumbers(
 ): Promise<string[]> {
   const response = await fetch(`${BASE_URL}/api/callback/phone-numbers`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({ client_id: clientId, retell_api_key: retellApiKey || undefined }),
   });
   if (!response.ok) throw new Error('Error al obtener números de teléfono');

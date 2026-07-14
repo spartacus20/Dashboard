@@ -1,5 +1,6 @@
 import { Agenda, AgendaSlot } from '../../types';
 import { getClientId, GET_AGENDAS_WEBHOOK_URL, GET_AGENDAS_BY_SCHEDULED_URL, DELETE_AGENDA_WEBHOOK_URL, AVERAGE_CALLS_PER_AGENDA_URL, MOTIVOS_RECHAZO_URL } from './config';
+import { authHeaders } from './http';
 import { supabase } from '../../lib/supabase';
 
 /** Body para filtrar agendas sin motivo de rechazo (NULL o vacío); debe coincidir con el backend */
@@ -84,9 +85,7 @@ export async function fetchAllAgendas(
       
       const response = await fetch(GET_AGENDAS_WEBHOOK_URL, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: await authHeaders(),
         body: JSON.stringify(requestBody),
       });
 
@@ -199,9 +198,7 @@ export async function fetchAgendas(clientId?: string): Promise<Agenda[]> {
     
     const response = await fetch(GET_AGENDAS_WEBHOOK_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(requestBody),
     });
 
@@ -292,9 +289,7 @@ export async function getAverageCallsPerAgenda(
     
     const response = await fetch(AVERAGE_CALLS_PER_AGENDA_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(requestBody),
     });
 
@@ -334,9 +329,7 @@ export async function deleteAgenda(agendaId: number, clientId: string): Promise<
 
     const response = await fetch(`${DELETE_AGENDA_WEBHOOK_URL}/${agendaId}`, {
       method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify({ client_id: clientId }),
     });
 
@@ -402,9 +395,7 @@ export async function updateAgendaStatus(
 
     const response = await fetch(`${baseAgendaUrl}/update-status`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(body),
     });
 
@@ -694,7 +685,7 @@ export async function fetchMotivosRechazo(
 
   const response = await fetch(MOTIVOS_RECHAZO_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify(body),
   });
 
@@ -834,7 +825,7 @@ export async function fetchAgendasByScheduledDate(
 
     const response = await fetch(GET_AGENDAS_BY_SCHEDULED_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify(body),
     });
 

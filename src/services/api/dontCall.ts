@@ -1,4 +1,5 @@
-import { BASE_URL } from "./config";
+import { BASE_URL, getClientId } from "./config";
+import { authHeaders } from "./http";
 import type { BlockedNumber } from "../../types";
 
 
@@ -30,10 +31,7 @@ export async function listDontCallRecords(
     
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(params),
     });
 
@@ -84,10 +82,7 @@ export async function createDontCallRecord(
     
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(params),
     });
 
@@ -129,14 +124,11 @@ export async function updateDontCallRecord(
     }
 
     const url = `${BASE_URL}/api/dont-call/${id}`;
-    
+
     const response = await fetch(url, {
       method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(params),
+      headers: await authHeaders(),
+      body: JSON.stringify({ ...params, client_id: getClientId() }),
     });
 
     if (!response.ok) {
@@ -159,12 +151,10 @@ export async function updateDontCallRecord(
 
 export async function listBlockedNumbers(): Promise<BlockedNumber[]> {
   try {
-    const url = `${BASE_URL}/api/blocked-numbers/list`;
+    const url = `${BASE_URL}/api/blocked-numbers/list?client_id=${encodeURIComponent(getClientId() || '')}`;
     const response = await fetch(url, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
     });
 
     if (!response.ok) {
@@ -188,10 +178,8 @@ export async function createBlockedNumber(params: {
     const url = `${BASE_URL}/api/blocked-numbers/create`;
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(params),
+      headers: await authHeaders(),
+      body: JSON.stringify({ ...params, client_id: getClientId() }),
     });
 
     if (!response.ok) {
@@ -218,10 +206,8 @@ export async function updateBlockedNumber(
     const url = `${BASE_URL}/api/blocked-numbers/${encodeURIComponent(originalNumber)}`;
     const response = await fetch(url, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(params),
+      headers: await authHeaders(),
+      body: JSON.stringify({ ...params, client_id: getClientId() }),
     });
 
     if (!response.ok) {
@@ -239,12 +225,10 @@ export async function updateBlockedNumber(
 
 export async function deleteBlockedNumber(number: string): Promise<void> {
   try {
-    const url = `${BASE_URL}/api/blocked-numbers/${encodeURIComponent(number)}`;
+    const url = `${BASE_URL}/api/blocked-numbers/${encodeURIComponent(number)}?client_id=${encodeURIComponent(getClientId() || '')}`;
     const response = await fetch(url, {
       method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
     });
 
     if (!response.ok) {
@@ -270,14 +254,11 @@ export async function deleteDontCallRecord(
       throw new Error('ID es obligatorio para deleteDontCallRecord');
     }
 
-    const url = `${BASE_URL}/api/dont-call/${id}`;
-    
+    const url = `${BASE_URL}/api/dont-call/${id}?client_id=${encodeURIComponent(getClientId() || '')}`;
+
     const response = await fetch(url, {
       method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
     });
 
     if (!response.ok) {
@@ -320,10 +301,7 @@ export async function getDontCallStats(
     
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(params),
     });
 

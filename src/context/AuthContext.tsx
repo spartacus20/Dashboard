@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import { User, Session, AuthError } from "@supabase/supabase-js";
 import {
   supabase,
@@ -54,6 +54,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  // Evita que getInitialSession corra dos veces por el doble-montaje de React.StrictMode
+  // (dev). Dos refrescos casi simultáneos pueden gatillar la detección de "refresh token
+  // reutilizado" de Supabase y revocar la sesión → te saca al login al hacer F5.
+  const didInit = useRef(false);
 
   useEffect(() => {
     // Función para recuperar datos del usuario (incluyendo permissions)
@@ -82,27 +86,85 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
     };
 
-    // Obtener la sesión inicial
-    const getInitialSession = async () => {
-      const {
-        data: { session },
-        error,
-      } = await supabase.auth.getSession();
-      if (error) {
-        // console.error('Error obteniendo sesión:', error)
-      } else {
-        setSession(session);
-        setUser(session?.user ?? null);
+    // Corre una promesa con tope de tiempo: si se cuelga, rechaza en vez de bloquear la UI.
+    const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> =>
+      Promise.race([
+        promise,
+        new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`timeout:${label}`)), ms)),
+      ]);
 
-        // Si hay una sesión activa, recuperar los datos del usuario (incluyendo permissions)
-        if (session?.user?.email) {
-          await restoreUserData(session.user.email);
-        }
+    // Obtener la sesión inicial. Robusto: nunca deja la app colgada en "Cargando...".
+    // Si getSession se cuelga o falla (p. ej. refresh token viejo tras inactividad), se
+    // limpia la sesión local y se muestra el login — sin tener que borrar localStorage a mano.
+    // Cierra la sesión local (limpia el token viejo) y muestra el login, sin colgar.
+    const forceLocalLogout = async () => {
+      setSession(null);
+      setUser(null);
+      try {
+        await withTimeout(supabase.auth.signOut({ scope: "local" }), 3000, "signOut");
+      } catch {
+        /* si signOut también se cuelga, no bloqueamos igual */
       }
-      setLoading(false);
     };
 
-    getInitialSession();
+    const getInitialSession = async () => {
+      try {
+        const {
+          data: { session },
+          error,
+        } = await withTimeout(supabase.auth.getSession(), 8000, "getSession");
+
+        if (error || !session?.user) {
+          setSession(null);
+          setUser(null);
+          return;
+        }
+
+        // Garantizar un token vivo. getSession() puede devolver un access_token ya VENCIDO
+        // sin haberlo refrescado todavía; usarlo así hacía que /get-client y todo lo demás
+        // dieran 401 (parecía logueado pero no cargaba nada, y cambiar de cliente fallaba).
+        // Solo refrescamos si está vencido/por vencer: evita refrescos redundantes que
+        // podrían disparar la detección de "refresh token reutilizado" y revocar la sesión.
+        // Si el refresh token ya no sirve, refreshSession devuelve error → login limpio.
+        let live = session;
+        const expMs = (session.expires_at ?? 0) * 1000;
+        const necesitaRefresh = !session.expires_at || expMs - Date.now() < 30_000;
+        if (necesitaRefresh) {
+          const { data: refreshed, error: refreshError } = await withTimeout(
+            supabase.auth.refreshSession(),
+            8000,
+            "refreshSession",
+          );
+          if (refreshError || !refreshed.session?.user) {
+            await forceLocalLogout();
+            return;
+          }
+          live = refreshed.session;
+        }
+
+        setSession(live);
+        setUser(live.user);
+        // Datos del usuario (permissions) — no bloqueantes: si tardan/fallan, seguimos.
+        if (live.user.email) {
+          try {
+            await withTimeout(restoreUserData(live.user.email), 10000, "restoreUserData");
+          } catch {
+            /* se reintenta en el próximo evento de auth */
+          }
+        }
+      } catch (e) {
+        // Sesión vencida/no renovable o getSession/refresh colgado → login limpio.
+        await forceLocalLogout();
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    // Solo una vez, aunque StrictMode monte el efecto dos veces (evita doble refresh).
+    if (!didInit.current) {
+      didInit.current = true;
+      getInitialSession();
+    }
 
     // Escuchar cambios en la autenticación.
     // IMPORTANTE: nunca tocamos `loading` aquí. El loading solo existe durante
@@ -111,28 +173,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // desmontar el dashboard ni cerrar modales abiertos.
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
 
-      if (
-        event === "SIGNED_IN" &&
-        session?.user?.email
-      ) {
-        // Actualizar datos del cliente en background (sin spinner)
-        // TOKEN_REFRESHED se omite intencionalmente: solo refresca el JWT, no requiere
-        // re-fetchear datos del usuario. Hacerlo resetearía metadata/apiKey al cliente base.
-        try {
-          await getClientId(session.user.email);
-        } catch {
-          // silencioso
-        }
-
-        if (event === "SIGNED_IN") {
+      if (event === "SIGNED_IN" && session?.user?.email) {
+        // CRÍTICO: este callback corre DENTRO del lock interno de supabase-js. NO se debe
+        // await-ear (ni llamar sin diferir) otra función de supabase auth acá adentro:
+        // getClientId → authHeaders → getSession()/refreshSession() intentan tomar el MISMO
+        // lock → deadlock. En el F5 eso colgaba el getSession() de getInitialSession hasta
+        // el timeout de 8s → forceLocalLogout → te sacaba al login (primera carga OK, F5 no).
+        // Se difiere con setTimeout(0): el callback retorna, se libera el lock, y recién ahí
+        // corre getClientId. TOKEN_REFRESHED se omite a propósito (solo refresca el JWT).
+        const email = session.user.email;
+        setTimeout(() => {
+          getClientId(email).catch(() => {
+            // silencioso: se reintenta en el próximo evento/carga
+          });
           try {
             localStorage.setItem("dashboard_time_period", "today");
           } catch {}
-        }
+        }, 0);
         return;
       }
 
@@ -297,13 +358,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         // console.log(
         //   `📞 AuthContext - Usando ${result.apiKeyTest.length} API keys de api_key_test`,
         // );
-        // Guardar la primera API key en sessionStorage para compatibilidad
-        sessionStorage.setItem("apiKey", result.apiKeyTest[0]);
-        // Guardar el array completo de apiKeyTest en sessionStorage
-        sessionStorage.setItem("apiKeyTest", JSON.stringify(result.apiKeyTest));
-        // console.log(
-        //   "✅ AuthContext - API keys actualizadas para nuevo client_id",
-        // );
+        // Chunk 13a: la key NO se persiste en sessionStorage; viaja solo en el
+        // evento clientIdChanged (memoria) hacia CallsContext.
 
         // Disparar evento personalizado para notificar el cambio de client_id
         const eventDetail = {
@@ -324,10 +380,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
         return { error: null };
       } else if (result.apiKey) {
-        sessionStorage.setItem("apiKey", result.apiKey);
-        // console.log(
-        //   "✅ AuthContext - API key actualizada para nuevo client_id",
-        // );
+        // Chunk 13a: la key NO se persiste en sessionStorage (solo va en el evento).
 
         // Disparar evento personalizado para notificar el cambio de client_id
         const eventDetail = {

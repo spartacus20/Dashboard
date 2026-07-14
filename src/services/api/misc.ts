@@ -1,11 +1,13 @@
 import { RetellAgent, CallsByPhoneResponse, RetellFolder } from '../../types';
 import { getClientId, BASE_URL, ASISTENCIA_FUNNEL_URL, GET_CALL_TRANSCRIPT_URL } from './config';
+import { authHeaders } from './http';
 
 // Obtiene las carpetas (folders) de un workspace específico via backend proxy.
 // El resultado sirve para determinar el nombre del workspace.
 export async function fetchFolders(clientId: string, workspaceIndex = 0): Promise<RetellFolder[]> {
   const response = await fetch(
-    `${BASE_URL}/api/telephony/${encodeURIComponent(clientId)}/workspaces`
+    `${BASE_URL}/api/telephony/${encodeURIComponent(clientId)}/workspaces`,
+    { headers: await authHeaders() }
   );
 
   if (!response.ok) {
@@ -22,7 +24,8 @@ export async function fetchFolders(clientId: string, workspaceIndex = 0): Promis
 // Obtiene los agentes de un workspace específico via backend proxy.
 export async function fetchAgents(clientId: string, workspaceIndex = 0): Promise<RetellAgent[]> {
   const response = await fetch(
-    `${BASE_URL}/api/telephony/${encodeURIComponent(clientId)}/agents?workspace_index=${workspaceIndex}`
+    `${BASE_URL}/api/telephony/${encodeURIComponent(clientId)}/agents?workspace_index=${workspaceIndex}`,
+    { headers: await authHeaders() }
   );
 
   if (!response.ok) {
@@ -51,9 +54,7 @@ export async function fetchAsistenciaClicksByHour(
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(body)
     });
 
@@ -142,9 +143,7 @@ export async function fetchAsistenciaFunnelMetrics(params?: {
 
     const response = await fetch(ASISTENCIA_FUNNEL_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(body)
     });
 
@@ -191,9 +190,7 @@ export async function getCallsByPhone(
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(body),
     });
 
@@ -218,7 +215,7 @@ export async function getCallTranscript(
 
   const response = await fetch(GET_CALL_TRANSCRIPT_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({ call_id, client_id }),
   });
 

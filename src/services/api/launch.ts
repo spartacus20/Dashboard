@@ -1,4 +1,5 @@
 import { BASE_URL, getClientId } from "./config";
+import { authHeaders } from "./http";
 
 
 export async function fetchLanzamientoMetrics(
@@ -49,9 +50,7 @@ export async function fetchLanzamientoMetrics(
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(body),
     });
 
@@ -98,9 +97,7 @@ export async function fetchLanzamientoMetricsToday(): Promise<{
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify({
         client_id: getClientId()
       }),
@@ -166,9 +163,7 @@ export async function fetchLanzamientoMetricsCustom(fechaInicio: string, fechaFi
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify({
         client_id: getClientId(),
         fecha_inicio: fechaInicioFormatted,
@@ -234,9 +229,7 @@ export async function fetchLanzamientoMetricsWeek(): Promise<{
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify({
         client_id: getClientId()
       }),
@@ -355,9 +348,7 @@ export async function fetchLanzamientoMetricsMonth(): Promise<{
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify({
         client_id: getClientId()
       }),

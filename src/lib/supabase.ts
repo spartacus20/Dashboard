@@ -1,10 +1,71 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, Session } from '@supabase/supabase-js'
 
 // Configuración de Supabase
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://your-project.supabase.co'
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'your-anon-key'
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
+// Margen amplio: el access_token dura 1h, pero lo renovamos con 60s de anticipación para
+// cubrir el desfasaje entre el reloj del navegador y el de Supabase (con 30s, un reloj
+// atrasado hacía que el front creyera que el token seguía vivo y el servidor lo rechazara).
+const MARGEN_EXPIRACION_MS = 60_000
+
+const dormir = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+function estaPorVencer(session: Session | null): boolean {
+  if (!session?.expires_at) return true
+  return session.expires_at * 1000 - Date.now() < MARGEN_EXPIRACION_MS
+}
+
+// Devuelve un access_token FRESCO, o null si no hay ninguno utilizable.
+//
+// NUNCA devuelve un token vencido: mandarlo solo produce un 401 confuso.
+//
+// El refresh_token de Supabase es de UN SOLO USO y rota en cada renovación. Cuando volvés
+// a una pestaña que estuvo oculta, supabase-js reanuda su auto-refresh justo cuando los
+// componentes se re-montan y piden datos: dos refrescos compiten por el mismo refresh_token
+// y uno falla. En ese caso la sesión nueva YA quedó en storage, así que la releemos en vez
+// de reintentar el refresh (que volvería a fallar con el token ya consumido).
+export async function getFreshAccessToken(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession()
+  const session = data.session
+  if (!session) return null
+  if (!estaPorVencer(session)) return session.access_token ?? null
+
+  const { data: refrescada, error } = await supabase.auth.refreshSession()
+  if (!error && refrescada.session) return refrescada.session.access_token ?? null
+
+  // Falló el refresh: probablemente otro lo ganó. Le damos un respiro y releemos storage.
+  await dormir(150)
+  const { data: reintento } = await supabase.auth.getSession()
+  const nueva = reintento.session
+  if (nueva && !estaPorVencer(nueva)) return nueva.access_token ?? null
+
+  return null
+}
+
+// Fuerza una renovación, ignorando el margen. La usa el reintento ante un 401: si el token
+// murió entre que armamos los headers y el servidor lo validó, esto consigue uno nuevo.
+// Si el refresh falla porque otro lo ganó, devolvemos el que haya quedado en storage.
+export async function forceRefreshAccessToken(): Promise<string | null> {
+  const { data, error } = await supabase.auth.refreshSession()
+  if (!error && data.session) return data.session.access_token ?? null
+
+  await dormir(150)
+  const { data: actual } = await supabase.auth.getSession()
+  const session = actual.session
+  if (session && !estaPorVencer(session)) return session.access_token ?? null
+  return null
+}
+
+// Headers con el token de sesión de Supabase para autenticar llamadas al backend.
+// Se define local aquí (en vez de importar services/api/http) para evitar un import
+// circular: http.ts importa este mismo módulo.
+async function authHeaders(): Promise<Record<string, string>> {
+  const token = await getFreshAccessToken()
+  return { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+}
 
 // Configuración de Get-Client
 export const GET_CLIENT_CONFIG = {
@@ -36,9 +97,10 @@ export const getClientId = async (email: string): Promise<string | null> => {
     // Hacer petición POST al endpoint correcto
     const response = await fetch(GET_CLIENT_WEBHOOK_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
+      // no-store: /get-client es data de sesión/tenant, nunca debe cachearse ni
+      // revalidarse (un 304 devolvería body vacío/viejo → apiKey no cargaría).
+      cache: 'no-store',
       body: JSON.stringify({ email })
     })
 
@@ -58,7 +120,6 @@ export const getClientId = async (email: string): Promise<string | null> => {
       
       // Normalizar los nombres de campos (el backend puede devolver clientId o client_id)
       const defaultClientId = userData.clientId || userData.client_id
-      const apiKey = userData.apiKey || userData.api_key
       const fullName = userData.fullName || userData.full_name || ''
       
       if (defaultClientId) {
@@ -100,12 +161,14 @@ export const getClientId = async (email: string): Promise<string | null> => {
         // Guardar el client_id que vamos a usar (puede ser el seleccionado o el por defecto)
         setClientId(clientIdToUse)
         
-        // Guardar TODOS los datos en sessionStorage
-        sessionStorage.setItem('userData', JSON.stringify(userData))
+        // Guardar los datos en sessionStorage, SIN las claves de Retell.
+        // Chunk 13a: la API key nunca debe quedar at-rest en el navegador.
+        const userDataToStore = { ...userData }
+        delete userDataToStore.api_key
+        delete userDataToStore.apiKey
+        delete userDataToStore.api_key_test
+        sessionStorage.setItem('userData', JSON.stringify(userDataToStore))
         persistAccountCreatedAt(userData)
-        if (apiKey) {
-          sessionStorage.setItem('apiKey', apiKey)
-        }
         sessionStorage.setItem('clientId', clientIdToUse)
         if (userData.email) {
           sessionStorage.setItem('email', userData.email)
@@ -232,27 +295,14 @@ export const getUserData = () => {
   return userData ? JSON.parse(userData) : null
 }
 
-export const getApiKey = (): string | null => {
-  return sessionStorage.getItem('apiKey')
-}
+// Chunk 13a: la Retell API key ya no se persiste en el navegador (ni en
+// sessionStorage ni en el blob userData). Estos helpers quedan como no-ops —
+// nada del cliente debe leer la key desde storage. La key vive solo en memoria
+// (estado de CallsContext) mientras el selector de workspaces la necesita, hasta
+// que 13b termine de sacarla del backend.
+export const getApiKey = (): string | null => null
 
-export const getApiKeyTest = (): string[] | null => {
-  const apiKeyTest = sessionStorage.getItem('apiKeyTest')
-  if (apiKeyTest) {
-    try {
-      return JSON.parse(apiKeyTest)
-    } catch (e) {
-      // console.warn('Error parseando apiKeyTest:', e)
-      return null
-    }
-  }
-  // También verificar en userData por si acaso
-  const userData = getUserData()
-  if (userData && userData.api_key_test && Array.isArray(userData.api_key_test)) {
-    return userData.api_key_test
-  }
-  return null
-}
+export const getApiKeyTest = (): string[] | null => null
 
 export const getClientIdFromSession = (): string | null => {
   return sessionStorage.getItem('clientId')
@@ -507,7 +557,7 @@ export const updateClientSubscriptionStatus = async (clientId: string): Promise<
   try {
     const response = await fetch(`${BASE_URL}/get-client`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify({ client_id: clientId })
     })
     if (!response.ok) return
@@ -529,6 +579,7 @@ export const updateClientSubscriptionStatus = async (clientId: string): Promise<
 export const clearSessionData = () => {
   sessionStorage.removeItem('userData')
   sessionStorage.removeItem('apiKey')
+  sessionStorage.removeItem('apiKeyTest')
   sessionStorage.removeItem('clientId')
   sessionStorage.removeItem('email')
   sessionStorage.removeItem('fullName')
