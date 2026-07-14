@@ -1,6 +1,7 @@
 import { RetellPhoneNumber } from '../../types';
 import { BASE_URL } from './config';
 import { getWorkspaceNameFromWebhook } from './calls';
+import { authHeaders } from './http';
 
 interface CreatePhoneCallParams {
   from_number: string;
@@ -14,7 +15,10 @@ interface CreatePhoneCallParams {
 // Obtiene todos los números del cliente (todos los workspaces) via backend proxy.
 // El backend enriquece cada número con workspace_index.
 export async function fetchPhoneNumbers(clientId: string): Promise<RetellPhoneNumber[]> {
-  const response = await fetch(`${BASE_URL}/api/telephony/${encodeURIComponent(clientId)}/phone-numbers`);
+  const response = await fetch(
+    `${BASE_URL}/api/telephony/${encodeURIComponent(clientId)}/phone-numbers`,
+    { headers: await authHeaders() }
+  );
 
   if (!response.ok) {
     throw new Error(`Error al obtener números de teléfono: ${response.status} ${response.statusText}`);
@@ -40,7 +44,7 @@ export async function createPhoneCall(
     `${BASE_URL}/api/telephony/${encodeURIComponent(clientId)}/phone-call`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify({ workspace_index: workspaceIndex, ...params }),
     }
   );
@@ -72,7 +76,7 @@ export async function importPhoneNumber(
     `${BASE_URL}/api/telephony/${encodeURIComponent(clientId)}/import-phone-number`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify({ workspace_index: workspaceIndex, ...phoneData }),
     }
   );
@@ -111,7 +115,7 @@ export async function updatePhoneNumber(
     `${BASE_URL}/api/telephony/${encodeURIComponent(clientId)}/phone-number/${encodeURIComponent(phoneNumber)}`,
     {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify({ workspace_index: workspaceIndex, ...data }),
     }
   );
@@ -136,7 +140,7 @@ export async function deletePhoneNumber(
     `${BASE_URL}/api/telephony/${encodeURIComponent(clientId)}/phone-number/${encodeURIComponent(phoneNumber)}?workspace_index=${workspaceIndex}`,
     {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
     }
   );
 

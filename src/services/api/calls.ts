@@ -1,5 +1,6 @@
-import { RetellCall, FilterCriteria, CallStats } from '../../types';
-import { getClientId, BASE_URL, WEBHOOK_URL } from './config';
+import { RetellCall, CallStats } from '../../types';
+import { BASE_URL } from './config';
+import { authHeaders } from './http';
 
 // Códigos de análisis para Recoveries (definición del negocio)
 export const RECOVERY_CODIGOS: Record<string, string> = {
@@ -28,158 +29,6 @@ export interface CallCountByFromNumber {
 
 
 
-export async function fetchCalls(
-  apiKey: string,
-  paginationKey?: string,
-  filterCriteria?: FilterCriteria,
-  page: number = 1,
-  clientId?: string
-): Promise<{ calls: RetellCall[]; pagination_key?: string; totalPages?: number; totalCallsFiltered?: number | null }> {
-  try {
-    // Usar el webhook de n8n para obtener las llamadas
-    const requestBody: any = {
-      per_page: 100,
-      page: page
-    };
-    
-    // Incluir client_id si está disponible (usar el proporcionado o el del localStorage)
-    const actualClientId = clientId || getClientId();
-    if (actualClientId) {
-      requestBody.client_id = actualClientId;
-    }
-    
-    // Incluir filtros de fecha si están disponibles
-    if (filterCriteria?.date_range) {
-      if (filterCriteria.date_range.start) {
-        // Usar el formato ISO completo si ya está en formato ISO, sino convertir
-        if (filterCriteria.date_range.start.includes('T')) {
-          requestBody.fecha_inicio = filterCriteria.date_range.start;
-        } else {
-          const startDate = new Date(filterCriteria.date_range.start);
-          requestBody.fecha_inicio = startDate.toISOString();
-        }
-      }
-      
-      if (filterCriteria.date_range.end) {
-        // Usar el formato ISO completo si ya está en formato ISO, sino convertir
-        if (filterCriteria.date_range.end.includes('T')) {
-          requestBody.fecha_fin = filterCriteria.date_range.end;
-        } else {
-          const endDate = new Date(filterCriteria.date_range.end);
-          // Asegurar que incluya todo el día final
-          endDate.setHours(23, 59, 59, 999);
-          requestBody.fecha_fin = endDate.toISOString();
-        }
-      }
-    }
-    
-    // console.log('Enviando petición al webhook con:', requestBody);
-    
-    const response = await fetch(WEBHOOK_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Error al obtener llamadas: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    // console.log('Respuesta del webhook de llamadas:', data);
-    
-    // El webhook devuelve un array con un objeto que contiene las llamadas
-    if (Array.isArray(data) && data.length > 0) {
-      const responseData = data[0];
-      
-      // Transformar las llamadas del formato del webhook al formato RetellCall
-      const calls: RetellCall[] = (responseData.llamadas || []).map((webhookCall: any) => ({
-        call_id: webhookCall.call_id || webhookCall.id || '',
-        duration: parseInt(webhookCall.duration) || 0,
-        start_time: webhookCall.created_at,
-        start_timestamp: new Date(webhookCall.created_at).getTime(),
-        end_timestamp: webhookCall.end_timestamp || (webhookCall.created_at && webhookCall.duration ? 
-          new Date(webhookCall.created_at).getTime() + (parseInt(webhookCall.duration) * 1000) : 
-          undefined),
-        disconnection_reason: webhookCall.end_reason,
-        status: webhookCall.status === 'fallida' ? 'failed' : (webhookCall.status || 'completed'),
-        call_status: webhookCall.status === 'fallida' ? 'failed' : (webhookCall.status || 'completed'),
-        transcript: webhookCall.transcript,
-        recording_url: webhookCall.recordings,
-        to_number: webhookCall.phone_number,
-        // Mantener el metadata original de la llamada si existe, y agregar campos adicionales
-        metadata: {
-          ...webhookCall.metadata, // Preservar metadata original de la llamada
-          // Agregar campos específicos de la base de datos como campos adicionales
-          db_id: webhookCall.id,
-          db_client_id: webhookCall.client_id,
-          db_summary: webhookCall.summary,
-          db_interest: webhookCall.interest,
-          db_tipo_vivienda: webhookCall.tipo_vivienda,
-          db_created_at: webhookCall.created_at,
-          db_end_reason: webhookCall.end_reason
-        }
-      }));
-      
-      // console.log(`Página ${page}: ${calls.length} llamadas transformadas`);
-      
-      // Obtener información de paginación
-      const totalPages = parseInt(responseData.total_paginas) || 0;
-      const totalCallsFiltered = responseData.total_llamadas || null;
-      
-      return { 
-        calls, 
-        pagination_key: undefined, // El webhook usa paginación por página
-        totalPages: totalPages,
-        totalCallsFiltered: totalCallsFiltered
-      };
-    }
-    
-    // Si no es el formato esperado, devolver array vacío
-    // console.warn('Formato de respuesta inesperado del webhook');
-    return { calls: [], pagination_key: undefined };
-    
-  } catch (error) {
-    // console.error('Error al obtener llamadas del webhook:', error);
-    
-    // Fallback: proxy a través del backend (nunca llamar a Retell directamente)
-    const fallbackClientId = clientId || getClientId();
-    if (!fallbackClientId) throw new Error('No hay client_id disponible para el fallback de llamadas');
-
-    const retellBody = {
-      limit: 100,
-      pagination_key: paginationKey,
-      sort_order: 'descending',
-      filter_criteria: filterCriteria,
-    };
-
-    const response = await fetch(
-      `${BASE_URL}/api/telephony/${encodeURIComponent(fallbackClientId)}/list-calls`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(retellBody),
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(`Error al obtener llamadas: ${response.status} ${response.statusText}`);
-    }
-
-    const result = await response.json();
-    const data = result.data ?? result;
-    const calls = Array.isArray(data) ? data : data.calls || [];
-
-    return {
-      calls,
-      pagination_key: Array.isArray(data)
-        ? (calls.length > 0 ? calls[calls.length - 1].call_id : undefined)
-        : data.pagination_key,
-    };
-  }
-}
 
 
 
@@ -307,10 +156,7 @@ export async function listCalls(
     
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(params),
     });
 
@@ -377,10 +223,7 @@ export async function listAllCalls(
     const url = `${BASE_URL}/api/calls/list-calls-all`;
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(params),
     });
     if (!response.ok) {
@@ -501,10 +344,7 @@ export async function getDisconnectionReasons(
     const url = `${BASE_URL}/api/calls/get-disconnection-reasons`;
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify({ client_id: clientId }),
     });
 
@@ -534,10 +374,7 @@ export async function getRecoveryCountsByAnalisisCodigo(
   const url = `${BASE_URL}/api/calls/recovery-counts-by-analisis-codigo`;
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
+    headers: await authHeaders(),
     body: JSON.stringify(params),
   });
   if (!response.ok) {
@@ -575,10 +412,7 @@ export async function listRecoveryCalls(
   const url = `${BASE_URL}/api/calls/recovery-list-calls`;
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
+    headers: await authHeaders(),
     body: JSON.stringify(params),
   });
   if (!response.ok) {
@@ -626,10 +460,7 @@ export async function listInteresadosCalls(
   const url = `${BASE_URL}/api/calls/interesados-list-calls`;
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
+    headers: await authHeaders(),
     body: JSON.stringify(params),
   });
   if (!response.ok) {
@@ -657,10 +488,7 @@ export async function getInteresadosMotivos(
   const url = `${BASE_URL}/api/calls/interesados-motivos`;
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
+    headers: await authHeaders(),
     body: JSON.stringify({ client_id: clientId }),
   });
   if (!response.ok) {
@@ -675,7 +503,7 @@ export async function getCallCountsByFromNumber(clientId: string): Promise<CallC
   try {
     const response = await fetch(`${BASE_URL}/api/calls/call-counts-by-from-number`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify({ client_id: clientId }),
     });
     if (!response.ok) {
@@ -696,7 +524,7 @@ export async function getCallCountForNumber(
 ): Promise<{ total: number; efectivas: number; fallidas: number }> {
   const response = await fetch(`${BASE_URL}/api/calls/call-count-for-number`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({ client_id: clientId, from_number: fromNumber }),
   });
   if (!response.ok) {
@@ -738,10 +566,7 @@ export async function exportCallsWithColumns(
     const url = `${BASE_URL}/api/calls/export-calls-with-columns`;
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(params),
     });
 

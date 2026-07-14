@@ -1,4 +1,5 @@
 import { getClientId, BASE_URL } from './config';
+import { authHeaders } from './http';
 
 
 
@@ -26,9 +27,7 @@ export async function fetchSalesMetrics(fechaInicio?: string, fechaFin?: string)
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify(body),
     });
 
@@ -69,9 +68,7 @@ export async function fetchSalesMetricsToday(): Promise<{
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify({
         client_id: getClientId()
       }),
@@ -114,9 +111,7 @@ export async function fetchSalesMetricsWeek(): Promise<{
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify({
         client_id: getClientId()
       }),
@@ -159,9 +154,7 @@ export async function fetchSalesMetricsMonth(): Promise<{
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify({
         client_id: getClientId()
       }),
@@ -204,9 +197,7 @@ export async function fetchSalesMetricsQuarter(): Promise<{
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders(),
       body: JSON.stringify({
         client_id: getClientId()
       }),
@@ -236,13 +227,13 @@ export async function fetchSalesMetricsQuarter(): Promise<{
 export async function fetchFacturacionByDay(fechaInicio?: string, fechaFin?: string): Promise<any[]> {
   try {
     const url = `${BASE_URL}/api/sales/facturacion-by-day`;
-    const body: any = {};
+    const body: any = { client_id: getClientId() };
     if (fechaInicio) body.fecha_inicio = fechaInicio;
     if (fechaFin) body.fecha_fin = fechaFin;
-    
-    const response = await fetch(url, { 
+
+    const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify(body)
     });
     
@@ -264,13 +255,13 @@ export async function fetchFacturacionByDay(fechaInicio?: string, fechaFin?: str
 export async function fetchROIByDay(fechaInicio?: string, fechaFin?: string): Promise<any[]> {
   try {
     const url = `${BASE_URL}/api/sales/roi-by-day`;
-    const body: any = {};
+    const body: any = { client_id: getClientId() };
     if (fechaInicio) body.fecha_inicio = fechaInicio;
     if (fechaFin) body.fecha_fin = fechaFin;
-    
-    const response = await fetch(url, { 
+
+    const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify(body)
     });
     

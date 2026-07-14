@@ -6,7 +6,6 @@ export const BASE_PROD = import.meta.env.VITE_BASE_PROD;
 export const BASE_DEV = import.meta.env.VITE_BASE_DEV;
 export const BASE_URL = IS_PRODUCTION ? BASE_PROD : BASE_DEV;
 
-export const WEBHOOK_URL = BASE_URL;
 export const GET_CLIENT_WEBHOOK_URL = `${BASE_URL}/get-client`;
 export const GET_DASHBOARD_WEBHOOK_URL = `${BASE_URL}/api/dashboard/get-dashboard`;
 export const GET_DASHBOARD_CUSTOM_WEBHOOK_URL = `${BASE_URL}/api/dashboard/get-dashboard-custom`;

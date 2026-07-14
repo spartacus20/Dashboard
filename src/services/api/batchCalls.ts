@@ -1,5 +1,6 @@
 import { RetellBatchCall } from '../../types';
 import { BASE_URL } from './config';
+import { authHeaders } from './http';
 
 const telephonyBase = (clientId: string) =>
   `${BASE_URL}/api/telephony/${encodeURIComponent(clientId)}`;
@@ -15,7 +16,7 @@ export async function fetchBatchCalls(
   const url = new URL(`${telephonyBase(clientId)}/batch-calls`);
   if (workspaceIndex !== undefined) url.searchParams.set('workspace_index', String(workspaceIndex));
 
-  const response = await fetch(url.toString());
+  const response = await fetch(url.toString(), { headers: await authHeaders() });
   if (!response.ok) {
     throw new Error(`Error al obtener batch calls: ${response.status} ${response.statusText}`);
   }
@@ -49,7 +50,7 @@ export async function createBatchCall(
 ): Promise<any> {
   const response = await fetch(`${telephonyBase(clientId)}/batch-call`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({
       workspace_index: workspaceIndex ?? 0,
       from_number: fromNumber,
@@ -79,7 +80,7 @@ export async function fetchAgentIdForBatch(
   if (workspaceIndex !== undefined) url.searchParams.set('workspace_index', String(workspaceIndex));
 
   try {
-    const response = await fetch(url.toString());
+    const response = await fetch(url.toString(), { headers: await authHeaders() });
     if (!response.ok) return { agent_id: null, agent_name: null };
     const result = await response.json();
     return result.data ?? { agent_id: null, agent_name: null };
@@ -99,7 +100,7 @@ export async function deleteBatchCall(
   const url = new URL(`${telephonyBase(clientId)}/batch-call/${encodeURIComponent(batchCallId)}`);
   if (workspaceIndex !== undefined) url.searchParams.set('workspace_index', String(workspaceIndex));
 
-  const response = await fetch(url.toString(), { method: 'DELETE' });
+  const response = await fetch(url.toString(), { method: 'DELETE', headers: await authHeaders() });
 
   if (response.status === 204) return { success: true };
 

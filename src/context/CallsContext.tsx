@@ -170,18 +170,13 @@ export function CallsProvider({ children }: CallsProviderProps) {
             // console.log('API key obtenida exitosamente para client_id:', storedClientId);
             // Usar apiKeyTest si está disponible, sino usar apiKey
             if (result.apiKeyTest && result.apiKeyTest.length > 0) {
-              // console.log(`📞 Usando ${result.apiKeyTest.length} API keys de api_key_test`);
+              // Chunk 13a: la key vive solo en memoria; no se persiste en sessionStorage.
               setApiKeyTest(result.apiKeyTest);
-              // Establecer la primera API key en apiKey para compatibilidad con funciones que necesitan API key individual
-              const firstApiKey = result.apiKeyTest[0];
-              setApiKey(firstApiKey);
-              sessionStorage.setItem('apiKeyTest', JSON.stringify(result.apiKeyTest));
-              sessionStorage.setItem('apiKey', firstApiKey); // Guardar primera para compatibilidad
+              // Primera key en apiKey para compatibilidad con funciones que la reciben (param vestigial).
+              setApiKey(result.apiKeyTest[0]);
             } else if (result.apiKey) {
               setApiKey(result.apiKey);
-              sessionStorage.setItem('apiKey', result.apiKey);
-              sessionStorage.removeItem('apiKeyTest'); // Limpiar apiKeyTest si usamos apiKey individual
-              setApiKeyTest(null); // Limpiar apiKeyTest si usamos apiKey individual
+              setApiKeyTest(null);
             }
             
             // Procesar configuración del cliente
@@ -223,18 +218,13 @@ export function CallsProvider({ children }: CallsProviderProps) {
                   // console.log('API key obtenida exitosamente para client_id:', newClientId);
                   // Usar apiKeyTest si está disponible, sino usar apiKey
                   if (result.apiKeyTest && result.apiKeyTest.length > 0) {
-                    // console.log(`📞 Usando ${result.apiKeyTest.length} API keys de api_key_test`);
+                    // Chunk 13a: la key vive solo en memoria; no se persiste en sessionStorage.
                     setApiKeyTest(result.apiKeyTest);
-                    // Establecer la primera API key en apiKey para compatibilidad con funciones que necesitan API key individual
-                    const firstApiKey = result.apiKeyTest[0];
-                    setApiKey(firstApiKey);
-                    sessionStorage.setItem('apiKeyTest', JSON.stringify(result.apiKeyTest));
-                    sessionStorage.setItem('apiKey', firstApiKey); // Guardar primera para compatibilidad
+                    // Primera key en apiKey para compatibilidad con funciones que la reciben (param vestigial).
+                    setApiKey(result.apiKeyTest[0]);
                   } else if (result.apiKey) {
                     setApiKey(result.apiKey);
-                    sessionStorage.setItem('apiKey', result.apiKey);
-                    sessionStorage.removeItem('apiKeyTest'); // Limpiar apiKeyTest si usamos apiKey individual
-                    setApiKeyTest(null); // Limpiar apiKeyTest si usamos apiKey individual
+                    setApiKeyTest(null);
                   }
                   
                   // Procesar configuración del cliente
@@ -278,68 +268,70 @@ export function CallsProvider({ children }: CallsProviderProps) {
 
   // Suscribirse a cambios de autenticación para resolver client_id y apiKey inmediatamente al iniciar sesión
   useEffect(() => {
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN') {
-        const email = session?.user?.email || undefined;
-        if (!email) {
-          // console.log('Evento SIGNED_IN sin email, omitiendo resolución de client_id');
-          return;
-        }
-
-        try {
-          // console.log('SIGNED_IN: resolviendo client_id para', email);
-          const newClientId = await fetchAndStoreClientId(email);
-          if (newClientId) {
-            setClientId(newClientId);
-            try {
-              const result = await getClientApiKey(newClientId);
-              if (result.apiKey || result.apiKeyTest) {
-                // Usar apiKeyTest si está disponible, sino usar apiKey
-                if (result.apiKeyTest && result.apiKeyTest.length > 0) {
-                  // console.log(`📞 Usando ${result.apiKeyTest.length} API keys de api_key_test tras inicio de sesión`);
-                  setApiKeyTest(result.apiKeyTest);
-                  // Establecer la primera API key en apiKey para compatibilidad con funciones que necesitan API key individual
-                  const firstApiKey = result.apiKeyTest[0];
-                  setApiKey(firstApiKey);
-                  sessionStorage.setItem('apiKeyTest', JSON.stringify(result.apiKeyTest));
-                  sessionStorage.setItem('apiKey', firstApiKey); // Guardar primera para compatibilidad
-                } else if (result.apiKey) {
-                  setApiKey(result.apiKey);
-                  sessionStorage.setItem('apiKey', result.apiKey);
-                  sessionStorage.removeItem('apiKeyTest'); // Limpiar apiKeyTest si usamos apiKey individual
-                  setApiKeyTest(null); // Limpiar apiKeyTest si usamos apiKey individual
-                }
-                // console.log('API key establecida tras inicio de sesión');
-                
-                // Procesar configuración del cliente
-                if (result.config) {
-                  setAgendaEnabled(result.config.agenda ?? true);
-                  setCallsEnabled(result.config.calls_enabled ?? true);
-                  setSalesEnabled(result.config.sales ?? false);
-                  setNumTelEnabled(result.config.num_tel ?? false);
-                  setRecordsEnabled(result.config.records ?? false);
-                  setCallbacksEnabled(result.config.callbacks ?? false);
-                  setLaunchEnabled(result.config.launch ?? false);
-                  setDontCallEnabled(result.config.dont_call ?? false);
-                  setCampaignEnabled(result.config.campaign ?? false);
-                }
-              } else {
-                // console.error('No se pudo obtener API key tras inicio de sesión');
-                setError('No se pudo obtener la configuración del cliente tras iniciar sesión');
-              }
-            } catch (e) {
-              // console.error('Error obteniendo API key tras inicio de sesión:', e);
-              setError('Error al obtener configuración tras iniciar sesión');
-            }
-          } else {
-            // console.error('No se pudo obtener client_id tras inicio de sesión');
-            setError('No se pudo resolver client_id tras iniciar sesión');
-          }
-        } catch (e) {
-          // console.error('Error resolviendo client_id tras SIGNED_IN:', e);
-          setError('Error resolviendo client_id tras iniciar sesión');
-        }
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event !== 'SIGNED_IN') return;
+      const email = session?.user?.email || undefined;
+      if (!email) {
+        // console.log('Evento SIGNED_IN sin email, omitiendo resolución de client_id');
+        return;
       }
+
+      // CRÍTICO: no await-ear getClientApiKey/fetchAndStoreClientId (usan getSession/
+      // refreshSession) DENTRO del callback → deadlock del lock interno de supabase-js.
+      // Se difiere con setTimeout(0): el callback retorna, se libera el lock y recién ahí
+      // se resuelve el client_id y la apiKey.
+      setTimeout(() => {
+        void (async () => {
+          try {
+            // console.log('SIGNED_IN: resolviendo client_id para', email);
+            const newClientId = await fetchAndStoreClientId(email);
+            if (newClientId) {
+              setClientId(newClientId);
+              try {
+                const result = await getClientApiKey(newClientId);
+                if (result.apiKey || result.apiKeyTest) {
+                  // Usar apiKeyTest si está disponible, sino usar apiKey
+                  if (result.apiKeyTest && result.apiKeyTest.length > 0) {
+                    // Chunk 13a: la key vive solo en memoria; no se persiste en sessionStorage.
+                    setApiKeyTest(result.apiKeyTest);
+                    // Primera key en apiKey para compatibilidad con funciones que la reciben (param vestigial).
+                    setApiKey(result.apiKeyTest[0]);
+                  } else if (result.apiKey) {
+                    setApiKey(result.apiKey);
+                    setApiKeyTest(null);
+                  }
+                  // console.log('API key establecida tras inicio de sesión');
+
+                  // Procesar configuración del cliente
+                  if (result.config) {
+                    setAgendaEnabled(result.config.agenda ?? true);
+                    setCallsEnabled(result.config.calls_enabled ?? true);
+                    setSalesEnabled(result.config.sales ?? false);
+                    setNumTelEnabled(result.config.num_tel ?? false);
+                    setRecordsEnabled(result.config.records ?? false);
+                    setCallbacksEnabled(result.config.callbacks ?? false);
+                    setLaunchEnabled(result.config.launch ?? false);
+                    setDontCallEnabled(result.config.dont_call ?? false);
+                    setCampaignEnabled(result.config.campaign ?? false);
+                  }
+                } else {
+                  // console.error('No se pudo obtener API key tras inicio de sesión');
+                  setError('No se pudo obtener la configuración del cliente tras iniciar sesión');
+                }
+              } catch (e) {
+                // console.error('Error obteniendo API key tras inicio de sesión:', e);
+                setError('Error al obtener configuración tras iniciar sesión');
+              }
+            } else {
+              // console.error('No se pudo obtener client_id tras inicio de sesión');
+              setError('No se pudo resolver client_id tras iniciar sesión');
+            }
+          } catch (e) {
+            // console.error('Error resolviendo client_id tras SIGNED_IN:', e);
+            setError('Error resolviendo client_id tras iniciar sesión');
+          }
+        })();
+      }, 0);
     });
 
     return () => {
@@ -359,18 +351,13 @@ export function CallsProvider({ children }: CallsProviderProps) {
       setClientId(newClientId);
       // Usar apiKeyTest si está disponible, sino usar apiKey
       if (newApiKeyTest && newApiKeyTest.length > 0) {
-        // console.log(`📞 CallsContext: Usando ${newApiKeyTest.length} API keys de api_key_test`);
+        // Chunk 13a: la key vive solo en memoria; no se persiste en sessionStorage.
         setApiKeyTest(newApiKeyTest);
-        // Establecer la primera API key en apiKey para compatibilidad con funciones que necesitan API key individual
-        const firstApiKey = newApiKeyTest[0];
-        setApiKey(firstApiKey);
-        sessionStorage.setItem('apiKeyTest', JSON.stringify(newApiKeyTest));
-        sessionStorage.setItem('apiKey', firstApiKey); // Guardar primera para compatibilidad
+        // Primera key en apiKey para compatibilidad con funciones que la reciben (param vestigial).
+        setApiKey(newApiKeyTest[0]);
       } else if (newApiKey) {
         setApiKey(newApiKey);
-        sessionStorage.setItem('apiKey', newApiKey);
-        sessionStorage.removeItem('apiKeyTest'); // Limpiar apiKeyTest si usamos apiKey individual
-        setApiKeyTest(null); // Limpiar apiKeyTest si usamos apiKey individual
+        setApiKeyTest(null);
       }
       
       // Actualizar configuración si está disponible
@@ -596,9 +583,10 @@ export function CallsProvider({ children }: CallsProviderProps) {
       return;
     }
     
-    // Esperar a que tengamos la API key
-    if (!apiKey) {
-      // console.log('Esperando API key para cargar batch calls...');
+    // Esperar a tener clientId (el backend recibe el clientId en la ruta y deriva la
+    // Retell key del token; ya no se manda la key desde el navegador).
+    if (!clientId) {
+      // console.log('Esperando clientId para cargar batch calls...');
       return;
     }
     
@@ -631,7 +619,9 @@ export function CallsProvider({ children }: CallsProviderProps) {
     
     try {
       // console.log(`Cargando batch calls desde la API (intento ${batchCallsAttemptCount.current})`);
-      const data = await fetchBatchCalls(apiKey);
+      // clientId (no apiKey): el backend valida el clientId de la ruta contra el token
+      // (requirePathClient). Pasar la Retell key acá daba 403 (key_... no es un client válido).
+      const data = await fetchBatchCalls(clientId);
       
       setBatchCalls(data);
       setBatchCallsLoaded(true);

@@ -1,4 +1,5 @@
 import { BASE_URL } from './config';
+import { authHeaders } from './http';
 
 export interface ZinkeeListaValor {
   id: number;
@@ -40,7 +41,7 @@ export async function fetchSoporteIASkeleton(
 ): Promise<ZinkeeSkeletonData> {
   const response = await fetch(`${BASE_URL}/api/soporte-ia/skeleton`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({
       mantId: options.mantId,
       vistaId: options.vistaId,
@@ -128,7 +129,7 @@ export async function fetchSoporteIARegistros(
 
   const response = await fetch(`${BASE_URL}/api/soporte-ia/registros`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify(payload),
   });
 

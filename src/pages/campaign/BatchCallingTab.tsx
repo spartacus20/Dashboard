@@ -272,9 +272,9 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Batch Calling</CardTitle>
+          <CardTitle>Campañas</CardTitle>
           <CardDescription>
-            No hay API keys configuradas para este cliente. Configura al menos una API key para usar Batch Calling.
+            No hay API keys configuradas para este cliente. Configura al menos una API key para crear campañas.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -540,7 +540,7 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
       return false;
     }
     if (target.contactsCount === 0) {
-      setBatches((prev) => prev.map((b) => (b.id === batchId ? { ...b, status: 'error', error: 'Este batch no tiene contactos.' } : b)));
+      setBatches((prev) => prev.map((b) => (b.id === batchId ? { ...b, status: 'error', error: 'Esta campaña no tiene contactos.' } : b)));
       return false;
     }
 
@@ -577,7 +577,7 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
       return true;
     } catch (err: any) {
       setBatches((prev) =>
-        prev.map((b) => (b.id === batchId ? { ...b, status: 'error', error: err?.message || 'Error al crear batch call' } : b)),
+        prev.map((b) => (b.id === batchId ? { ...b, status: 'error', error: err?.message || 'Error al crear la campaña' } : b)),
       );
       return false;
     }
@@ -590,7 +590,7 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
       return;
     }
     setSendingAll(true);
-    setMessage('Enviando batches uno por uno...');
+    setMessage('Enviando campañas una por una...');
     setMessageType(null);
     let ok = 0;
     let fail = 0;
@@ -645,7 +645,7 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
       <Card>
         <CardHeader>
           <CardTitle>1) Archivo CSV</CardTitle>
-          <CardDescription>Sube el CSV de contactos que quieres repartir en varios batch calls.</CardDescription>
+          <CardDescription>Sube el CSV de contactos que quieres repartir en varias campañas.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div
@@ -717,7 +717,7 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
               <Card key={batch.id}>
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between gap-2">
-                    <span>Batch {batch.partNumber}</span>
+                    <span>Campaña {batch.partNumber}</span>
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${batch.status === 'success' ? 'bg-green-50 text-green-700' : batch.status === 'error' ? 'bg-red-50 text-red-700' : batch.status === 'sending' ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{batch.status}</span>
                   </CardTitle>
                   <CardDescription>Contactos asignados automáticamente: <strong>{batch.contactsCount}</strong></CardDescription>
@@ -761,7 +761,7 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
                       )}
                     </div>
                     <div className="space-y-1.5">
-                      <label className="block text-sm font-medium text-gray-700">Nombre del batch (opcional)</label>
+                      <label className="block text-sm font-medium text-gray-700">Nombre de la campaña (opcional)</label>
                       <input
                         type="text"
                         value={batch.config.batchName}
@@ -780,7 +780,7 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
                         className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
                       />
                       <p className="text-xs text-gray-500">
-                        Si lo dejas vacío, el batch se enviará inmediatamente al pulsar <span className="font-semibold">Enviar</span>.
+                        Si lo dejas vacío, la campaña se enviará inmediatamente al pulsar <span className="font-semibold">Enviar</span>.
                       </p>
                     </div>
                     <div className="space-y-1.5">
@@ -890,15 +890,15 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
 
                   <div className="flex flex-wrap items-center gap-3">
                     <Button type="button" disabled={sendingAll || batch.status === 'sending' || batch.contactsCount === 0} onClick={() => void sendBatch(batch.id)}>
-                      {batch.status === 'sending' ? 'Enviando…' : 'Enviar batch'}
+                      {batch.status === 'sending' ? 'Enviando…' : 'Enviar campaña'}
                     </Button>
-                    <span className="text-xs text-gray-500">Si hay varios batches, puedes enviarlos uno por uno desde aquí.</span>
+                    <span className="text-xs text-gray-500">Si hay varias campañas, puedes enviarlas una por una desde aquí.</span>
                   </div>
 
                   {batch.error && <p className="text-sm text-red-600">{batch.error}</p>}
                   {batch.response && (
                     <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 space-y-1.5">
-                      <p className="font-semibold">Batch cargado correctamente.</p>
+                      <p className="font-semibold">Campaña cargada correctamente.</p>
                       <p>
                         Se cargaron <strong>{batch.response.total_contacts ?? batch.contactsCount}</strong> contactos.
                       </p>
