@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle, CalendarClock, Loader2, Pause, Play, Plus, RefreshCw,
   RotateCcw, Search, X, XCircle,
@@ -81,26 +81,34 @@ export function BatchCampaignsTab() {
     return () => { alive = false; };
   }, [clientId]);
 
-  // 1b) Sync individual al seleccionar: si el workspace elegido todavía no tiene
-  //     número/agente importados de Retell, se piden SOLO los de ese workspace.
-  useEffect(() => {
-    if (!clientId || !selectedWorkspaceId) return;
-    const ws = workspaces.find(w => w.id === selectedWorkspaceId);
-    if (!ws || (ws.active_number && ws.active_agent)) return;
-    let alive = true;
+  // Sync individual de UN workspace (números + agentes desde Retell).
+  // Con guard anti-duplicado: si ya hay un sync en vuelo para ese workspace, no repite.
+  const syncInFlight = useRef<Set<string>>(new Set());
+  const ensureWorkspaceSynced = useCallback(async (workspaceId: string) => {
+    if (!clientId || syncInFlight.current.has(workspaceId)) return;
+    syncInFlight.current.add(workspaceId);
     setSyncing(true);
-    syncBatchWorkspace(clientId, selectedWorkspaceId)
-      .then(updated => {
-        if (!alive) return;
-        setWorkspaces(prev => prev.map(w => (w.id === updated.id ? updated : w)));
-      })
-      .catch(err => {
-        if (alive) setError(err instanceof Error ? err.message : 'Error al sincronizar el workspace con Retell');
-      })
-      .finally(() => { if (alive) setSyncing(false); });
-    return () => { alive = false; };
+    try {
+      const updated = await syncBatchWorkspace(clientId, workspaceId);
+      setWorkspaces(prev => prev.map(w => (w.id === updated.id ? updated : w)));
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al sincronizar el workspace con Retell');
+    } finally {
+      syncInFlight.current.delete(workspaceId);
+      setSyncing(false);
+    }
+  }, [clientId]);
+
+  // 1b) Sync individual al seleccionar en la lista: si el workspace elegido no tiene
+  //     números/agentes importados (o le falta la lista completa), se piden SOLO los suyos.
+  useEffect(() => {
+    if (!selectedWorkspaceId) return;
+    const ws = workspaces.find(w => w.id === selectedWorkspaceId);
+    if (!ws) return;
+    if (!ws.numbers?.length || !ws.agents?.length) void ensureWorkspaceSynced(ws.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clientId, selectedWorkspaceId]);
+  }, [selectedWorkspaceId, ensureWorkspaceSynced]);
 
   // 2) Cargar campañas SOLO del workspace seleccionado + polling.
   //    Al cambiar de workspace se dispara una petición individual (no acumula todo).
@@ -344,6 +352,8 @@ export function BatchCampaignsTab() {
         <CreateBatchCampaignModal
           clientId={clientId}
           workspaces={workspaces}
+          syncing={syncing}
+          onSyncWorkspace={ensureWorkspaceSynced}
           onClose={() => setCreateOpen(false)}
           onCreated={(createdWorkspaceId?: string) => {
             setCreateOpen(false);

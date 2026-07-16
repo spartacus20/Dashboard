@@ -31,9 +31,11 @@ function toMinutes(hhmm: string): number {
   return h * 60 + m;
 }
 
-export function CreateBatchCampaignModal({ clientId, workspaces, onClose, onCreated }: {
+export function CreateBatchCampaignModal({ clientId, workspaces, syncing, onSyncWorkspace, onClose, onCreated }: {
   clientId: string;
   workspaces: BatchWorkspace[];
+  syncing?: boolean;
+  onSyncWorkspace?: (workspaceId: string) => void;
   onClose: () => void;
   onCreated: (createdWorkspaceId?: string) => void;
 }) {
@@ -76,6 +78,16 @@ export function CreateBatchCampaignModal({ clientId, workspaces, onClose, onCrea
     setFromNumber(ws?.active_number?.number ?? ws?.numbers?.[0]?.number ?? '');
     setAgentId(ws?.active_agent?.retell_agent_id ?? ws?.agents?.[0]?.retell_agent_id ?? '');
   }, [workspaceId, workspaces]);
+
+  // Si el workspace elegido EN EL MODAL no tiene sus números/agentes importados,
+  // disparar el sync individual (mismo mecanismo que el selector de la lista).
+  useEffect(() => {
+    const ws = workspaces.find(w => w.id === workspaceId);
+    if (ws && (!ws.numbers?.length || !ws.agents?.length) && onSyncWorkspace) {
+      onSyncWorkspace(ws.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId]);
 
   const handleFile = async (file: File) => {
     setParsing(true);
@@ -195,10 +207,15 @@ export function CreateBatchCampaignModal({ clientId, workspaces, onClose, onCrea
                     </option>
                   ))}
                 </select>
+              ) : syncing ? (
+                <p className="text-xs text-blue-600 mt-1 flex items-center gap-1.5">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Importando los números de este workspace desde Retell...
+                </p>
               ) : (
                 <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
                   <AlertCircle className="w-3.5 h-3.5" />
-                  Este workspace no tiene números en Retell — seleccionalo en la lista para sincronizarlo, o compra/importa un número en Retell.
+                  Este workspace no tiene números en Retell (o falló la importación — reintentá eligiéndolo de nuevo).
                 </p>
               )}
             </div>
@@ -210,6 +227,11 @@ export function CreateBatchCampaignModal({ clientId, workspaces, onClose, onCrea
                     <option key={a.id} value={a.retell_agent_id}>{a.name}</option>
                   ))}
                 </select>
+              ) : syncing ? (
+                <p className="text-xs text-blue-600 mt-1 flex items-center gap-1.5">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Importando agentes...
+                </p>
               ) : (
                 <p className="text-xs text-slate-500 mt-1">Sin agentes importados — se usará el agente vinculado al número en Retell.</p>
               )}
