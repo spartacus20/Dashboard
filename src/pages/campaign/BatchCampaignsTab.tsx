@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle, CalendarClock, Loader2, Pause, Play, Plus, RefreshCw,
   RotateCcw, Search, X, XCircle,
@@ -8,7 +8,7 @@ import {
   BatchCampaign, BatchTasksBreakdown, BatchWorkspace,
   cancelBatchCampaign, fetchBatchCampaigns, fetchBatchTasksBreakdown,
   fetchBatchWorkspaces, pauseBatchCampaign, resumeBatchCampaign,
-  retryFailedBatchCampaign,
+  retryFailedBatchCampaign, syncBatchWorkspace,
 } from '../../services/api/batchCampaigns';
 import { CreateBatchCampaignModal } from './CreateBatchCampaignModal';
 
@@ -49,55 +49,85 @@ function progressOf(campaign: BatchCampaign): number {
 export function BatchCampaignsTab() {
   const { clientId } = useCallsContext();
   const [workspaces, setWorkspaces] = useState<BatchWorkspace[]>([]);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>('');
   const [campaigns, setCampaigns] = useState<BatchCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [workspaceFilter, setWorkspaceFilter] = useState<string>('');
   const [createOpen, setCreateOpen] = useState(false);
   const [detail, setDetail] = useState<BatchCampaign | null>(null);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
-  const firstLoad = useRef(true);
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  const [syncing, setSyncing] = useState(false);
 
-  const load = useCallback(async (withSpinner = false) => {
+  // 1) Cargar los workspaces UNA sola vez (upsert liviano server-side: nombre + key).
+  //    Se selecciona el primero por defecto. Los números/agentes de cada workspace
+  //    se importan BAJO DEMANDA al seleccionarlo (efecto 1b) — nunca todos de una.
+  useEffect(() => {
     if (!clientId) return;
-    if (withSpinner) setLoading(true);
-    try {
-      // El GET de workspaces dispara el sync automático server-side la primera vez
-      const [ws, list] = await Promise.all([
-        firstLoad.current ? fetchBatchWorkspaces(clientId) : Promise.resolve(workspaces),
-        fetchBatchCampaigns(clientId),
-      ]);
-      if (firstLoad.current) {
+    let alive = true;
+    fetchBatchWorkspaces(clientId)
+      .then(ws => {
+        if (!alive) return;
         setWorkspaces(ws);
-        firstLoad.current = false;
-      }
-      setCampaigns(list);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al cargar campañas programadas');
-    } finally {
-      if (withSpinner) setLoading(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        setSelectedWorkspaceId(prev => prev || ws[0]?.id || '');
+        if (!ws.length) setLoading(false);
+      })
+      .catch(err => {
+        if (!alive) return;
+        setError(err instanceof Error ? err.message : 'Error al cargar los workspaces');
+        setLoading(false);
+      });
+    return () => { alive = false; };
   }, [clientId]);
 
-  // Carga inicial + polling
+  // 1b) Sync individual al seleccionar: si el workspace elegido todavía no tiene
+  //     número/agente importados de Retell, se piden SOLO los de ese workspace.
   useEffect(() => {
-    firstLoad.current = true;
-    load(true);
-    const timer = setInterval(() => load(false), POLL_MS);
-    return () => clearInterval(timer);
-  }, [load]);
+    if (!clientId || !selectedWorkspaceId) return;
+    const ws = workspaces.find(w => w.id === selectedWorkspaceId);
+    if (!ws || (ws.active_number && ws.active_agent)) return;
+    let alive = true;
+    setSyncing(true);
+    syncBatchWorkspace(clientId, selectedWorkspaceId)
+      .then(updated => {
+        if (!alive) return;
+        setWorkspaces(prev => prev.map(w => (w.id === updated.id ? updated : w)));
+      })
+      .catch(err => {
+        if (alive) setError(err instanceof Error ? err.message : 'Error al sincronizar el workspace con Retell');
+      })
+      .finally(() => { if (alive) setSyncing(false); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId, selectedWorkspaceId]);
+
+  // 2) Cargar campañas SOLO del workspace seleccionado + polling.
+  //    Al cambiar de workspace se dispara una petición individual (no acumula todo).
+  useEffect(() => {
+    if (!clientId || !selectedWorkspaceId) return;
+    let alive = true;
+    const fetchIt = (spinner: boolean) => {
+      if (spinner) setLoading(true);
+      fetchBatchCampaigns(clientId, { workspaceId: selectedWorkspaceId })
+        .then(list => { if (alive) { setCampaigns(list); setError(null); } })
+        .catch(err => { if (alive) setError(err instanceof Error ? err.message : 'Error al cargar campañas programadas'); })
+        .finally(() => { if (alive && spinner) setLoading(false); });
+    };
+    fetchIt(true);
+    const timer = setInterval(() => fetchIt(false), POLL_MS);
+    return () => { alive = false; clearInterval(timer); };
+  }, [clientId, selectedWorkspaceId, refreshNonce]);
 
   const workspaceNameById = useMemo(
     () => Object.fromEntries(workspaces.map(w => [w.id, w.name])),
     [workspaces]
   );
 
+  // El filtro por workspace ahora es server-side (cambia selectedWorkspaceId y
+  // re-fetchea); acá solo se filtra por texto sobre lo ya traído.
   const filtered = useMemo(() => {
     let list = campaigns;
-    if (workspaceFilter) list = list.filter(c => c.workspace_id === workspaceFilter);
     if (searchTerm.trim()) {
       const t = searchTerm.trim().toLowerCase();
       list = list.filter(c =>
@@ -107,7 +137,9 @@ export function BatchCampaignsTab() {
       );
     }
     return list;
-  }, [campaigns, workspaceFilter, searchTerm]);
+  }, [campaigns, searchTerm]);
+
+  const refresh = () => setRefreshNonce(n => n + 1);
 
   const runAction = async (campaign: BatchCampaign, action: 'pause' | 'resume' | 'cancel' | 'retry') => {
     if (!clientId) return;
@@ -119,7 +151,7 @@ export function BatchCampaignsTab() {
       if (action === 'resume') await resumeBatchCampaign(clientId, campaign.id);
       if (action === 'cancel') await cancelBatchCampaign(clientId, campaign.id);
       if (action === 'retry') await retryFailedBatchCampaign(clientId, campaign.id);
-      await load(false);
+      refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'La acción falló');
     } finally {
@@ -156,11 +188,11 @@ export function BatchCampaignsTab() {
 
           {workspaces.length > 1 && (
             <select
-              value={workspaceFilter}
-              onChange={(e) => setWorkspaceFilter(e.target.value)}
+              value={selectedWorkspaceId}
+              onChange={(e) => setSelectedWorkspaceId(e.target.value)}
               className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              title="Cambiar de workspace hace una petición individual de sus campañas"
             >
-              <option value="">Todos los workspaces</option>
               {workspaces.map(w => (
                 <option key={w.id} value={w.id}>{w.name}</option>
               ))}
@@ -168,7 +200,7 @@ export function BatchCampaignsTab() {
           )}
 
           <button
-            onClick={() => load(true)}
+            onClick={refresh}
             disabled={loading}
             className="flex items-center gap-1.5 bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-50 px-3 py-2 rounded-lg text-slate-700 text-sm font-medium"
           >
@@ -191,6 +223,13 @@ export function BatchCampaignsTab() {
           <div className="p-4 flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg text-red-700">
             <AlertCircle className="w-5 h-5 flex-shrink-0" />
             {error}
+          </div>
+        )}
+
+        {syncing && (
+          <div className="p-3 flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-sm">
+            <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
+            Importando números y agentes de este workspace desde Retell...
           </div>
         )}
 
@@ -306,9 +345,14 @@ export function BatchCampaignsTab() {
           clientId={clientId}
           workspaces={workspaces}
           onClose={() => setCreateOpen(false)}
-          onCreated={() => {
+          onCreated={(createdWorkspaceId?: string) => {
             setCreateOpen(false);
-            load(true);
+            // Si la campaña se creó en otro workspace, saltar a ese; si no, refrescar
+            if (createdWorkspaceId && createdWorkspaceId !== selectedWorkspaceId) {
+              setSelectedWorkspaceId(createdWorkspaceId);
+            } else {
+              refresh();
+            }
           }}
         />
       )}

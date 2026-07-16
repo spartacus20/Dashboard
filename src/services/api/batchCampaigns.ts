@@ -87,17 +87,22 @@ export function fetchBatchWorkspaces(clientId: string): Promise<BatchWorkspace[]
   return request(`${clientId}/workspaces`);
 }
 
-// Fuerza re-sync de workspaces + importa agentes/números desde Retell
-export function syncBatchWorkspaces(clientId: string): Promise<BatchWorkspace[]> {
-  return request(`${clientId}/sync`, { method: 'POST' });
+// Sync INDIVIDUAL: importa números y agentes de Retell de UN workspace.
+// La UI lo dispara al seleccionar un workspace que aún no los tiene —
+// nunca se sincronizan todos de una (petición por workspace, bajo demanda).
+export function syncBatchWorkspace(clientId: string, workspaceId: string): Promise<BatchWorkspace> {
+  return request(`${clientId}/workspaces/${workspaceId}/sync`, { method: 'POST' });
 }
 
 export function fetchBatchCampaigns(
   clientId: string,
-  opts: { status?: string; limit?: number; offset?: number } = {}
+  opts: { status?: string; limit?: number; offset?: number; workspaceId?: string } = {}
 ): Promise<BatchCampaign[]> {
   const qs = new URLSearchParams();
   if (opts.status) qs.set('status', opts.status);
+  // Scope por workspace: el front trae solo el workspace seleccionado (primero por
+  // defecto) en vez de todos, para no saturar en clientes con muchos workspaces.
+  if (opts.workspaceId) qs.set('workspace_id', opts.workspaceId);
   qs.set('limit', String(opts.limit ?? 100));
   qs.set('offset', String(opts.offset ?? 0));
   return request(`${clientId}/batches?${qs}`);

@@ -35,7 +35,7 @@ export function CreateBatchCampaignModal({ clientId, workspaces, onClose, onCrea
   clientId: string;
   workspaces: BatchWorkspace[];
   onClose: () => void;
-  onCreated: () => void;
+  onCreated: (createdWorkspaceId?: string) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const detectedTz = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
@@ -95,6 +95,7 @@ export function CreateBatchCampaignModal({ clientId, workspaces, onClose, onCrea
 
   const canSubmit =
     !submitting && name.trim().length > 0 && workspaceId && tasks.length > 0 &&
+    Boolean(workspace?.active_number) &&
     (mode === 'now' || scheduledAt) &&
     (!useWindow || (windowDays.length > 0 && toMinutes(windowEnd) > toMinutes(windowStart)));
 
@@ -118,14 +119,16 @@ export function CreateBatchCampaignModal({ clientId, workspaces, onClose, onCrea
         scheduled_at: mode === 'scheduled' && scheduledAt ? new Date(scheduledAt).getTime() : null,
         call_window,
       });
-      onCreated();
+      onCreated(workspaceId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al crear la campaña');
       setSubmitting(false);
     }
   };
 
-  const previewColumns = headers.length ? headers : ['phone_number'];
+  // filter(Boolean): descarta encabezados vacíos (comas de más en el CSV) que
+  // además producían keys duplicadas en la tabla de preview.
+  const previewColumns = (headers.length ? headers : ['phone_number']).filter(Boolean);
   const previewTasks = tasks.slice(0, PREVIEW_ROWS);
 
   const label = 'block text-sm font-medium text-slate-700 mb-1';
@@ -166,10 +169,17 @@ export function CreateBatchCampaignModal({ clientId, workspaces, onClose, onCrea
                 ))}
               </select>
               {workspace && (
-                <p className="text-xs text-slate-500 mt-1">
-                  {workspace.active_number ? <>Número: {workspace.active_number.number}</> : 'Sin número activo configurado'}
-                  {workspace.active_agent ? <> · Agente: {workspace.active_agent.name}</> : ''}
-                </p>
+                workspace.active_number ? (
+                  <p className="text-xs text-slate-500 mt-1">
+                    Número: {workspace.active_number.number}
+                    {workspace.active_agent ? <> · Agente: {workspace.active_agent.name}</> : ''}
+                  </p>
+                ) : (
+                  <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    Este workspace no tiene número de teléfono en Retell — seleccionalo en la lista para sincronizarlo, o compra/importa un número en Retell.
+                  </p>
+                )
               )}
             </div>
           </div>
@@ -218,8 +228,8 @@ export function CreateBatchCampaignModal({ clientId, workspaces, onClose, onCrea
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-slate-50">
                     <tr>
-                      {previewColumns.map(col => (
-                        <th key={col} className="text-left px-3 py-2 font-medium text-slate-600 border-b border-slate-200 whitespace-nowrap">
+                      {previewColumns.map((col, ci) => (
+                        <th key={ci} className="text-left px-3 py-2 font-medium text-slate-600 border-b border-slate-200 whitespace-nowrap">
                           {col}
                         </th>
                       ))}
@@ -229,8 +239,8 @@ export function CreateBatchCampaignModal({ clientId, workspaces, onClose, onCrea
                     {previewTasks.map((t, i) => (
                       <tr key={i} className="border-b border-slate-100">
                         <td className="px-3 py-1.5 text-slate-700 whitespace-nowrap">{t.to_number}</td>
-                        {previewColumns.slice(1).map(col => (
-                          <td key={col} className="px-3 py-1.5 text-slate-500 whitespace-nowrap">
+                        {previewColumns.slice(1).map((col, ci) => (
+                          <td key={ci} className="px-3 py-1.5 text-slate-500 whitespace-nowrap">
                             {t.dynamic_variables?.[col] ?? ''}
                           </td>
                         ))}
