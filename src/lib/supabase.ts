@@ -481,6 +481,10 @@ export const canAccessBudget = (): boolean => canAccessFeature('budget');
 // Función para verificar si el usuario tiene acceso a Agentes
 export const canAccessAgentes = (): boolean => canAccessFeature('agentes');
 
+// Función para verificar si el usuario tiene acceso a Campañas Programadas
+// (batch service — flag clients.metadata.batch_campaigns, gateado también en backend)
+export const canAccessBatchCampaigns = (): boolean => canAccessFeature('batch_campaigns');
+
 // Obtiene el role del usuario desde userData en sessionStorage
 export const getUserRole = (): string | null => {
   try {
