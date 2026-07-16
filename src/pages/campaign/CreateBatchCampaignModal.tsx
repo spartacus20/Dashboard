@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, CalendarClock, Clock, FileSpreadsheet, Loader2, Upload, X } from 'lucide-react';
 import { parseBatchCsv, BatchTaskInput } from '../../lib/parseBatchCsv';
 import { BatchWorkspace, CallWindow, createBatchCampaign } from '../../services/api/batchCampaigns';
@@ -46,6 +46,8 @@ export function CreateBatchCampaignModal({ clientId, workspaces, onClose, onCrea
 
   const [name, setName] = useState('');
   const [workspaceId, setWorkspaceId] = useState(workspaces[0]?.id ?? '');
+  const [fromNumber, setFromNumber] = useState('');
+  const [agentId, setAgentId] = useState('');
   const [tasks, setTasks] = useState<BatchTaskInput[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -65,6 +67,15 @@ export function CreateBatchCampaignModal({ clientId, workspaces, onClose, onCrea
   const [timezone, setTimezone] = useState(detectedTz);
 
   const workspace = workspaces.find(w => w.id === workspaceId) ?? null;
+  const wsNumbers = workspace?.numbers ?? (workspace?.active_number ? [workspace.active_number] : []);
+  const wsAgents = workspace?.agents ?? (workspace?.active_agent ? [workspace.active_agent] : []);
+
+  // Al cambiar de workspace, resetear número/agente a sus defaults
+  useEffect(() => {
+    const ws = workspaces.find(w => w.id === workspaceId);
+    setFromNumber(ws?.active_number?.number ?? ws?.numbers?.[0]?.number ?? '');
+    setAgentId(ws?.active_agent?.retell_agent_id ?? ws?.agents?.[0]?.retell_agent_id ?? '');
+  }, [workspaceId, workspaces]);
 
   const handleFile = async (file: File) => {
     setParsing(true);
@@ -95,7 +106,7 @@ export function CreateBatchCampaignModal({ clientId, workspaces, onClose, onCrea
 
   const canSubmit =
     !submitting && name.trim().length > 0 && workspaceId && tasks.length > 0 &&
-    Boolean(workspace?.active_number) &&
+    Boolean(fromNumber) &&
     (mode === 'now' || scheduledAt) &&
     (!useWindow || (windowDays.length > 0 && toMinutes(windowEnd) > toMinutes(windowStart)));
 
@@ -116,6 +127,8 @@ export function CreateBatchCampaignModal({ clientId, workspaces, onClose, onCrea
         workspace_id: workspaceId,
         name: name.trim(),
         tasks,
+        from_number: fromNumber,
+        ...(agentId ? { override_agent_id: agentId } : {}),
         scheduled_at: mode === 'scheduled' && scheduledAt ? new Date(scheduledAt).getTime() : null,
         call_window,
       });
@@ -168,18 +181,37 @@ export function CreateBatchCampaignModal({ clientId, workspaces, onClose, onCrea
                   <option key={w.id} value={w.id}>{w.name}</option>
                 ))}
               </select>
-              {workspace && (
-                workspace.active_number ? (
-                  <p className="text-xs text-slate-500 mt-1">
-                    Número: {workspace.active_number.number}
-                    {workspace.active_agent ? <> · Agente: {workspace.active_agent.name}</> : ''}
-                  </p>
-                ) : (
-                  <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
-                    <AlertCircle className="w-3.5 h-3.5" />
-                    Este workspace no tiene número de teléfono en Retell — seleccionalo en la lista para sincronizarlo, o compra/importa un número en Retell.
-                  </p>
-                )
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label className={label}>Número de origen *</label>
+              {wsNumbers.length > 0 ? (
+                <select className={input} value={fromNumber} onChange={e => setFromNumber(e.target.value)}>
+                  {wsNumbers.map(n => (
+                    <option key={n.id} value={n.number}>
+                      {n.number}{n.label ? ` · ${n.label}` : ''}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  Este workspace no tiene números en Retell — seleccionalo en la lista para sincronizarlo, o compra/importa un número en Retell.
+                </p>
+              )}
+            </div>
+            <div>
+              <label className={label}>Agente</label>
+              {wsAgents.length > 0 ? (
+                <select className={input} value={agentId} onChange={e => setAgentId(e.target.value)}>
+                  {wsAgents.map(a => (
+                    <option key={a.id} value={a.retell_agent_id}>{a.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <p className="text-xs text-slate-500 mt-1">Sin agentes importados — se usará el agente vinculado al número en Retell.</p>
               )}
             </div>
           </div>

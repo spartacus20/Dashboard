@@ -7,6 +7,18 @@ import type { BatchTaskInput } from '../../lib/parseBatchCsv';
 
 // ── Tipos ───────────────────────────────────────────────────
 
+export interface WorkspacePhoneNumber {
+  id: string;
+  number: string;
+  label: string | null;
+}
+
+export interface WorkspaceAgent {
+  id: string;
+  retell_agent_id: string;
+  name: string;
+}
+
 export interface BatchWorkspace {
   id: string;
   client_id: string | null;
@@ -14,8 +26,11 @@ export interface BatchWorkspace {
   name: string;
   is_active: boolean;
   has_retell_api_key: boolean;
-  active_number?: { number: string; label: string | null } | null;
-  active_agent?: { retell_agent_id: string; name: string } | null;
+  active_number?: WorkspacePhoneNumber | null;
+  active_agent?: WorkspaceAgent | null;
+  // Listas completas (importadas de Retell) para elegir número/agente por campaña
+  numbers?: WorkspacePhoneNumber[];
+  agents?: WorkspaceAgent[];
 }
 
 export type BatchCampaignStatus = 'draft' | 'planned' | 'ongoing' | 'paused' | 'sent' | 'cancelled';
