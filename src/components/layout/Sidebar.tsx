@@ -8,7 +8,6 @@ import {
   X,
   Key,
   Phone,
-  PhoneOutgoing,
   Calendar,
   PhoneCall,
   LogOut,
@@ -79,7 +78,6 @@ export function Sidebar({
     loadAllCalls,
     loadDashboardData,
     loadPhoneNumbers,
-    loadBatchCalls,
   } = useCallsContext();
   const { user, signOut, changeClientId } = useAuth();
   const progressPercentage =
@@ -565,6 +563,46 @@ export function Sidebar({
             <BarChart3 className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
             Dashboard
           </button>
+          {agentesEnabled && (
+            <button
+              onClick={() => { navigateWithParams("agentes"); }}
+              className={`group flex w-full items-center gap-2 px-4 py-2 ${
+                currentPage === "agentes"
+                  ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
+                  : "text-gray-300 hover:bg-[#0a2a5a]"
+              } rounded-lg`}
+            >
+              <BrainCircuit className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
+              Agentes
+            </button>
+          )}
+          {canAccessNumTel && (
+            <button
+              onClick={() => { navigateWithParams("phones"); }}
+              className={`group flex w-full items-center gap-2 px-4 py-2 ${
+                currentPage === "phones"
+                  ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
+                  : "text-gray-300 hover:bg-[#0a2a5a]"
+              } rounded-lg`}
+              title="Números de Teléfono"
+            >
+              <Phone className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
+              <span className="truncate">Números de Teléfono</span>
+            </button>
+          )}
+          {canAccessCampaign && (
+            <button
+              onClick={() => { navigateWithParams("campaign"); }}
+              className={`group flex w-full items-center gap-2 px-4 py-2 ${
+                currentPage === "campaign"
+                  ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
+                  : "text-gray-300 hover:bg-[#0a2a5a]"
+              } rounded-lg`}
+            >
+              <Megaphone className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
+              Campaña
+            </button>
+          )}
           {recoveriesEnabled && (
             <button
               onClick={() => { navigateWithParams("recoveries"); }}
@@ -617,20 +655,6 @@ export function Sidebar({
               Grabaciones
             </button>
           )}
-          {canAccessNumTel && (
-            <button
-              onClick={() => { navigateWithParams("phones"); }}
-              className={`group flex w-full items-center gap-2 px-4 py-2 ${
-                currentPage === "phones"
-                  ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
-                  : "text-gray-300 hover:bg-[#0a2a5a]"
-              } rounded-lg`}
-              title="Números de Teléfono"
-            >
-              <Phone className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
-              <span className="truncate">Números de Teléfono</span>
-            </button>
-          )}
           {canAccessCallbacks && (
             <button
               onClick={() => { navigateWithParams("callbacks"); }}
@@ -642,19 +666,6 @@ export function Sidebar({
             >
               <PhoneCall className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
               Callbacks
-            </button>
-          )}
-          {canAccessCampaign && (
-            <button
-              onClick={() => { navigateWithParams("campaign"); }}
-              className={`group flex w-full items-center gap-2 px-4 py-2 ${
-                currentPage === "campaign"
-                  ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
-                  : "text-gray-300 hover:bg-[#0a2a5a]"
-              } rounded-lg`}
-            >
-              <Megaphone className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
-              Campaña
             </button>
           )}
           {canAccessSales && (
@@ -746,19 +757,6 @@ export function Sidebar({
             >
               <Wallet className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
               Presupuesto
-            </button>
-          )}
-          {agentesEnabled && (
-            <button
-              onClick={() => { navigateWithParams("agentes"); }}
-              className={`group flex w-full items-center gap-2 px-4 py-2 ${
-                currentPage === "agentes"
-                  ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
-                  : "text-gray-300 hover:bg-[#0a2a5a]"
-              } rounded-lg`}
-            >
-              <BrainCircuit className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
-              Agentes
             </button>
           )}
         </nav>
