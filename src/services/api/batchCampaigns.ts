@@ -141,6 +141,34 @@ export function fetchBatchTasksBreakdown(clientId: string, batchId: string): Pro
   return request(`${clientId}/batches/${batchId}/tasks`);
 }
 
+export interface BatchCampaignTask {
+  id: string;
+  to_number: string;
+  status: string;
+  attempts: number;
+  retell_call_id: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  disconnection_reason: string | null;
+  error: string | null;
+  dynamic_variables: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Lista de llamadas individuales de la campaña (paginada)
+export function fetchBatchCampaignTasks(
+  clientId: string,
+  batchId: string,
+  opts: { status?: string; limit?: number; offset?: number } = {}
+): Promise<BatchCampaignTask[]> {
+  const qs = new URLSearchParams();
+  if (opts.status) qs.set('status', opts.status);
+  qs.set('limit', String(opts.limit ?? 100));
+  qs.set('offset', String(opts.offset ?? 0));
+  return request(`${clientId}/batches/${batchId}/tasks/list?${qs}`);
+}
+
 export function pauseBatchCampaign(clientId: string, batchId: string) {
   return request<{ ok: boolean }>(`${clientId}/batches/${batchId}/pause`, { method: 'PATCH' });
 }

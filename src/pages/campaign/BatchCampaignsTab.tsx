@@ -5,10 +5,10 @@ import {
 } from 'lucide-react';
 import { useCallsContext } from '../../context/CallsContext';
 import {
-  BatchCampaign, BatchTasksBreakdown, BatchWorkspace,
-  cancelBatchCampaign, fetchBatchCampaigns, fetchBatchTasksBreakdown,
-  fetchBatchWorkspaces, pauseBatchCampaign, resumeBatchCampaign,
-  retryFailedBatchCampaign, syncBatchWorkspace,
+  BatchCampaign, BatchCampaignTask, BatchTasksBreakdown, BatchWorkspace,
+  cancelBatchCampaign, fetchBatchCampaigns, fetchBatchCampaignTasks,
+  fetchBatchTasksBreakdown, fetchBatchWorkspaces, pauseBatchCampaign,
+  resumeBatchCampaign, retryFailedBatchCampaign, syncBatchWorkspace,
 } from '../../services/api/batchCampaigns';
 import { CreateBatchCampaignModal } from './CreateBatchCampaignModal';
 
@@ -398,6 +398,31 @@ const TASK_STATUS_LABEL: Record<string, string> = {
   cancelled: 'Canceladas',
 };
 
+const TASK_ROW_STATUS: Record<string, { label: string; cls: string }> = {
+  pending: { label: 'Reintento programado', cls: 'bg-amber-100 text-amber-700' },
+  queued: { label: 'En cola', cls: 'bg-slate-100 text-slate-600' },
+  dialing: { label: 'Marcando', cls: 'bg-blue-100 text-blue-700' },
+  in_call: { label: 'En llamada', cls: 'bg-blue-100 text-blue-800' },
+  completed: { label: 'Completada', cls: 'bg-emerald-100 text-emerald-700' },
+  failed: { label: 'Fallida', cls: 'bg-red-100 text-red-700' },
+  cancelled: { label: 'Cancelada', cls: 'bg-slate-100 text-slate-500' },
+};
+
+const TASKS_PAGE = 100;
+
+function callDuration(task: BatchCampaignTask): string {
+  if (!task.started_at || !task.ended_at) return '—';
+  const secs = Math.max(0, Math.round((new Date(task.ended_at).getTime() - new Date(task.started_at).getTime()) / 1000));
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function callTime(task: BatchCampaignTask): string {
+  const ts = task.started_at ?? task.updated_at;
+  return new Date(ts).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
 function BatchCampaignDetailModal({ clientId, campaign, workspaceName, onClose }: {
   clientId: string;
   campaign: BatchCampaign;
@@ -405,18 +430,36 @@ function BatchCampaignDetailModal({ clientId, campaign, workspaceName, onClose }
   onClose: () => void;
 }) {
   const [breakdown, setBreakdown] = useState<BatchTasksBreakdown | null>(null);
+  const [tasks, setTasks] = useState<BatchCampaignTask[]>([]);
+  const [pagesLoaded, setPagesLoaded] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Resumen + lista de llamadas, refrescados juntos cada 5s (se re-piden las
+  // páginas ya cargadas, así las filas visibles se actualizan en vivo).
   useEffect(() => {
     let alive = true;
-    const fetchIt = () =>
+    const fetchIt = () => {
       fetchBatchTasksBreakdown(clientId, campaign.id)
         .then(d => { if (alive) { setBreakdown(d); setError(null); } })
         .catch(err => { if (alive) setError(err instanceof Error ? err.message : 'Error'); });
+      fetchBatchCampaignTasks(clientId, campaign.id, { limit: pagesLoaded * TASKS_PAGE, offset: 0 })
+        .then(list => { if (alive) setTasks(list); })
+        .catch(() => { /* la lista no bloquea el resumen */ });
+    };
     fetchIt();
     const timer = setInterval(fetchIt, 5000);
     return () => { alive = false; clearInterval(timer); };
-  }, [clientId, campaign.id]);
+  }, [clientId, campaign.id, pagesLoaded]);
+
+  const loadMore = async () => {
+    setLoadingMore(true);
+    try {
+      setPagesLoaded(p => p + 1); // el efecto re-pide con el límite ampliado
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const scheduled = formatScheduled(campaign);
 
@@ -489,6 +532,67 @@ function BatchCampaignDetailModal({ clientId, campaign, workspaceName, onClose }
                         <span className="text-red-600 font-semibold">×{count}</span>
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Lista de llamadas individuales (como el detalle de batch de Retell) */}
+              {tasks.length > 0 && (
+                <div>
+                  <h5 className="text-sm font-semibold text-slate-700 mb-2">
+                    Llamadas <span className="text-slate-400 font-normal">({campaign.total_tasks} en total)</span>
+                  </h5>
+                  <div className="border border-slate-200 rounded-lg overflow-hidden">
+                    <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                      <table className="w-full text-xs">
+                        <thead className="sticky top-0 bg-slate-50 z-10">
+                          <tr className="text-left text-slate-500 border-b border-slate-200">
+                            <th className="px-3 py-2 font-medium">Número</th>
+                            <th className="px-3 py-2 font-medium">Estado</th>
+                            <th className="px-3 py-2 font-medium">Resultado</th>
+                            <th className="px-3 py-2 font-medium text-center">Intentos</th>
+                            <th className="px-3 py-2 font-medium text-right">Duración</th>
+                            <th className="px-3 py-2 font-medium text-right">Hora</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {tasks.map(t => {
+                            const st = TASK_ROW_STATUS[t.status] ?? { label: t.status, cls: 'bg-slate-100 text-slate-600' };
+                            const info = t.disconnection_reason ? breakdown.reason_info[t.disconnection_reason] : null;
+                            return (
+                              <tr key={t.id} className="border-b border-slate-100 hover:bg-slate-50">
+                                <td className="px-3 py-2 text-slate-700 whitespace-nowrap font-medium">{t.to_number}</td>
+                                <td className="px-3 py-2 whitespace-nowrap">
+                                  <span className={`px-1.5 py-0.5 rounded-full font-medium ${st.cls}`}>{st.label}</span>
+                                </td>
+                                <td className="px-3 py-2 text-slate-600 whitespace-nowrap" title={info?.cause ?? t.error ?? ''}>
+                                  {info ? (
+                                    <span className="inline-flex items-center gap-1.5">
+                                      <span className={`w-1.5 h-1.5 rounded-full ${SEVERITY_DOT[info.severity] ?? 'bg-slate-400'}`} />
+                                      {info.label}
+                                    </span>
+                                  ) : t.error ? (
+                                    <span className="text-red-600 truncate inline-block max-w-[200px] align-bottom">{t.error}</span>
+                                  ) : '—'}
+                                </td>
+                                <td className="px-3 py-2 text-center text-slate-500">{t.attempts}</td>
+                                <td className="px-3 py-2 text-right text-slate-600 tabular-nums">{callDuration(t)}</td>
+                                <td className="px-3 py-2 text-right text-slate-500 whitespace-nowrap">{callTime(t)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    {tasks.length >= pagesLoaded * TASKS_PAGE && tasks.length < campaign.total_tasks && (
+                      <button
+                        onClick={loadMore}
+                        disabled={loadingMore}
+                        className="w-full px-3 py-2 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border-t border-slate-200 disabled:opacity-50"
+                      >
+                        Cargar más ({tasks.length} de {campaign.total_tasks})
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
