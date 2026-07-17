@@ -58,6 +58,12 @@ export interface BatchCampaign {
   created_at: string;
   updated_at: string;
   tasks_by_status?: Record<string, number>;
+  // Overrides por campaña (migración 002) — null = config del workspace
+  max_concurrency?: number | null;
+  max_retry_attempts?: number | null;
+  retry_delay_no_answer?: number | null; // segundos
+  retry_delay_voicemail?: number | null;
+  retry_delay_busy?: number | null;
 }
 
 export interface ReasonInfo {

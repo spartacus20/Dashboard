@@ -268,16 +268,19 @@ export function BatchCampaignsTab() {
                   const pct = progressOf(c);
                   const scheduled = formatScheduled(c);
                   return (
-                    <tr key={c.id} className="border-b border-slate-100 hover:bg-slate-50">
+                    <tr
+                      key={c.id}
+                      onClick={() => setDetail(c)}
+                      className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer"
+                      title="Ver detalle de la campaña"
+                    >
                       <td className="py-3 pr-4">
-                        <button onClick={() => setDetail(c)} className="text-left group">
-                          <div className="font-medium text-slate-800 group-hover:text-blue-700">{c.name}</div>
-                          <div className="text-xs text-slate-500">
-                            {workspaceNameById[c.workspace_id] ?? 'Workspace'} · {c.from_number}
-                            {scheduled && <> · <CalendarClock className="w-3 h-3 inline -mt-0.5" /> {scheduled}</>}
-                            {c.call_window && <> · ventana horaria</>}
-                          </div>
-                        </button>
+                        <div className="font-medium text-slate-800">{c.name}</div>
+                        <div className="text-xs text-slate-500">
+                          {workspaceNameById[c.workspace_id] ?? 'Workspace'} · {c.from_number}
+                          {scheduled && <> · <CalendarClock className="w-3 h-3 inline -mt-0.5" /> {scheduled}</>}
+                          {c.call_window && <> · ventana horaria</>}
+                        </div>
                       </td>
                       <td className="py-3 pr-4">
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_BADGE[c.status] ?? 'bg-slate-100 text-slate-700'}`}>
@@ -295,7 +298,8 @@ export function BatchCampaignsTab() {
                       <td className="py-3 pr-4 text-right text-slate-700">{c.total_tasks}</td>
                       <td className="py-3 pr-4 text-right text-emerald-700">{c.picked_up}</td>
                       <td className="py-3 pr-4 text-right text-red-600">{c.failed}</td>
-                      <td className="py-3 pr-0">
+                      {/* stopPropagation: los botones de acción no deben abrir el detalle */}
+                      <td className="py-3 pr-0" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center gap-1.5 justify-end">
                           {c.status === 'ongoing' && (
                             <button
@@ -371,7 +375,7 @@ export function BatchCampaignsTab() {
         <BatchCampaignDetailModal
           clientId={clientId}
           campaign={detail}
-          workspaceName={workspaceNameById[detail.workspace_id] ?? 'Workspace'}
+          workspace={workspaces.find(w => w.id === detail.workspace_id) ?? null}
           onClose={() => setDetail(null)}
         />
       )}
@@ -423,12 +427,44 @@ function callTime(task: BatchCampaignTask): string {
   return new Date(ts).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
-function BatchCampaignDetailModal({ clientId, campaign, workspaceName, onClose }: {
+const WINDOW_DAY_ES: Record<string, string> = {
+  Monday: 'Lun', Tuesday: 'Mar', Wednesday: 'Mié', Thursday: 'Jue',
+  Friday: 'Vie', Saturday: 'Sáb', Sunday: 'Dom',
+};
+
+function minutesToHHMM(mins: number): string {
+  return `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
+}
+
+function formatWindow(cw: NonNullable<BatchCampaign['call_window']>): string {
+  const days = cw.day.map(d => WINDOW_DAY_ES[d] ?? d).join(', ');
+  const ranges = cw.windows.map(w => `${minutesToHHMM(w.start)}–${minutesToHHMM(w.end)}`).join(' y ');
+  return `${days} · ${ranges} (${cw.timezone})`;
+}
+
+function retrySummary(c: BatchCampaign): string {
+  if (c.max_retry_attempts === 1) return 'Sin reintentos (1 solo intento)';
+  const min = (s: number | null | undefined) => (s ? `${Math.round(s / 60)}m` : null);
+  const parts = [
+    min(c.retry_delay_voicemail) && `buzón ${min(c.retry_delay_voicemail)}`,
+    min(c.retry_delay_no_answer) && `no contesta ${min(c.retry_delay_no_answer)}`,
+    min(c.retry_delay_busy) && `ocupado ${min(c.retry_delay_busy)}`,
+  ].filter(Boolean);
+  if (!c.max_retry_attempts && !parts.length) return 'Config del workspace (3 intentos)';
+  return `${c.max_retry_attempts ?? 3} intentos${parts.length ? ' · ' + parts.join(' · ') : ''}`;
+}
+
+function BatchCampaignDetailModal({ clientId, campaign, workspace, onClose }: {
   clientId: string;
   campaign: BatchCampaign;
-  workspaceName: string;
+  workspace: BatchWorkspace | null;
   onClose: () => void;
 }) {
+  const workspaceName = workspace?.name ?? 'Workspace';
+  const agentName = campaign.override_agent_id
+    ? (workspace?.agents?.find(a => a.retell_agent_id === campaign.override_agent_id)?.name ?? campaign.override_agent_id)
+    : 'Por defecto del workspace';
+  const successPct = campaign.sent > 0 ? Math.round((campaign.successful / campaign.sent) * 100) : 0;
   const [breakdown, setBreakdown] = useState<BatchTasksBreakdown | null>(null);
   const [tasks, setTasks] = useState<BatchCampaignTask[]>([]);
   const [pagesLoaded, setPagesLoaded] = useState(1);
@@ -469,12 +505,16 @@ function BatchCampaignDetailModal({ clientId, campaign, workspaceName, onClose }
         className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-5 border-b border-slate-200 flex items-start justify-between gap-4 sticky top-0 bg-white rounded-t-xl">
+        <div className="p-5 border-b border-slate-200 flex items-start justify-between gap-4 sticky top-0 bg-white rounded-t-xl z-20">
           <div>
-            <h4 className="text-lg font-semibold text-slate-800">{campaign.name}</h4>
+            <h4 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+              {campaign.name}
+              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[campaign.status] ?? 'bg-slate-100 text-slate-700'}`}>
+                {STATUS_LABEL[campaign.status] ?? campaign.status}
+              </span>
+            </h4>
             <p className="text-sm text-slate-500">
-              {workspaceName} · {campaign.from_number}
-              {scheduled && <> · programada {scheduled}</>}
+              {workspaceName} · creada {new Date(campaign.created_at).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
             </p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500">
@@ -486,6 +526,58 @@ function BatchCampaignDetailModal({ clientId, campaign, workspaceName, onClose }
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>
           )}
+
+          {/* Métricas principales */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-center">
+              <div className="text-xl font-semibold text-slate-800">{campaign.total_tasks}</div>
+              <div className="text-xs text-slate-500">Contactos</div>
+            </div>
+            <div className="p-3 rounded-lg bg-blue-50 border border-blue-100 text-center">
+              <div className="text-xl font-semibold text-blue-700">{campaign.sent}</div>
+              <div className="text-xs text-slate-500">Llamadas hechas</div>
+            </div>
+            <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-100 text-center">
+              <div className="text-xl font-semibold text-emerald-700">{campaign.picked_up}</div>
+              <div className="text-xs text-slate-500">Atendidas</div>
+            </div>
+            <div className="p-3 rounded-lg bg-red-50 border border-red-100 text-center">
+              <div className="text-xl font-semibold text-red-600">{campaign.failed}</div>
+              <div className="text-xs text-slate-500">Fallidas</div>
+            </div>
+            <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-center col-span-2 sm:col-span-1">
+              <div className="text-xl font-semibold text-slate-800">{successPct}%</div>
+              <div className="text-xs text-slate-500">Efectividad</div>
+            </div>
+          </div>
+
+          {/* Configuración de la campaña */}
+          <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2 text-sm bg-slate-50 border border-slate-200 rounded-lg p-4">
+            <div className="flex justify-between gap-3">
+              <span className="text-slate-500">Número de origen</span>
+              <span className="text-slate-800 font-medium">{campaign.from_number}</span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-slate-500">Agente</span>
+              <span className="text-slate-800 font-medium truncate max-w-[200px]" title={agentName}>{agentName}</span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-slate-500">Lanzamiento</span>
+              <span className="text-slate-800 font-medium">{scheduled ? `Programada ${scheduled}` : 'Inmediato'}</span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-slate-500">Franja horaria</span>
+              <span className="text-slate-800 font-medium text-right">{campaign.call_window ? formatWindow(campaign.call_window) : 'Sin restricción'}</span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-slate-500">Reintentos</span>
+              <span className="text-slate-800 font-medium text-right">{retrySummary(campaign)}</span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-slate-500">Simultáneas máx.</span>
+              <span className="text-slate-800 font-medium">{campaign.max_concurrency ?? 'Sin tope propio'}</span>
+            </div>
+          </div>
 
           {!breakdown ? (
             <div className="p-8 text-center text-slate-500 flex items-center justify-center gap-2">
