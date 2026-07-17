@@ -83,6 +83,23 @@ export interface CreateBatchCampaignPayload {
   override_agent_id?: string;
   scheduled_at?: number | null;
   call_window?: CallWindow | null;
+  // Opciones avanzadas (null/ausente = config por defecto del workspace)
+  max_concurrency?: number | null;
+  max_retry_attempts?: number | null; // 1 = sin reintentos
+  retry_delay_no_answer?: number | null; // segundos
+  retry_delay_voicemail?: number | null;
+  retry_delay_busy?: number | null;
+}
+
+export interface WorkspaceConcurrency {
+  current: number;
+  limit: number;
+  available: number;
+}
+
+// Concurrencia EN VIVO de la cuenta Retell del workspace
+export function fetchWorkspaceConcurrency(clientId: string, workspaceId: string): Promise<WorkspaceConcurrency> {
+  return request(`${clientId}/workspaces/${workspaceId}/concurrency`);
 }
 
 // ── Helpers ─────────────────────────────────────────────────

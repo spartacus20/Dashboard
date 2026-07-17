@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, CalendarClock, Clock, FileSpreadsheet, Loader2, Upload, X } from 'lucide-react';
+import { AlertCircle, CalendarClock, ChevronDown, ChevronRight, Clock, FileSpreadsheet, Gauge, Loader2, Upload, X } from 'lucide-react';
 import { parseBatchCsv, BatchTaskInput } from '../../lib/parseBatchCsv';
-import { BatchWorkspace, CallWindow, createBatchCampaign } from '../../services/api/batchCampaigns';
+import {
+  BatchWorkspace, CallWindow, WorkspaceConcurrency,
+  createBatchCampaign, fetchWorkspaceConcurrency,
+} from '../../services/api/batchCampaigns';
 
 const PREVIEW_ROWS = 60;
 
@@ -67,6 +70,27 @@ export function CreateBatchCampaignModal({ clientId, workspaces, syncing, onSync
   const [windowStart, setWindowStart] = useState('09:00');
   const [windowEnd, setWindowEnd] = useState('20:00');
   const [timezone, setTimezone] = useState(detectedTz);
+
+  // Opciones avanzadas
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [concurrency, setConcurrency] = useState<WorkspaceConcurrency | null>(null);
+  const [maxConcurrency, setMaxConcurrency] = useState(''); // vacío = sin tope propio
+  const [retriesOn, setRetriesOn] = useState(true);
+  const [maxAttempts, setMaxAttempts] = useState('3');
+  const [delayVoicemailMin, setDelayVoicemailMin] = useState('240');
+  const [delayNoAnswerMin, setDelayNoAnswerMin] = useState('120');
+  const [delayBusyMin, setDelayBusyMin] = useState('60');
+
+  // Concurrencia en vivo del workspace elegido (informativa + valida el tope)
+  useEffect(() => {
+    if (!workspaceId) return;
+    let alive = true;
+    setConcurrency(null);
+    fetchWorkspaceConcurrency(clientId, workspaceId)
+      .then(c => { if (alive) setConcurrency(c); })
+      .catch(() => { /* informativo, no bloquea */ });
+    return () => { alive = false; };
+  }, [clientId, workspaceId]);
 
   const workspace = workspaces.find(w => w.id === workspaceId) ?? null;
   const wsNumbers = workspace?.numbers ?? (workspace?.active_number ? [workspace.active_number] : []);
@@ -135,6 +159,12 @@ export function CreateBatchCampaignModal({ clientId, workspaces, syncing, onSync
           }
         : null;
 
+      const minutes = (v: string) => {
+        const n = parseInt(v, 10);
+        return Number.isFinite(n) && n > 0 ? n * 60 : null; // → segundos
+      };
+      const maxConc = parseInt(maxConcurrency, 10);
+
       await createBatchCampaign(clientId, {
         workspace_id: workspaceId,
         name: name.trim(),
@@ -143,6 +173,12 @@ export function CreateBatchCampaignModal({ clientId, workspaces, syncing, onSync
         ...(agentId ? { override_agent_id: agentId } : {}),
         scheduled_at: mode === 'scheduled' && scheduledAt ? new Date(scheduledAt).getTime() : null,
         call_window,
+        max_concurrency: Number.isFinite(maxConc) && maxConc > 0 ? maxConc : null,
+        // Reintentos: apagados = 1 intento total; encendidos = intentos + esperas elegidas
+        max_retry_attempts: retriesOn ? (parseInt(maxAttempts, 10) || 3) : 1,
+        retry_delay_voicemail: retriesOn ? minutes(delayVoicemailMin) : null,
+        retry_delay_no_answer: retriesOn ? minutes(delayNoAnswerMin) : null,
+        retry_delay_busy: retriesOn ? minutes(delayBusyMin) : null,
       });
       onCreated(workspaceId);
     } catch (err) {
@@ -384,6 +420,78 @@ export function CreateBatchCampaignModal({ clientId, workspaces, syncing, onSync
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Opciones avanzadas: concurrencia + reintentos por campaña */}
+          <div className="border border-slate-200 rounded-lg">
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(v => !v)}
+              className="w-full px-4 py-2.5 flex items-center gap-2 text-sm font-medium text-slate-700 hover:bg-slate-50 rounded-lg"
+            >
+              {showAdvanced ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              Opciones avanzadas
+              <span className="text-xs text-slate-400 font-normal ml-1">concurrencia y reintentos</span>
+            </button>
+
+            {showAdvanced && (
+              <div className="px-4 pb-4 space-y-4 border-t border-slate-100 pt-3">
+                <div>
+                  <label className={`${label} flex items-center gap-1.5`}>
+                    <Gauge className="w-4 h-4 text-slate-500" />
+                    Llamadas simultáneas máximas de esta campaña
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    className={input}
+                    value={maxConcurrency}
+                    onChange={e => setMaxConcurrency(e.target.value)}
+                    placeholder={concurrency ? `Sin tope propio (la cuenta permite ${concurrency.limit})` : 'Sin tope propio'}
+                  />
+                  <p className="text-xs text-slate-500 mt-1">
+                    {concurrency
+                      ? <>Tu cuenta de Retell permite <b>{concurrency.limit}</b> llamadas simultáneas ({concurrency.current} en uso ahora). El sistema nunca supera ese techo; acá podés bajarlo solo para esta campaña.</>
+                      : 'Consultando el límite de tu cuenta de Retell...'}
+                  </p>
+                </div>
+
+                <div>
+                  <label className={`${label} flex items-center gap-2`}>
+                    <input
+                      type="checkbox"
+                      checked={retriesOn}
+                      onChange={e => setRetriesOn(e.target.checked)}
+                      className="rounded border-slate-300"
+                    />
+                    Reintentar llamadas no atendidas
+                  </label>
+                  {retriesOn && (
+                    <div className="mt-2 grid sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-slate-600 mb-1">Intentos máximos por número</label>
+                        <input type="number" min={2} max={10} className={input} value={maxAttempts} onChange={e => setMaxAttempts(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-600 mb-1">Buzón de voz → reintentar en (min)</label>
+                        <input type="number" min={1} className={input} value={delayVoicemailMin} onChange={e => setDelayVoicemailMin(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-600 mb-1">No contesta → reintentar en (min)</label>
+                        <input type="number" min={1} className={input} value={delayNoAnswerMin} onChange={e => setDelayNoAnswerMin(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-600 mb-1">Ocupado → reintentar en (min)</label>
+                        <input type="number" min={1} className={input} value={delayBusyMin} onChange={e => setDelayBusyMin(e.target.value)} />
+                      </div>
+                    </div>
+                  )}
+                  {!retriesOn && (
+                    <p className="text-xs text-slate-500 mt-1">Cada número se llama UNA sola vez, sin importar el resultado.</p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
