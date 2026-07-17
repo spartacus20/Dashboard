@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { Button } from '../../components/ui/button';
 import { Settings, X, RefreshCw, Save, XCircle, CheckCircle2, AlertCircle } from 'lucide-react';
 import { BASE_URL, canAccessSeguimientos, getStoredClientId } from '../../lib/supabase';
+import { authedFetch } from '../../services/api/http';
 import { saveBatchCallSettings, getRetellConfig, updateRetellConfig } from '../../services/api/seguimientos';
 
 type BatchStatus = 'pending' | 'sending' | 'success' | 'error';
@@ -389,9 +390,13 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
     setRetellErrorByKey((prev) => ({ ...prev, [apiKey]: null }));
 
     try {
+      // Rutas AUTENTICADAS: la key nunca viaja — el server la resuelve por índice
+      const clientId = getStoredClientId();
+      if (!clientId) throw new Error('Sin cliente seleccionado');
+      const idx = Math.max(0, apiKeys.indexOf(apiKey));
       const [numbersRes, agentsRes] = await Promise.all([
-        fetch(`${BASE_URL}/api/microtools/retell/list?apiKey=${encodeURIComponent(apiKey)}`),
-        fetch(`${BASE_URL}/api/microtools/retell/list-agents?apiKeyOrigen=${encodeURIComponent(apiKey)}`),
+        authedFetch(`${BASE_URL}/api/telephony/${clientId}/phone-numbers?workspace_index=${idx}`),
+        authedFetch(`${BASE_URL}/api/telephony/${clientId}/agents?workspace_index=${idx}`),
       ]);
       const numbersData = await numbersRes.json();
       const agentsData = await agentsRes.json();
@@ -399,15 +404,15 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
       if (!numbersRes.ok || !numbersData.success) {
         throw new Error(numbersData.error || `Error ${numbersRes.status} al listar números`);
       }
-      if (!agentsRes.ok || !agentsData.ok) {
+      if (!agentsRes.ok || !agentsData.success) {
         throw new Error(typeof agentsData.error === 'string' ? agentsData.error : `Error ${agentsRes.status} al listar agentes`);
       }
 
       setRetellOptionsByKey((prev) => ({
         ...prev,
         [apiKey]: {
-          phoneNumbers: numbersData.phoneNumbers || [],
-          agents: agentsData.agents || [],
+          phoneNumbers: numbersData.data || [],
+          agents: agentsData.data || [],
         },
       }));
     } catch (err: any) {
@@ -461,7 +466,8 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
     const expectedUrl = `${BASE_URL}/api/callback/webhook/${clientId}`;
     setWebhookChecks((prev) => ({ ...prev, [batchId]: { state: 'checking', expectedUrl } }));
     try {
-      const res = await fetch(`${BASE_URL}/api/microtools/retell/get-agent?apiKey=${encodeURIComponent(apiKey)}&agent_id=${encodeURIComponent(agentId)}`);
+      const idx = Math.max(0, apiKeys.indexOf(apiKey));
+      const res = await authedFetch(`${BASE_URL}/api/telephony/${clientId}/agent/${encodeURIComponent(agentId)}?workspace_index=${idx}`);
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || 'Error al consultar agente');
       const currentUrl: string = data.agent?.webhook_url || '';
@@ -480,13 +486,14 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
 
   async function fixAgentWebhook(batchId: string, agentId: string, apiKey: string) {
     const check = webhookChecks[batchId];
-    if (!check?.expectedUrl || !BASE_URL) return;
+    const clientId = getStoredClientId();
+    if (!check?.expectedUrl || !BASE_URL || !clientId) return;
     setWebhookChecks((prev) => ({ ...prev, [batchId]: { ...prev[batchId], fixing: true } }));
     try {
-      const res = await fetch(`${BASE_URL}/api/microtools/retell/update-agent`, {
+      const idx = Math.max(0, apiKeys.indexOf(apiKey));
+      const res = await authedFetch(`${BASE_URL}/api/telephony/${clientId}/agent/${encodeURIComponent(agentId)}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey, agent_id: agentId, webhook_url: check.expectedUrl }),
+        body: JSON.stringify({ workspace_index: idx, webhook_url: check.expectedUrl }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || 'Error al actualizar agente');
@@ -546,8 +553,11 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
 
     setBatches((prev) => prev.map((b) => (b.id === batchId ? { ...b, status: 'sending', error: null, response: null } : b)));
     try {
+      const clientId = getStoredClientId();
+      if (!clientId) throw new Error('Sin cliente seleccionado');
+      // La apiKey ya NO viaja: el server la resuelve por workspace_index
       const body: any = {
-        apiKey: target.config.apiKey.trim(),
+        workspace_index: Math.max(0, apiKeys.indexOf(target.config.apiKey.trim())),
         csvContent: target.csvContent,
         from_number: target.config.fromNumber.trim(),
       };
@@ -560,9 +570,8 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
       if (target.config.timezone.trim()) body.timezone = target.config.timezone.trim();
       if (target.config.reservedConcurrency.trim()) body.reserved_concurrency = target.config.reservedConcurrency.trim();
 
-      const response = await fetch(`${BASE_URL}/api/microtools/retell/create-batch-call`, {
+      const response = await authedFetch(`${BASE_URL}/api/telephony/${clientId}/batch-call-csv`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
       const data: BatchResponse = await response.json();
