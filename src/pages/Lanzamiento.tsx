@@ -16,6 +16,7 @@ import {
 } from 'recharts';
 import { useCallsContext } from '../context/CallsContext';
 import { BASE_URL, getClientId } from '../services/api/config';
+import { authedFetch } from '../services/api/http';
 
 interface MetricByCountry {
   pais: string;
@@ -141,9 +142,8 @@ const Lanzamiento: React.FC = () => {
       const clientId = getClientId() || '';
       const { fecha_inicio, fecha_fin } = getExportDateRange();
 
-      const response = await fetch(`${BASE_URL}/api/lanzamiento/asistencia/export`, {
+      const response = await authedFetch(`${BASE_URL}/api/lanzamiento/asistencia/export`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ client_id: clientId, fecha_inicio: `${fecha_inicio}T00:00:00Z`, fecha_fin: `${fecha_fin}T23:59:59Z` }),
       });
 
@@ -191,9 +191,8 @@ const Lanzamiento: React.FC = () => {
       const clientId = getClientId() || '';
       const { fecha_inicio, fecha_fin } = getExportDateRange();
 
-      const response = await fetch(`${BASE_URL}/api/lanzamiento/links/export`, {
+      const response = await authedFetch(`${BASE_URL}/api/lanzamiento/links/export`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ client_id: clientId, fecha_inicio: `${fecha_inicio}T00:00:00Z`, fecha_fin: `${fecha_fin}T23:59:59Z` }),
       });
 
