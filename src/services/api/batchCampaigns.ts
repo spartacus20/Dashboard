@@ -79,6 +79,36 @@ export interface BatchTasksBreakdown {
   top_errors: { message: string; count: number }[];
   disconnection_breakdown: { reason: string; count: number }[];
   reason_info: Record<string, ReasonInfo>;
+  // Motivos que en realidad fueron "atendida" (colgó el usuario/agente, transferencia,
+  // inactividad) — para no ofrecerlos como "descargar fallidas por este motivo".
+  // Opcional: el batch service desplegado puede no tener este campo todavía.
+  picked_up_reasons?: string[];
+}
+
+// Sentinel para pedir el bucket de "errores de sistema" (número inválido, error
+// de Retell antes de conectar) — separado por defecto de "todas las fallidas"
+// porque reintentar esos números no suele tener sentido.
+export const SYSTEM_ERROR_REASON = '__system_error__';
+
+export interface UnansweredTaskRow {
+  to_number: string;
+  dynamic_variables: Record<string, unknown> | null;
+  disconnection_reason: string | null;
+  status: string;
+  error: string | null;
+}
+
+// Descarga completa (sin paginar) de las tasks no atendidas de una campaña, en
+// bruto — el caller arma el CSV. `reason` filtra por disconnection_reason puntual
+// o SYSTEM_ERROR_REASON; sin `reason` trae todas las fallidas "normales" (excluye
+// errores de sistema).
+export function fetchUnansweredTasks(
+  clientId: string,
+  batchId: string,
+  reason?: string
+): Promise<UnansweredTaskRow[]> {
+  const qs = reason ? `?reason=${encodeURIComponent(reason)}` : '';
+  return request(`${clientId}/batches/${batchId}/tasks/export${qs}`);
 }
 
 export interface CreateBatchCampaignPayload {

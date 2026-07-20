@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertCircle, CalendarClock, Loader2, Pause, Play, Plus, RefreshCw,
+  AlertCircle, CalendarClock, ChevronDown, Download, Loader2, Pause, Play, Plus, RefreshCw,
   RotateCcw, Search, X, XCircle,
 } from 'lucide-react';
 import { useCallsContext } from '../../context/CallsContext';
 import {
-  BatchCampaign, BatchCampaignTask, BatchTasksBreakdown, BatchWorkspace,
-  cancelBatchCampaign, fetchBatchCampaigns, fetchBatchCampaignTasks,
-  fetchBatchTasksBreakdown, fetchBatchWorkspaces, pauseBatchCampaign,
+  BatchCampaign, BatchCampaignTask, BatchTasksBreakdown, BatchWorkspace, SYSTEM_ERROR_REASON,
+  UnansweredTaskRow, cancelBatchCampaign, fetchBatchCampaigns, fetchBatchCampaignTasks,
+  fetchBatchTasksBreakdown, fetchBatchWorkspaces, fetchUnansweredTasks, pauseBatchCampaign,
   resumeBatchCampaign, retryFailedBatchCampaign, syncBatchWorkspace,
 } from '../../services/api/batchCampaigns';
 import { CreateBatchCampaignModal } from './CreateBatchCampaignModal';
@@ -454,6 +454,130 @@ function retrySummary(c: BatchCampaign): string {
   return `${c.max_retry_attempts ?? 3} intentos${parts.length ? ' · ' + parts.join(' · ') : ''}`;
 }
 
+// Arma y descarga un CSV compatible con el importador de "Nueva campaña"
+// (columna phone_number + las variables dinámicas originales) — así el archivo
+// se puede volver a subir directo para relanzar solo a estos contactos.
+function downloadUnansweredCsv(rows: UnansweredTaskRow[], filenameBase: string) {
+  const varKeys = [...new Set(rows.flatMap(r => Object.keys(r.dynamic_variables ?? {})))];
+  const headers = ['phone_number', ...varKeys];
+  const escapeCsv = (val: unknown) => {
+    if (val == null) return '';
+    const str = String(val);
+    return str.includes(',') || str.includes('"') || str.includes('\n')
+      ? `"${str.replace(/"/g, '""')}"` : str;
+  };
+  const csvLines = [
+    headers.map(escapeCsv).join(','),
+    ...rows.map(r => [r.to_number, ...varKeys.map(k => r.dynamic_variables?.[k])].map(escapeCsv).join(',')),
+  ];
+  const csvContent = csvLines.join('\n');
+
+  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', `${filenameBase}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+// Botón + menú para descargar las tasks no atendidas: todas, por motivo puntual,
+// o los errores de sistema (número inválido, etc. — separados porque reintentarlos
+// no suele tener sentido). Cada opción arma un CSV listo para re-subir a una
+// campaña nueva.
+function DownloadFailedMenu({ clientId, campaign, breakdown }: {
+  clientId: string;
+  campaign: BatchCampaign;
+  breakdown: BatchTasksBreakdown;
+}) {
+  const [open, setOpen] = useState(false);
+  const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onOutsideClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onOutsideClick);
+    return () => document.removeEventListener('mousedown', onOutsideClick);
+  }, []);
+
+  // Fallback defensivo: si el batch service desplegado todavía no manda
+  // picked_up_reasons (campo nuevo), no debe romper el render — mostraría todos
+  // los motivos como "descargables" en vez de crashear la pantalla entera.
+  const pickedUpReasons = breakdown.picked_up_reasons ?? [];
+  const failReasons = breakdown.disconnection_breakdown.filter(
+    ({ reason }) => !pickedUpReasons.includes(reason)
+  );
+  const hasSystemErrors = breakdown.top_errors.length > 0;
+  if (!failReasons.length && !hasSystemErrors) return null;
+
+  const download = async (reason: string | undefined, key: string, filenameSuffix: string) => {
+    setOpen(false);
+    setDownloadingKey(key);
+    setDownloadError(null);
+    try {
+      const rows = await fetchUnansweredTasks(clientId, campaign.id, reason);
+      if (rows.length) downloadUnansweredCsv(rows, `${campaign.name}_${filenameSuffix}`);
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : 'Error al descargar');
+    } finally {
+      setDownloadingKey(null);
+    }
+  };
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        disabled={downloadingKey !== null}
+        className="px-2.5 py-1 rounded-lg border border-slate-300 text-slate-700 text-xs font-medium hover:bg-slate-50 flex items-center gap-1.5 disabled:opacity-50"
+      >
+        {downloadingKey ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+        Descargar fallidas
+        <ChevronDown className="w-3.5 h-3.5" />
+      </button>
+      {downloadError && <p className="text-xs text-red-600 mt-1">{downloadError}</p>}
+      {open && (
+        <div className="absolute right-0 mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-lg z-30 overflow-hidden">
+          <button
+            onClick={() => download(undefined, 'all', 'fallidas')}
+            className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+          >
+            Todas las fallidas
+          </button>
+          {failReasons.length > 0 && <div className="border-t border-slate-100" />}
+          {failReasons.map(({ reason, count }) => (
+            <button
+              key={reason}
+              onClick={() => download(reason, reason, breakdown.reason_info[reason]?.label ?? reason)}
+              className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center justify-between gap-2"
+            >
+              <span>{breakdown.reason_info[reason]?.label ?? reason}</span>
+              <span className="text-xs text-slate-400">{count}</span>
+            </button>
+          ))}
+          {hasSystemErrors && (
+            <>
+              <div className="border-t border-slate-100" />
+              <button
+                onClick={() => download(SYSTEM_ERROR_REASON, SYSTEM_ERROR_REASON, 'errores_sistema')}
+                className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                Errores del sistema (número inválido, etc.)
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BatchCampaignDetailModal({ clientId, campaign, workspace, onClose }: {
   clientId: string;
   campaign: BatchCampaign;
@@ -585,6 +709,10 @@ function BatchCampaignDetailModal({ clientId, campaign, workspace, onClose }: {
             </div>
           ) : (
             <>
+              <div className="flex justify-end">
+                <DownloadFailedMenu clientId={clientId} campaign={campaign} breakdown={breakdown} />
+              </div>
+
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {Object.entries(breakdown.tasks)
                   .filter(([, count]) => count > 0)
