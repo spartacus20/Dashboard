@@ -8,7 +8,6 @@ import {
   X,
   Key,
   Phone,
-  PhoneOutgoing,
   Calendar,
   PhoneCall,
   LogOut,
@@ -79,7 +78,6 @@ export function Sidebar({
     loadAllCalls,
     loadDashboardData,
     loadPhoneNumbers,
-    loadBatchCalls,
   } = useCallsContext();
   const { user, signOut, changeClientId } = useAuth();
   const progressPercentage =
@@ -87,7 +85,6 @@ export function Sidebar({
       ? Math.min(100, Math.round((loadingProgress / totalCalls) * 100))
       : 0;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
-  const [showBatchCall, setShowBatchCall] = useState(false);
   const [availableClientIds, setAvailableClientIds] = useState<string[]>([]);
   const [currentClientId, setCurrentClientId] = useState<string | null>(null);
   const [isChangingClient, setIsChangingClient] = useState(false);
@@ -330,13 +327,6 @@ export function Sidebar({
       setIsChangingClient(false);
     }
   };
-
-  // Verificar si debemos mostrar Batch Call basado en parámetros URL
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const callType = params.get("call");
-    setShowBatchCall(callType === "outbound");
-  }, []);
 
   // Cambiar de página. onPageChange (=navigateDashboard en DashboardApp) actualiza
   // la URL a /dashboard/<page> conservando los query params; el render se deriva de ahí.
@@ -676,19 +666,6 @@ export function Sidebar({
             >
               <PhoneCall className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
               Callbacks
-            </button>
-          )}
-          {showBatchCall && (
-            <button
-              onClick={() => { navigateWithParams("batch-call"); }}
-              className={`group flex w-full items-center gap-2 px-4 py-2 ${
-                currentPage === "batch-call"
-                  ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
-                  : "text-gray-300 hover:bg-[#0a2a5a]"
-              } rounded-lg`}
-            >
-              <PhoneOutgoing className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
-              Llamadas en Lote
             </button>
           )}
           {canAccessSales && (

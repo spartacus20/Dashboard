@@ -13,6 +13,7 @@ import {
 } from '../api';
 import { FacturacionChart } from '../components/dashboard/FacturacionChart';
 import { ROIChart } from '../components/dashboard/ROIChart';
+import { getMadridMidnight, formatMadridDateYYYYMMDD, getPeriodRange } from '../lib/dateUtils';
 
 interface VentasProps {
   onNavigate: (page: string) => void;
@@ -54,39 +55,6 @@ function generateFacturacionData(metrics: SalesMetrics) {
 }
 
 
-// Helpers de zona horaria (Europa/Madrid)
-function getMadridYmdParts(date: Date = new Date()): { year: number; month: number; day: number } {
-  const fmt = new Intl.DateTimeFormat('es-ES', {
-    timeZone: 'Europe/Madrid',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  });
-  const parts = fmt.formatToParts(date);
-  const day = Number(parts.find(p => p.type === 'day')?.value || '1');
-  const month = Number(parts.find(p => p.type === 'month')?.value || '1');
-  const year = Number(parts.find(p => p.type === 'year')?.value || '1970');
-  return { year, month, day };
-}
-
-function getMadridMidnight(date: Date = new Date()): Date {
-  const { year, month, day } = getMadridYmdParts(date);
-  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
-}
-
-function addDaysUTC(base: Date, days: number): Date {
-  const d = new Date(base);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d;
-}
-
-function formatMadridDateYYYYMMDD(date: Date): string {
-  const y = date.getUTCFullYear();
-  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(date.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
 export function Ventas({ }: VentasProps) {
   const [metrics, setMetrics] = useState<SalesMetrics | null>(null);
   const [facturacionData, setFacturacionData] = useState<any[]>([]);
@@ -105,48 +73,12 @@ export function Ventas({ }: VentasProps) {
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
 
-  // Función para calcular las fechas según el período seleccionado
+  // Función para calcular las fechas según el período seleccionado. Delega en
+  // getPeriodRange (lib/dateUtils) — misma lógica que Dashboard.tsx y que el
+  // backend. "Semana" = últimos 7 días rodantes (antes era lunes-domingo,
+  // unificado en toda la app en julio 2026).
   const calculateDatesForPeriod = (period: string, customStart?: string, customEnd?: string) => {
-    const todayMadrid = getMadridMidnight();
-    
-    switch (period) {
-      case 'today':
-        const todayStr = formatMadridDateYYYYMMDD(todayMadrid);
-        const tomorrow = addDaysUTC(todayMadrid, 1);
-        const tomorrowStr = formatMadridDateYYYYMMDD(tomorrow);
-        return { fechaInicio: todayStr, fechaFin: tomorrowStr };
-      
-      case 'week':
-        // Calcular inicio de semana (lunes) - igual que dashboard
-        const dayOfWeek = todayMadrid.getUTCDay();
-        const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Si es domingo, restar 6 días
-        const weekStart = addDaysUTC(todayMadrid, -daysToMonday);
-        const weekStartStr = formatMadridDateYYYYMMDD(weekStart);
-        const weekEnd = addDaysUTC(weekStart, 7);
-        return { fechaInicio: weekStartStr, fechaFin: formatMadridDateYYYYMMDD(weekEnd) };
-      
-      case 'month':
-        // Calcular inicio y fin del mes actual - igual que dashboard
-        const year = todayMadrid.getUTCFullYear();
-        const month = todayMadrid.getUTCMonth();
-        const monthStart = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
-        const monthEnd = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0, 0));
-        return { fechaInicio: formatMadridDateYYYYMMDD(monthStart), fechaFin: formatMadridDateYYYYMMDD(monthEnd) };
-      
-      
-      case 'custom':
-        if (customStart && customEnd) {
-          const [yS, mS, dS] = customStart.split('-').map(Number);
-          const [yE, mE, dE] = customEnd.split('-').map(Number);
-          const startMadrid = new Date(Date.UTC(yS, (mS || 1) - 1, dS || 1, 0, 0, 0, 0));
-          const endMadridPlusOne = addDaysUTC(new Date(Date.UTC(yE, (mE || 1) - 1, dE || 1, 0, 0, 0, 0)), 1);
-          return { fechaInicio: formatMadridDateYYYYMMDD(startMadrid), fechaFin: formatMadridDateYYYYMMDD(endMadridPlusOne) };
-        }
-        return null;
-      
-      default: // 'all'
-        return null;
-    }
+    return getPeriodRange(period, { customStart, customEnd });
   };
 
   // Función para generar datos de ROI basados en las métricas y período
@@ -173,10 +105,11 @@ export function Ventas({ }: VentasProps) {
         });
       }
     } else {
-      // Generar datos para el período específico
-      const startDate = new Date(dates.fechaInicio + 'T00:00:00.000Z');
-      const endDate = new Date(dates.fechaFin + 'T00:00:00.000Z');
-      
+      // Generar datos para el período específico (fechaInicio/fechaFin ya son
+      // instantes ISO completos devueltos por getPeriodRange).
+      const startDate = new Date(dates.fechaInicio);
+      const endDate = new Date(dates.fechaFin);
+
       const currentDate = new Date(startDate);
       while (currentDate < endDate) {
         const dailyVariation = 0.8 + Math.random() * 0.4;

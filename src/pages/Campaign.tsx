@@ -1,10 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Megaphone, RefreshCw, AlertCircle, Search, BarChart3, Upload, Pencil, Trash2, ChevronLeft, ChevronRight, X, Info } from 'lucide-react';
+import { Megaphone, RefreshCw, AlertCircle, Search, BarChart3, Upload, Pencil, Trash2, ChevronLeft, ChevronRight, X, Info, CalendarClock } from 'lucide-react';
 import { RetellBatchCall } from '../types';
 import { fetchBatchCalls, fetchFolders, deleteBatchCall, fetchAgentIdForBatch } from '../api';
 import { getCachedFolderName, setCachedFolderName } from '../lib/folderNameCache';
 import { useCallsContext } from '../context/CallsContext';
 import { BatchCallingTab } from './campaign/BatchCallingTab';
+import { BatchCampaignsTab } from './campaign/BatchCampaignsTab';
+import { canAccessBatchCampaigns } from '../lib/supabase';
 import { Button } from '../components/ui/button';
 import { CAMPAIGN_PAGE_SIZE as ITEMS_PER_PAGE } from '../lib/constants';
 
@@ -19,7 +21,9 @@ interface CampaignProps {
 
 export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
   const { apiKey, apiKeyTest, clientId } = useCallsContext();
-  const [campaignTab, setCampaignTab] = useState<'campaigns' | 'batch-calling'>('campaigns');
+  const [campaignTab, setCampaignTab] = useState<'campaigns' | 'batch-calling' | 'programadas'>('campaigns');
+  // Pestaña "Campañas programadas" (batch service): solo clientes con el flag habilitado
+  const showBatchCampaigns = canAccessBatchCampaigns();
   const [currentPage, setCurrentPage] = useState(1);
   const [batchCallsByWorkspace, setBatchCallsByWorkspace] = useState<BatchCallWithWorkspace[]>([]);
   const [selectedWorkspaceIndex, setSelectedWorkspaceIndex] = useState<number | null>(null);
@@ -271,10 +275,26 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
             <Upload className="w-4 h-4" />
             Crear Campaña
           </button>
+          {showBatchCampaigns && (
+            <button
+              type="button"
+              onClick={() => setCampaignTab('programadas')}
+              className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 ${
+                campaignTab === 'programadas'
+                  ? 'bg-[#05163b] text-white'
+                  : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              <CalendarClock className="w-4 h-4" />
+              Campañas programadas
+            </button>
+          )}
         </div>
       </div>
 
-      {campaignTab === 'batch-calling' ? (
+      {campaignTab === 'programadas' && showBatchCampaigns ? (
+        <BatchCampaignsTab />
+      ) : campaignTab === 'batch-calling' ? (
         <BatchCallingTab apiKeys={apiKeysToFetch} workspaceNameByApiKey={workspaceNameByApiKey} />
       ) : (
       <div className="bg-white rounded-xl shadow-lg border border-slate-200">
