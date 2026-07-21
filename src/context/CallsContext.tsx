@@ -1,8 +1,8 @@
 
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { RetellCall, FilterCriteria, RetellPhoneNumber, RetellBatchCall } from '../types';
-import { fetchPhoneNumbers, fetchBatchCalls, listCalls, getClientApiKey, getDashboardData, getDashboardToday, getDashboardWeek, getDashboardMonth, getDisconnectionReasons } from '../api';
+import { RetellCall, FilterCriteria, RetellPhoneNumber } from '../types';
+import { fetchPhoneNumbers, listCalls, getClientApiKey, getDashboardData, getDashboardToday, getDashboardWeek, getDashboardMonth, getDisconnectionReasons } from '../api';
 import { get_client_id, supabase, getClientId as fetchAndStoreClientId } from '../lib/supabase';
 
 interface CallsContextType {
@@ -25,12 +25,6 @@ interface CallsContextType {
   phoneNumbersLoaded: boolean;
   noPhoneNumbersAvailable: boolean;
   loadPhoneNumbers: (forceRefresh?: boolean) => Promise<void>;
-  batchCalls: RetellBatchCall[];
-  loadingBatchCalls: boolean;
-  batchCallsLoaded: boolean;
-  noBatchCallsAvailable: boolean;
-  loadBatchCalls: (forceRefresh?: boolean) => Promise<void>;
-  refreshBatchCalls: () => Promise<void>;
   currentPage: number;
   totalPages: number;
   hasMorePages: boolean;
@@ -137,12 +131,6 @@ export function CallsProvider({ children }: CallsProviderProps) {
   const [noPhoneNumbersAvailable, setNoPhoneNumbersAvailable] = useState(false);
   
   // Estado para batch calls
-  const [batchCalls, setBatchCalls] = useState<RetellBatchCall[]>([]);
-  const [loadingBatchCalls, setLoadingBatchCalls] = useState(false);
-  const [batchCallsLoaded, setBatchCallsLoaded] = useState(false);
-  const [batchCallsUpdated, setBatchCallsUpdated] = useState<number | null>(null);
-  const [noBatchCallsAvailable, setNoBatchCallsAvailable] = useState(false);
-  const batchCallsAttemptCount = useRef(0);
   
   // Tiempo de caducidad de la caché en milisegundos (15 minutos)
   const CACHE_EXPIRY_TIME = 15 * 60 * 1000;
@@ -384,10 +372,8 @@ export function CallsProvider({ children }: CallsProviderProps) {
       }
       dashboardInitialFetchDone.current = false;
       setPhoneNumbers([]);
-      setBatchCalls([]);
       setAllCallsLoaded(false);
       setPhoneNumbersLoaded(false);
-      setBatchCallsLoaded(false);
       loadedPages.current.clear();
       loadingPages.current.clear();
       setCurrentPage(1);
@@ -417,8 +403,7 @@ export function CallsProvider({ children }: CallsProviderProps) {
           await Promise.all([
             loadAllCalls(true), // Forzar refresh
             loadDashboardData(undefined, undefined, storedPeriod), // Recargar dashboard con período guardado
-            loadPhoneNumbers(true), // Forzar refresh
-            loadBatchCalls(true) // Forzar refresh
+            loadPhoneNumbers(true) // Forzar refresh
           ]);
           
           // console.log('✅ CallsContext: Todos los datos recargados exitosamente');
@@ -575,85 +560,6 @@ export function CallsProvider({ children }: CallsProviderProps) {
     await loadCallsPage(1, customFilterCriteria || filterCriteria);
   }, [apiKey, allCalls.length, lastUpdated, loadCallsPage]);
 
-  // Función para cargar las batch calls
-  const loadBatchCalls = useCallback(async (forceRefresh = false) => {
-    // Si ya sabemos que no hay batch calls disponibles, no seguir intentando
-    if (noBatchCallsAvailable && !forceRefresh) {
-      // console.log('No hay batch calls disponibles (ya verificado)');
-      return;
-    }
-    
-    // Esperar a tener clientId (el backend recibe el clientId en la ruta y deriva la
-    // Retell key del token; ya no se manda la key desde el navegador).
-    if (!clientId) {
-      // console.log('Esperando clientId para cargar batch calls...');
-      return;
-    }
-    
-    // Limitar número de intentos si falla repetidamente (máximo 3 intentos)
-    if (batchCallsAttemptCount.current >= 3 && !forceRefresh) {
-      // console.log(`Se alcanzó el límite de intentos de carga de batch calls (${batchCallsAttemptCount.current})`);
-      return;
-    }
-    
-    // Verificar si ya tenemos datos en caché y no ha expirado
-    const now = Date.now();
-    if (
-      !forceRefresh && 
-      batchCallsLoaded &&
-      batchCallsUpdated && 
-      now - batchCallsUpdated < CACHE_EXPIRY_TIME
-    ) {
-      // console.log('Usando batch calls en caché');
-      return;
-    }
-    
-    // Evitar múltiples peticiones simultáneas
-    if (loadingBatchCalls) {
-      // console.log('Ya se está cargando los batch calls');
-      return;
-    }
-    
-    setLoadingBatchCalls(true);
-    batchCallsAttemptCount.current++;
-    
-    try {
-      // console.log(`Cargando batch calls desde la API (intento ${batchCallsAttemptCount.current})`);
-      // clientId (no apiKey): el backend valida el clientId de la ruta contra el token
-      // (requirePathClient). Pasar la Retell key acá daba 403 (key_... no es un client válido).
-      const data = await fetchBatchCalls(clientId);
-      
-      setBatchCalls(data);
-      setBatchCallsLoaded(true);
-      setBatchCallsUpdated(Date.now());
-      
-      // Marcar si no hay batch calls disponibles para evitar cargas futuras
-      if (data.length === 0) {
-        // console.log('API consultada correctamente: no hay batch calls disponibles');
-        setNoBatchCallsAvailable(true);
-      } else {
-        setNoBatchCallsAvailable(false);
-      }
-      
-      // console.log(`Batch calls cargados: ${data.length}`);
-    } catch (err) {
-      // console.error('Error al cargar batch calls:', err);
-      // No establecemos error global para no confundir con otros errores
-      
-      // Si ha habido 3 intentos fallidos, marcar como "no disponible" para evitar más intentos
-      if (batchCallsAttemptCount.current >= 3) {
-        // console.log('Demasiados intentos fallidos, asumiendo que no hay batch calls disponibles');
-        setNoBatchCallsAvailable(true);
-      }
-    } finally {
-      setLoadingBatchCalls(false);
-    }
-  }, [apiKey, batchCallsLoaded, batchCallsUpdated, loadingBatchCalls, noBatchCallsAvailable]);
-  
-  // Función para forzar la actualización de batch calls
-  const refreshBatchCalls = useCallback(async () => {
-    return loadBatchCalls(true);
-  }, [loadBatchCalls]);
 
   // Función para cargar los números de teléfono
   const loadPhoneNumbers = useCallback(async (forceRefresh = false) => {
@@ -869,12 +775,6 @@ export function CallsProvider({ children }: CallsProviderProps) {
     phoneNumbersLoaded,
     noPhoneNumbersAvailable,
     loadPhoneNumbers,
-    batchCalls,
-    loadingBatchCalls,
-    batchCallsLoaded,
-    noBatchCallsAvailable,
-    loadBatchCalls,
-    refreshBatchCalls,
     currentPage,
     totalPages,
     hasMorePages,

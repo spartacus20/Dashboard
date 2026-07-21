@@ -70,6 +70,7 @@ import {
   addDaysUTC,
   formatMadridDateYYYYMMDD,
   formatDiaLabel,
+  getPeriodRange,
 } from "../lib/dateUtils";
 import { DisconnectionReasonsChart } from "../components/dashboard/charts/DisconnectionReasonsChart";
 import { EffectiveCallsHourlyChart } from "../components/dashboard/charts/EffectiveCallsHourlyChart";
@@ -566,7 +567,9 @@ export function Dashboard({
   // El fetch inicial lo maneja CallsContext automáticamente.
   // Este efecto fue eliminado para evitar el doble fetch al montar el Dashboard.
 
-  // Función para calcular las fechas según el período seleccionado (zona horaria Madrid)
+  // Función para calcular las fechas según el período seleccionado (zona horaria Madrid).
+  // Delega en getPeriodRange (lib/dateUtils) — misma lógica que usa el backend,
+  // así los dos lados calculan exactamente el mismo instante para cada período.
   const calculateDatesForPeriod = (
     period: string,
     customStart?: string,
@@ -574,88 +577,12 @@ export function Dashboard({
     customStartTime?: string,
     customEndTime?: string,
   ) => {
-    const todayMadrid = getMadridMidnight();
-
-    switch (period) {
-      case "today":
-        const todayStr = formatMadridDateYYYYMMDD(todayMadrid);
-        const tomorrow = addDaysUTC(todayMadrid, 1);
-        const tomorrowStr = formatMadridDateYYYYMMDD(tomorrow);
-        return { fechaInicio: todayStr, fechaFin: tomorrowStr };
-
-      case "week":
-        // Últimos 7 días (incluyendo hoy): hoy - 6 hasta hoy (inclusive), fin = hoy + 1 (exclusivo)
-        const startOfWeek = addDaysUTC(todayMadrid, -6);
-        const endOfWeek = addDaysUTC(todayMadrid, 1);
-        return {
-          fechaInicio: startOfWeek.toISOString(),
-          fechaFin: endOfWeek.toISOString(),
-        };
-
-      case "month":
-        // Calcular igual que el backend: desde el día 1 del mes actual hasta el día 1 del mes siguiente
-        const { year: yearMonth, month: monthMonth } = getMadridYmdParts();
-        const startOfMonth = new Date(
-          Date.UTC(yearMonth, monthMonth - 1, 1, 0, 0, 0, 0),
-        );
-        const endOfMonth = new Date(
-          Date.UTC(yearMonth, monthMonth, 1, 0, 0, 0, 0),
-        );
-
-        return {
-          fechaInicio: startOfMonth.toISOString(),
-          fechaFin: endOfMonth.toISOString(),
-        };
-
-      case "custom":
-        if (customStart && customEnd) {
-          // Interpretar fechas YYYY-MM-DD en zona Madrid y convertir a rango con horas y minutos
-          const [yS, mS, dS] = customStart.split("-").map(Number);
-          const [yE, mE, dE] = customEnd.split("-").map(Number);
-
-          // Parsear tiempo (HH:MM)
-          const startTimeParts = (customStartTime || "00:00").split(":");
-          const endTimeParts = (customEndTime || "23:59").split(":");
-          const startHour = parseInt(startTimeParts[0] || "0", 10);
-          const startMinute = parseInt(startTimeParts[1] || "0", 10);
-          const endHour = parseInt(endTimeParts[0] || "23", 10);
-          const endMinute = parseInt(endTimeParts[1] || "59", 10);
-
-          // Crear fecha de inicio con hora y minuto específicos
-          const startMadrid = new Date(
-            Date.UTC(yS, (mS || 1) - 1, dS || 1, startHour, startMinute, 0, 0),
-          );
-
-          // Crear fecha de fin con hora y minuto específicos
-          // El backend usa rango semiabierto [inicio, fin), así que necesitamos el momento justo después del final
-          let endMadrid = new Date(
-            Date.UTC(yE, (mE || 1) - 1, dE || 1, endHour, endMinute, 59, 999),
-          );
-
-          // Si es el mismo día y la hora/minuto de fin es menor o igual que la de inicio, sumar un día
-          if (customStart === customEnd) {
-            const startTimeMinutes = startHour * 60 + startMinute;
-            const endTimeMinutes = endHour * 60 + endMinute;
-            if (endTimeMinutes <= startTimeMinutes) {
-              endMadrid = addDaysUTC(endMadrid, 1);
-            }
-          }
-
-          // Agregar 1 milisegundo para que el rango semiabierto [inicio, fin) incluya hasta el último milisegundo
-          // Esto asegura que created_at < fechaFin incluya todos los registros hasta endHour:endMinute:59.999
-          endMadrid = new Date(endMadrid.getTime() + 1);
-
-          // Convertir a formato ISO para enviar al backend
-          return {
-            fechaInicio: startMadrid.toISOString(),
-            fechaFin: endMadrid.toISOString(),
-          };
-        }
-        return null;
-
-      default: // 'all'
-        return null;
-    }
+    return getPeriodRange(period, {
+      customStart,
+      customEnd,
+      customStartTime,
+      customEndTime,
+    });
   };
 
   // Función para manejar el cambio de período
