@@ -110,6 +110,7 @@ export function Seguimientos({ onNavigate: _onNavigate }: SeguimientosProps) {
   const [campaigns, setCampaigns] = useState<CampaignSummary[]>([]);
   const [selectedBatchId, setSelectedBatchId] = useState<string | null | undefined>(undefined);
   const [loadingCampaigns, setLoadingCampaigns] = useState(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
 
   // — Config state —
   const [apiKey, setApiKey] = useState('');
@@ -169,6 +170,7 @@ export function Seguimientos({ onNavigate: _onNavigate }: SeguimientosProps) {
     try {
       const data = await getCampaignsSummary(clientId);
       setCampaigns(data);
+      setLastRefreshedAt(new Date());
     } catch {
       // fallo silencioso — grid queda vacío
     } finally {
@@ -204,6 +206,7 @@ export function Seguimientos({ onNavigate: _onNavigate }: SeguimientosProps) {
       });
       setRecords(res.data);
       setTotal(res.total);
+      setLastRefreshedAt(new Date());
     } catch {
       setErrorRecords('Error al cargar los seguimientos.');
     } finally {
@@ -219,6 +222,22 @@ export function Seguimientos({ onNavigate: _onNavigate }: SeguimientosProps) {
       loadRecords();
     }
   }, [activeTab, loadRecords, loadCampaignsSummary, isCampaignMode, selectedBatchId]);
+
+  // Mantiene el estado de las campañas y sus reintentos al día sin recargar el navegador.
+  useEffect(() => {
+    if (activeTab !== 'registros') return;
+
+    const refresh = () => {
+      if (isCampaignMode && selectedBatchId === undefined) {
+        loadCampaignsSummary();
+      } else {
+        loadRecords();
+      }
+    };
+
+    const intervalId = window.setInterval(refresh, 120_000);
+    return () => window.clearInterval(intervalId);
+  }, [activeTab, isCampaignMode, selectedBatchId, loadCampaignsSummary, loadRecords]);
 
   // — Load config —
   const loadConfig = useCallback(async () => {
@@ -352,6 +371,30 @@ export function Seguimientos({ onNavigate: _onNavigate }: SeguimientosProps) {
             Gestión de reintentos de llamada y configuración de Retell AI
           </p>
         </div>
+        {activeTab === 'registros' && (
+          <div className="flex items-center gap-3">
+            {lastRefreshedAt && (
+              <span className="hidden sm:inline text-xs text-gray-400">
+                Actualizado {lastRefreshedAt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (isCampaignMode && selectedBatchId === undefined) {
+                  loadCampaignsSummary();
+                } else {
+                  loadRecords();
+                }
+              }}
+              disabled={loadingCampaigns || loadingRecords}
+              className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <RefreshCw className={`h-4 w-4 ${(loadingCampaigns || loadingRecords) ? 'animate-spin' : ''}`} />
+              Actualizar
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Tabs */}
@@ -424,6 +467,7 @@ export function Seguimientos({ onNavigate: _onNavigate }: SeguimientosProps) {
                     const pending = Number(c.pending) || 0;
                     const exhausted = Number(c.exhausted) || 0;
                     const cancelled = Number(c.cancelled) || 0;
+                    const scheduledRetries = Number(c.scheduled_retries) || 0;
                     const isSinCampana = c.batch_call_id === null;
 
                     return (
@@ -474,6 +518,15 @@ export function Seguimientos({ onNavigate: _onNavigate }: SeguimientosProps) {
                               {exhausted > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" />{exhausted} agotado</span>}
                               {cancelled > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-300 inline-block" />{cancelled} cancelado</span>}
                             </div>
+                          </div>
+                        )}
+
+                        {scheduledRetries > 0 && c.next_retry_at && (
+                          <div className="flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                            <Clock className="h-4 w-4 shrink-0" />
+                            <span>
+                              <strong>{scheduledRetries}</strong> reintentos programados · Próxima llamada: <strong>{formatDate(c.next_retry_at)}</strong>
+                            </span>
                           </div>
                         )}
 
