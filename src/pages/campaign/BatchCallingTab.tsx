@@ -4,11 +4,10 @@ import { Button } from '../../components/ui/button';
 import { Settings, X, RefreshCw, Save, XCircle, CheckCircle2, AlertCircle } from 'lucide-react';
 import { BASE_URL, canAccessSeguimientos, getStoredClientId } from '../../lib/supabase';
 import { authedFetch } from '../../services/api/http';
-<<<<<<< HEAD
+
 import { saveBatchCallSettings, getRetellConfig, updateRetellConfig } from '../../services/api/seguimientos';
 import { COMMON_TIMEZONES } from '../../lib/timezones';
-=======
->>>>>>> 8cdcaff855f26c327e38459d6df813bd37094bb7
+
 
 type BatchStatus = 'pending' | 'sending' | 'success' | 'error';
 
