@@ -71,13 +71,14 @@ import {
   formatMadridDateYYYYMMDD,
   formatDiaLabel,
   getPeriodRange,
+  zonedTimeToUtc,
 } from "../lib/dateUtils";
 import { DisconnectionReasonsChart } from "../components/dashboard/charts/DisconnectionReasonsChart";
 import { EffectiveCallsHourlyChart } from "../components/dashboard/charts/EffectiveCallsHourlyChart";
 import { DailyCallsTrendChart } from "../components/dashboard/charts/DailyCallsTrendChart";
 import { SimplePieChart } from "../components/dashboard/charts/SimplePieChart";
 import { TimePeriodSelector } from "../components/dashboard/TimePeriodSelector";
-import { getMetadata } from "../lib/supabase";
+import { getMetadata, getUserTimezone } from "../lib/supabase";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 // Helpers de zona horaria (Europa/Madrid)
@@ -461,35 +462,52 @@ export function Dashboard({
       return;
     }
 
+    // Mismo cálculo de rango que el resto del Dashboard: getPeriodRange en la
+    // zona del usuario (getUserTimezone), instantes ISO semiabiertos [inicio, fin).
+    // Antes se calculaba en hora del navegador con semana lunes-domingo, lo que
+    // ignoraba la zona elegida y usaba una "semana" distinta a la del resto de la
+    // pantalla (decisión unificada: semana = 7 días rodantes).
     let fechaInicio: string | undefined;
     let fechaFin: string | undefined;
 
-    if (timePeriod === 'today') {
-      const today = new Date().toISOString().slice(0, 10);
-      fechaInicio = today;
-      fechaFin = today;
-    } else if (timePeriod === 'week') {
-      const now = new Date();
-      const day = now.getDay() || 7;
-      const monday = new Date(now);
-      monday.setDate(now.getDate() - (day - 1));
-      fechaInicio = monday.toISOString().slice(0, 10);
-      fechaFin = now.toISOString().slice(0, 10);
-    } else if (timePeriod === 'month') {
-      const now = new Date();
-      fechaInicio = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-      fechaFin = now.toISOString().slice(0, 10);
-    } else if (timePeriod === 'custom' && customStartDate && customEndDate) {
-      fechaInicio = customStartDate;
-      fechaFin = customEndDate;
+    if (
+      timePeriod === "today" ||
+      timePeriod === "week" ||
+      timePeriod === "month"
+    ) {
+      const dates = calculateDatesForPeriod(timePeriod);
+      if (dates) {
+        fechaInicio = dates.fechaInicio;
+        fechaFin = dates.fechaFin;
+      }
+    } else if (timePeriod === "custom" && customStartDate && customEndDate) {
+      const dates = calculateDatesForPeriod(
+        timePeriod,
+        customStartDate,
+        customEndDate,
+        customStartTime,
+        customEndTime,
+      );
+      if (dates) {
+        fechaInicio = dates.fechaInicio;
+        fechaFin = dates.fechaFin;
+      }
     }
+    // timePeriod === "all" → sin filtro de fecha (todos los motivos)
 
     setMotivosRechazoLoading(true);
     fetchMotivosRechazo(clientId, fechaInicio, fechaFin)
       .then((data) => setMotivosRechazo(data))
       .catch(() => setMotivosRechazo([]))
       .finally(() => setMotivosRechazoLoading(false));
-  }, [hasFiltroSolar, timePeriod, customStartDate, customEndDate]);
+  }, [
+    hasFiltroSolar,
+    timePeriod,
+    customStartDate,
+    customEndDate,
+    customStartTime,
+    customEndTime,
+  ]);
 
   // Función para validar y actualizar el rango de horas (agendamientos)
   const handleHourRangeChange = (type: "start" | "end", value: string) => {
@@ -567,9 +585,10 @@ export function Dashboard({
   // El fetch inicial lo maneja CallsContext automáticamente.
   // Este efecto fue eliminado para evitar el doble fetch al montar el Dashboard.
 
-  // Función para calcular las fechas según el período seleccionado (zona horaria Madrid).
-  // Delega en getPeriodRange (lib/dateUtils) — misma lógica que usa el backend,
-  // así los dos lados calculan exactamente el mismo instante para cada período.
+  // Función para calcular las fechas según el período seleccionado, en la zona
+  // horaria PERSONAL del usuario (default Europe/Madrid si no eligió otra en
+  // Configuración). Delega en getPeriodRange (lib/dateUtils) — misma lógica que
+  // usa el backend, así los dos lados calculan exactamente el mismo instante.
   const calculateDatesForPeriod = (
     period: string,
     customStart?: string,
@@ -578,6 +597,7 @@ export function Dashboard({
     customEndTime?: string,
   ) => {
     return getPeriodRange(period, {
+      timezone: getUserTimezone(),
       customStart,
       customEnd,
       customStartTime,
@@ -918,12 +938,12 @@ export function Dashboard({
     customEndTime,
   ]);
 
-  // Función para filtrar datos por período (usando medianoche en Madrid)
+  // Función para filtrar datos por período (usando medianoche en la zona del usuario)
   const filterDataByPeriod = (data: any[], dateField: string = "fecha") => {
     if (!data || !Array.isArray(data)) return data;
 
     try {
-      const today = getMadridMidnight();
+      const today = getMadridMidnight(new Date(), getUserTimezone());
 
       switch (timePeriod) {
         case "today":
@@ -1113,7 +1133,8 @@ export function Dashboard({
 
   // Rellenar días faltantes en el rango (semana, mes, personalizado) para que todos aparezcan en el gráfico
   const filledDailyData = useMemo(() => {
-    const today = getMadridMidnight();
+    const tz = getUserTimezone();
+    const today = getMadridMidnight(new Date(), tz);
     const mapByFecha = new Map<string, any>();
     // Solo incluir datos que estén dentro del rango correcto
     (filteredDailyData || []).forEach((item: any) => {
@@ -1130,8 +1151,8 @@ export function Dashboard({
           }
         } else if (timePeriod === "month") {
           // Para mes: desde el día 1 del mes actual hasta hoy
-          const { year, month } = getMadridYmdParts(today);
-          const monthStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+          const { year, month } = getMadridYmdParts(today, tz);
+          const monthStart = zonedTimeToUtc(year, month, 1, 0, 0, 0, tz);
           const monthEndExclusive = addDaysUTC(today, 1);
           const itemDate = new Date(f + "T00:00:00Z");
           if (itemDate < monthStart || itemDate >= monthEndExclusive) {
@@ -1148,7 +1169,7 @@ export function Dashboard({
       const days: any[] = [];
       for (let i = -6; i <= 0; i++) {
         const d = addDaysUTC(today, i);
-        const fechaStr = formatMadridDateYYYYMMDD(d);
+        const fechaStr = formatMadridDateYYYYMMDD(d, tz);
         const existing = mapByFecha.get(fechaStr);
         days.push(
           existing ?? {
@@ -1166,13 +1187,13 @@ export function Dashboard({
     }
     if (timePeriod === "month") {
       // Para mes: desde el día 1 del mes actual hasta hoy
-      const { year, month } = getMadridYmdParts(today);
-      const monthStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+      const { year, month } = getMadridYmdParts(today, tz);
+      const monthStart = zonedTimeToUtc(year, month, 1, 0, 0, 0, tz);
       const days: any[] = [];
       const cursor = new Date(monthStart);
       const todayEnd = addDaysUTC(today, 1);
       while (cursor < todayEnd) {
-        const fechaStr = formatMadridDateYYYYMMDD(cursor);
+        const fechaStr = formatMadridDateYYYYMMDD(cursor, tz);
         const existing = mapByFecha.get(fechaStr);
         days.push(
           existing ?? {
@@ -1193,16 +1214,12 @@ export function Dashboard({
       try {
         const [yS, mS, dS] = customStartDate.split("-").map(Number);
         const [yE, mE, dE] = customEndDate.split("-").map(Number);
-        const start = new Date(
-          Date.UTC(yS, (mS || 1) - 1, dS || 1, 0, 0, 0, 0),
-        );
-        const end = new Date(
-          Date.UTC(yE, (mE || 1) - 1, dE || 1, 23, 59, 59, 999),
-        );
+        const start = zonedTimeToUtc(yS, mS || 1, dS || 1, 0, 0, 0, tz);
+        const end = zonedTimeToUtc(yE, mE || 1, dE || 1, 23, 59, 59, tz);
         const days: any[] = [];
         const cursor = new Date(start);
         while (cursor <= end) {
-          const fechaStr = formatMadridDateYYYYMMDD(cursor);
+          const fechaStr = formatMadridDateYYYYMMDD(cursor, tz);
           const existing = mapByFecha.get(fechaStr);
           days.push(
             existing ?? {

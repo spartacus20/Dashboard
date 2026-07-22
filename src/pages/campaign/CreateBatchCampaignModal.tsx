@@ -5,6 +5,7 @@ import {
   BatchWorkspace, CallWindow, WorkspaceConcurrency,
   createBatchCampaign, fetchWorkspaceConcurrency,
 } from '../../services/api/batchCampaigns';
+import { COMMON_TIMEZONES } from '../../lib/timezones';
 
 const PREVIEW_ROWS = 60;
 
@@ -16,17 +17,6 @@ const DAYS: { id: string; label: string }[] = [
   { id: 'Friday', label: 'Vie' },
   { id: 'Saturday', label: 'Sáb' },
   { id: 'Sunday', label: 'Dom' },
-];
-
-const COMMON_TIMEZONES = [
-  'Europe/Madrid',
-  'America/Argentina/Buenos_Aires',
-  'America/Mexico_City',
-  'America/Bogota',
-  'America/Lima',
-  'America/Santiago',
-  'America/New_York',
-  'UTC',
 ];
 
 function toMinutes(hhmm: string): number {

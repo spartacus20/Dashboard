@@ -59,6 +59,31 @@ export async function updateProfileName(
   return data;
 }
 
+export interface UpdateTimezoneResponse {
+  success: boolean;
+  message?: string;
+  data?: { timezone: string };
+  error?: string;
+}
+
+// Preferencia PERSONAL del usuario autenticado (no del cliente activo) — rige
+// en qué zona horaria ve sus datos, sin importar a qué cliente cambie.
+export async function updateMyTimezone(timezone: string): Promise<UpdateTimezoneResponse> {
+  const response = await fetch(`${BASE_URL}/api/users/update-timezone`, {
+    method: 'PUT',
+    headers: await authHeaders(),
+    body: JSON.stringify({ timezone }),
+  });
+
+  const data = (await response.json()) as UpdateTimezoneResponse;
+
+  if (!response.ok) {
+    throw new Error(data.error || data.message || 'No se pudo actualizar la zona horaria');
+  }
+
+  return data;
+}
+
 export interface UpdatePasswordResponse {
   success: boolean;
   message?: string;

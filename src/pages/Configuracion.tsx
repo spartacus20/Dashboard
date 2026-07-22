@@ -1,17 +1,20 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Calendar, KeyRound, Lock, Mail, User } from "lucide-react";
+import { Calendar, Globe, KeyRound, Lock, Mail, User } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import {
   getAccountCreatedAt,
   getCurrentUserInfo,
   getEmail,
   getFullName,
+  getUserTimezone,
   isClientActive,
   persistAccountCreatedAt,
   setFullName,
+  setUserTimezone,
 } from "../lib/supabase";
-import { fetchAccountProfile, updateProfileName } from "../services/api/account";
+import { fetchAccountProfile, updateMyTimezone, updateProfileName } from "../services/api/account";
+import { timezoneOptionsWithDetected } from "../lib/timezones";
 import { ApiTokensCard } from "../components/ApiTokensCard";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -49,8 +52,14 @@ export function Configuracion() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
 
+  const [timezone, setTimezoneInput] = useState(getUserTimezone());
+  const [savedTimezone, setSavedTimezone] = useState(getUserTimezone());
+  const [savingTimezone, setSavingTimezone] = useState(false);
+  const timezoneOptions = timezoneOptionsWithDetected();
+
   const accountActive = isClientActive();
   const hasChanges = fullName.trim() !== savedName.trim();
+  const hasTimezoneChanges = timezone !== savedTimezone;
   const canSubmitPasswordChange =
     currentPassword.length > 0 &&
     newPassword.length >= 8 &&
@@ -139,6 +148,26 @@ export function Configuracion() {
       );
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveTimezone = async () => {
+    setSavingTimezone(true);
+    try {
+      const result = await updateMyTimezone(timezone);
+      const updatedTimezone = result.data?.timezone || timezone;
+
+      setUserTimezone(updatedTimezone);
+      setTimezoneInput(updatedTimezone);
+      setSavedTimezone(updatedTimezone);
+
+      toast.success("Zona horaria actualizada. Los datos que veas de ahora en más usarán esta zona.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No se pudo guardar la zona horaria",
+      );
+    } finally {
+      setSavingTimezone(false);
     }
   };
 
@@ -261,6 +290,38 @@ export function Configuracion() {
             />
             <p className="text-xs text-slate-500">
               Para cambiar tu correo electrónico, contacta con un administrador.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <label
+              htmlFor="account-timezone"
+              className="flex items-center gap-2 text-sm font-medium text-slate-700"
+            >
+              <Globe className="w-4 h-4 text-slate-400" />
+              Zona horaria
+            </label>
+            <div className="flex gap-2">
+              <select
+                id="account-timezone"
+                value={timezone}
+                onChange={(e) => setTimezoneInput(e.target.value)}
+                className="flex-1 h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              >
+                {timezoneOptions.map((tz) => (
+                  <option key={tz} value={tz}>{tz}</option>
+                ))}
+              </select>
+              <Button
+                onClick={() => void handleSaveTimezone()}
+                disabled={!hasTimezoneChanges || savingTimezone}
+                className="bg-blue-600 hover:bg-blue-700 text-white shrink-0"
+              >
+                {savingTimezone ? "Guardando..." : "Guardar"}
+              </Button>
+            </div>
+            <p className="text-xs text-slate-500">
+              Define en qué huso horario ves las fechas del dashboard.
             </p>
           </div>
 
