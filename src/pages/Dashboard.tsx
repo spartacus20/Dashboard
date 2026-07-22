@@ -71,6 +71,7 @@ import {
   formatMadridDateYYYYMMDD,
   formatDiaLabel,
   getPeriodRange,
+  zonedTimeToUtc,
 } from "../lib/dateUtils";
 import { DisconnectionReasonsChart } from "../components/dashboard/charts/DisconnectionReasonsChart";
 import { EffectiveCallsHourlyChart } from "../components/dashboard/charts/EffectiveCallsHourlyChart";
@@ -461,35 +462,52 @@ export function Dashboard({
       return;
     }
 
+    // Mismo cálculo de rango que el resto del Dashboard: getPeriodRange en la
+    // zona del usuario (getUserTimezone), instantes ISO semiabiertos [inicio, fin).
+    // Antes se calculaba en hora del navegador con semana lunes-domingo, lo que
+    // ignoraba la zona elegida y usaba una "semana" distinta a la del resto de la
+    // pantalla (decisión unificada: semana = 7 días rodantes).
     let fechaInicio: string | undefined;
     let fechaFin: string | undefined;
 
-    if (timePeriod === 'today') {
-      const today = new Date().toISOString().slice(0, 10);
-      fechaInicio = today;
-      fechaFin = today;
-    } else if (timePeriod === 'week') {
-      const now = new Date();
-      const day = now.getDay() || 7;
-      const monday = new Date(now);
-      monday.setDate(now.getDate() - (day - 1));
-      fechaInicio = monday.toISOString().slice(0, 10);
-      fechaFin = now.toISOString().slice(0, 10);
-    } else if (timePeriod === 'month') {
-      const now = new Date();
-      fechaInicio = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-      fechaFin = now.toISOString().slice(0, 10);
-    } else if (timePeriod === 'custom' && customStartDate && customEndDate) {
-      fechaInicio = customStartDate;
-      fechaFin = customEndDate;
+    if (
+      timePeriod === "today" ||
+      timePeriod === "week" ||
+      timePeriod === "month"
+    ) {
+      const dates = calculateDatesForPeriod(timePeriod);
+      if (dates) {
+        fechaInicio = dates.fechaInicio;
+        fechaFin = dates.fechaFin;
+      }
+    } else if (timePeriod === "custom" && customStartDate && customEndDate) {
+      const dates = calculateDatesForPeriod(
+        timePeriod,
+        customStartDate,
+        customEndDate,
+        customStartTime,
+        customEndTime,
+      );
+      if (dates) {
+        fechaInicio = dates.fechaInicio;
+        fechaFin = dates.fechaFin;
+      }
     }
+    // timePeriod === "all" → sin filtro de fecha (todos los motivos)
 
     setMotivosRechazoLoading(true);
     fetchMotivosRechazo(clientId, fechaInicio, fechaFin)
       .then((data) => setMotivosRechazo(data))
       .catch(() => setMotivosRechazo([]))
       .finally(() => setMotivosRechazoLoading(false));
-  }, [hasFiltroSolar, timePeriod, customStartDate, customEndDate]);
+  }, [
+    hasFiltroSolar,
+    timePeriod,
+    customStartDate,
+    customEndDate,
+    customStartTime,
+    customEndTime,
+  ]);
 
   // Función para validar y actualizar el rango de horas (agendamientos)
   const handleHourRangeChange = (type: "start" | "end", value: string) => {
@@ -1134,7 +1152,7 @@ export function Dashboard({
         } else if (timePeriod === "month") {
           // Para mes: desde el día 1 del mes actual hasta hoy
           const { year, month } = getMadridYmdParts(today, tz);
-          const monthStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+          const monthStart = zonedTimeToUtc(year, month, 1, 0, 0, 0, tz);
           const monthEndExclusive = addDaysUTC(today, 1);
           const itemDate = new Date(f + "T00:00:00Z");
           if (itemDate < monthStart || itemDate >= monthEndExclusive) {
@@ -1170,7 +1188,7 @@ export function Dashboard({
     if (timePeriod === "month") {
       // Para mes: desde el día 1 del mes actual hasta hoy
       const { year, month } = getMadridYmdParts(today, tz);
-      const monthStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+      const monthStart = zonedTimeToUtc(year, month, 1, 0, 0, 0, tz);
       const days: any[] = [];
       const cursor = new Date(monthStart);
       const todayEnd = addDaysUTC(today, 1);
@@ -1196,12 +1214,8 @@ export function Dashboard({
       try {
         const [yS, mS, dS] = customStartDate.split("-").map(Number);
         const [yE, mE, dE] = customEndDate.split("-").map(Number);
-        const start = new Date(
-          Date.UTC(yS, (mS || 1) - 1, dS || 1, 0, 0, 0, 0),
-        );
-        const end = new Date(
-          Date.UTC(yE, (mE || 1) - 1, dE || 1, 23, 59, 59, 999),
-        );
+        const start = zonedTimeToUtc(yS, mS || 1, dS || 1, 0, 0, 0, tz);
+        const end = zonedTimeToUtc(yE, mE || 1, dE || 1, 23, 59, 59, tz);
         const days: any[] = [];
         const cursor = new Date(start);
         while (cursor <= end) {

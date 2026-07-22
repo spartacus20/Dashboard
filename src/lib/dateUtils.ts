@@ -1,11 +1,10 @@
 // Fuente única de verdad para cálculo de períodos ("hoy/semana/mes/personalizado")
 // y componentes de fecha en una zona horaria arbitraria.
 //
-// DEFAULT_TIMEZONE es fija por ahora (decisión de julio 2026: Madrid por
-// defecto para todos los clientes). Fase 2 pendiente: cuando cada cliente
-// pueda configurar la suya (se guardaría en `metadata.timezone`, ya presente
-// en sessionStorage), cada caller pasa esa zona en vez del default — ninguna
-// función de acá necesita cambiar, ya reciben `timezone` como parámetro.
+// La zona es una preferencia POR-USUARIO (no por-cliente): se guarda en
+// sessionStorage['timezone'] (ver getUserTimezone/setUserTimezone en lib/supabase)
+// y cada caller la pasa como parámetro `timezone`. DEFAULT_TIMEZONE es solo el
+// fallback global (Europe/Madrid) para quien no eligió ninguna.
 //
 // Todo lo que construye un INSTANTE (zonedTimeToUtc, getPeriodRange) usa el
 // algoritmo "adivinar y corregir" con Intl.DateTimeFormat — nunca reinterpreta
