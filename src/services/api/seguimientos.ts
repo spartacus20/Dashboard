@@ -33,6 +33,8 @@ export interface CampaignSummary {
   answered: number;
   exhausted: number;
   cancelled: number;
+  scheduled_retries: number;
+  next_retry_at: string | null;
   first_created: string;
   last_updated: string | null;
 }

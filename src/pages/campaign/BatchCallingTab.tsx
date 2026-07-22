@@ -4,8 +4,11 @@ import { Button } from '../../components/ui/button';
 import { Settings, X, RefreshCw, Save, XCircle, CheckCircle2, AlertCircle } from 'lucide-react';
 import { BASE_URL, canAccessSeguimientos, getStoredClientId } from '../../lib/supabase';
 import { authedFetch } from '../../services/api/http';
+<<<<<<< HEAD
 import { saveBatchCallSettings, getRetellConfig, updateRetellConfig } from '../../services/api/seguimientos';
 import { COMMON_TIMEZONES } from '../../lib/timezones';
+=======
+>>>>>>> 8cdcaff855f26c327e38459d6df813bd37094bb7
 
 type BatchStatus = 'pending' | 'sending' | 'success' | 'error';
 
@@ -26,6 +29,8 @@ interface BatchConfig {
   timezone: string;
   reservedConcurrency: string;
   seguimiento: boolean;
+  retryDelays: number[];
+  retryActiveHours: number;
 }
 
 interface BatchDraft {
@@ -326,6 +331,8 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
             timezone: DEFAULT_TIMEZONE,
             reservedConcurrency: '',
             seguimiento: false,
+            retryDelays: [20, 60, 120],
+            retryActiveHours: 8,
           },
         };
       }),
@@ -405,37 +412,42 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
     }
   }
 
-  const openConfigModal = useCallback(async (batchId: string) => {
+  const openConfigModal = useCallback((batchId: string) => {
+    const batch = batches.find((item) => item.id === batchId);
+    if (!batch) return;
     setConfigBatchId(batchId);
     setConfigMsg('');
     setConfigError('');
+    setConfigDelays(batch.config.retryDelays);
+    setConfigActiveHours(batch.config.retryActiveHours);
     setShowConfigModal(true);
-    const clientId = getStoredClientId();
-    if (!clientId) return;
-    setLoadingConfig(true);
-    try {
-      const cfg = await getRetellConfig(clientId);
-      setConfigDelays(cfg.retell_delays || [20, 60, 120]);
-      setConfigActiveHours(cfg.retell_active_hours || 8);
-    } catch {
-      setConfigError('Error al cargar la configuración.');
-    } finally {
-      setLoadingConfig(false);
-    }
-  }, []);
+  }, [batches]);
 
   const handleSaveConfig = async () => {
-    const clientId = getStoredClientId();
-    if (!clientId) return;
+    if (!configBatchId) return;
+    const validDelays = configDelays.filter((delay) => Number.isFinite(delay) && delay > 0);
+    if (validDelays.length === 0 || !Number.isFinite(configActiveHours) || configActiveHours < 1) {
+      setConfigError('Indica al menos un reintento y una ventana válida.');
+      return;
+    }
     setSavingConfig(true);
     setConfigMsg('');
     setConfigError('');
     try {
-      await updateRetellConfig(clientId, {
-        retell_delays: configDelays,
-        retell_active_hours: configActiveHours,
-      });
-      setConfigMsg('Configuración guardada.');
+      setBatches((prev) => prev.map((batch) => (
+        batch.id === configBatchId
+          ? {
+              ...batch,
+              config: {
+                ...batch.config,
+                seguimiento: true,
+                retryDelays: validDelays,
+                retryActiveHours: configActiveHours,
+              },
+            }
+          : batch
+      )));
+      setConfigMsg('Configuración guardada y seguimiento activado.');
     } catch {
       setConfigError('Error al guardar la configuración.');
     } finally {
@@ -552,6 +564,9 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
       }
       if (target.config.timezone.trim()) body.timezone = target.config.timezone.trim();
       if (target.config.reservedConcurrency.trim()) body.reserved_concurrency = target.config.reservedConcurrency.trim();
+      body.seguimiento = target.config.seguimiento;
+      body.retry_delays = target.config.retryDelays;
+      body.retry_active_hours = target.config.retryActiveHours;
 
       const response = await authedFetch(`${BASE_URL}/api/telephony/${clientId}/batch-call-csv`, {
         method: 'POST',
@@ -560,12 +575,6 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
       const data: BatchResponse = await response.json();
       if (!response.ok || !data.success) throw new Error(data.error || `Error ${response.status}`);
       setBatches((prev) => prev.map((b) => (b.id === batchId ? { ...b, status: 'success', response: data, error: null } : b)));
-      if (canAccessSeguimientos() && data.batch_call_id) {
-        const clientId = getStoredClientId();
-        if (clientId) {
-          await saveBatchCallSettings(data.batch_call_id, clientId, target.config.seguimiento, target.config.batchName.trim() || undefined);
-        }
-      }
       return true;
     } catch (err: any) {
       setBatches((prev) =>
