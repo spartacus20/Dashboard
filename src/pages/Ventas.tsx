@@ -14,6 +14,7 @@ import {
 import { FacturacionChart } from '../components/dashboard/FacturacionChart';
 import { ROIChart } from '../components/dashboard/ROIChart';
 import { getMadridMidnight, formatMadridDateYYYYMMDD, getPeriodRange } from '../lib/dateUtils';
+import { getUserTimezone } from '../lib/supabase';
 
 interface VentasProps {
   onNavigate: (page: string) => void;
@@ -78,29 +79,30 @@ export function Ventas({ }: VentasProps) {
   // backend. "Semana" = últimos 7 días rodantes (antes era lunes-domingo,
   // unificado en toda la app en julio 2026).
   const calculateDatesForPeriod = (period: string, customStart?: string, customEnd?: string) => {
-    return getPeriodRange(period, { customStart, customEnd });
+    return getPeriodRange(period, { timezone: getUserTimezone(), customStart, customEnd });
   };
 
   // Función para generar datos de ROI basados en las métricas y período
   const generateROIData = (metrics: SalesMetrics, timePeriod: string, customStartDate?: string, customEndDate?: string) => {
     const data = [];
-    const todayMadrid = getMadridMidnight();
-    
+    const tz = getUserTimezone();
+    const todayMadrid = getMadridMidnight(new Date(), tz);
+
     // Calcular fechas según el período
     const dates = calculateDatesForPeriod(timePeriod, customStartDate, customEndDate);
-    
+
     if (!dates) {
       // Si no hay fechas específicas, generar para los últimos 30 días
       for (let i = 29; i >= 0; i--) {
         const date = new Date(todayMadrid);
         date.setUTCDate(date.getUTCDate() - i);
-        
+
         const dailyVariation = 0.8 + Math.random() * 0.4;
         const dailyROI = metrics.roi * dailyVariation;
         const finalROI = Math.max(0, dailyROI);
-        
+
         data.push({
-          date: formatMadridDateYYYYMMDD(date),
+          date: formatMadridDateYYYYMMDD(date, tz),
           roi: Math.round(finalROI * 10) / 10
         });
       }
@@ -115,12 +117,12 @@ export function Ventas({ }: VentasProps) {
         const dailyVariation = 0.8 + Math.random() * 0.4;
         const dailyROI = metrics.roi * dailyVariation;
         const finalROI = Math.max(0, dailyROI);
-        
+
         data.push({
-          date: formatMadridDateYYYYMMDD(currentDate),
+          date: formatMadridDateYYYYMMDD(currentDate, tz),
           roi: Math.round(finalROI * 10) / 10
         });
-        
+
         currentDate.setUTCDate(currentDate.getUTCDate() + 1);
       }
     }

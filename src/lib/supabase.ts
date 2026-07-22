@@ -1,4 +1,5 @@
 import { createClient, Session } from '@supabase/supabase-js'
+import { DEFAULT_TIMEZONE } from './dateUtils'
 
 // Configuración de Supabase
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://your-project.supabase.co'
@@ -180,6 +181,11 @@ export const getClientId = async (email: string): Promise<string | null> => {
           )
         }
         
+        // timezone es preferencia PERSONAL del usuario, no del cliente activo —
+        // a diferencia de metadata, se guarda SIEMPRE (no depende de cuál
+        // client_id esté seleccionado; cambiar de cliente no debe cambiarla).
+        sessionStorage.setItem('timezone', userData.timezone || DEFAULT_TIMEZONE)
+
         // Guardar metadatos solo cuando se usa el cliente por defecto.
         // Si el usuario tiene otro cliente seleccionado, el metadata correcto
         // lo carga getClientApiKey(clientIdToUse) en CallsContext; saltarse este
@@ -398,6 +404,29 @@ export const getMetadata = (): Record<string, unknown> | null => {
 export const getMetadataLlamadas = () => {
   const metadata_llamadas = sessionStorage.getItem('metadata_llamadas')
   return safeJsonParse(metadata_llamadas)
+}
+
+// Preferencia PERSONAL de zona horaria del usuario autenticado — NO cambia al
+// cambiar de cliente en el selector (a diferencia de metadata, que sí es
+// por-cliente). Se guarda una sola vez en login/restauración de sesión.
+export const getUserTimezone = (): string => {
+  return sessionStorage.getItem('timezone') || DEFAULT_TIMEZONE
+}
+
+export const setUserTimezone = (timezone: string): void => {
+  sessionStorage.setItem('timezone', timezone)
+
+  const userData = getUserData()
+  if (userData) {
+    userData.timezone = timezone
+    sessionStorage.setItem('userData', JSON.stringify(userData))
+  }
+
+  window.dispatchEvent(
+    new CustomEvent('timezoneUpdated', {
+      detail: { timezone },
+    }),
+  )
 }
 
 export const getPermissions = (): Record<string, boolean | undefined> | null => {

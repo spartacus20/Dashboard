@@ -5,6 +5,7 @@ import { Settings, X, RefreshCw, Save, XCircle, CheckCircle2, AlertCircle } from
 import { BASE_URL, canAccessSeguimientos, getStoredClientId } from '../../lib/supabase';
 import { authedFetch } from '../../services/api/http';
 import { saveBatchCallSettings, getRetellConfig, updateRetellConfig } from '../../services/api/seguimientos';
+import { COMMON_TIMEZONES } from '../../lib/timezones';
 
 type BatchStatus = 'pending' | 'sending' | 'success' | 'error';
 
@@ -204,24 +205,6 @@ function formatScheduledDate(value: unknown, timezone?: string): string | null {
     minute: '2-digit',
   });
 }
-
-const COMMON_TIMEZONES = [
-  'Europe/Madrid',
-  'Europe/London',
-  'Europe/Paris',
-  'America/Mexico_City',
-  'America/Bogota',
-  'America/Lima',
-  'America/Santiago',
-  'America/Argentina/Buenos_Aires',
-  'America/Montevideo',
-  'America/Sao_Paulo',
-  'America/Los_Angeles',
-  'America/New_York',
-  'America/Chicago',
-  'America/Phoenix',
-  'UTC',
-];
 
 const DEFAULT_TIMEZONE = 'Europe/Madrid';
 
