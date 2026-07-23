@@ -1,28 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, CalendarClock, ChevronDown, ChevronRight, Clock, FileSpreadsheet, Gauge, Loader2, Upload, X } from 'lucide-react';
+import { AlertCircle, CalendarClock, FileSpreadsheet, Loader2, Upload, X } from 'lucide-react';
 import { parseBatchCsv, BatchTaskInput } from '../../lib/parseBatchCsv';
-import {
-  BatchWorkspace, CallWindow, WorkspaceConcurrency,
-  createBatchCampaign, fetchWorkspaceConcurrency,
-} from '../../services/api/batchCampaigns';
+import { BatchWorkspace, CallWindow, createBatchCampaign } from '../../services/api/batchCampaigns';
 import { COMMON_TIMEZONES } from '../../lib/timezones';
+import { splitEvenly } from '../../lib/splitEvenly';
+import { CampaignPartCard } from './CampaignPartCard';
+import { CampaignPart, canCreatePart, makeBlankPart, toMinutes } from './campaignParts';
 
 const PREVIEW_ROWS = 60;
-
-const DAYS: { id: string; label: string }[] = [
-  { id: 'Monday', label: 'Lun' },
-  { id: 'Tuesday', label: 'Mar' },
-  { id: 'Wednesday', label: 'Mié' },
-  { id: 'Thursday', label: 'Jue' },
-  { id: 'Friday', label: 'Vie' },
-  { id: 'Saturday', label: 'Sáb' },
-  { id: 'Sunday', label: 'Dom' },
-];
-
-function toMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(':').map(Number);
-  return h * 60 + m;
-}
+const MAX_PARTS = 50;
 
 export function CreateBatchCampaignModal({ clientId, workspaces, syncing, onSyncWorkspace, onClose, onCreated }: {
   clientId: string;
@@ -39,69 +25,38 @@ export function CreateBatchCampaignModal({ clientId, workspaces, syncing, onSync
     [detectedTz]
   );
 
-  const [name, setName] = useState('');
-  const [workspaceId, setWorkspaceId] = useState(workspaces[0]?.id ?? '');
-  const [fromNumber, setFromNumber] = useState('');
-  const [agentId, setAgentId] = useState('');
+  // CSV compartido (se sube una vez y se reparte en N partes)
   const [tasks, setTasks] = useState<BatchTaskInput[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
 
-  // Programación
-  const [mode, setMode] = useState<'now' | 'scheduled'>('now');
-  const [scheduledAt, setScheduledAt] = useState('');
+  // Partes: cada una es una campaña independiente
+  const [partsCount, setPartsCount] = useState(1);
+  const [parts, setParts] = useState<CampaignPart[]>([]);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
-  // Ventana horaria
-  const [useWindow, setUseWindow] = useState(false);
-  const [windowDays, setWindowDays] = useState<string[]>(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']);
-  const [windowStart, setWindowStart] = useState('09:00');
-  const [windowEnd, setWindowEnd] = useState('20:00');
-  const [timezone, setTimezone] = useState(detectedTz);
-
-  // Opciones avanzadas
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [concurrency, setConcurrency] = useState<WorkspaceConcurrency | null>(null);
-  const [maxConcurrency, setMaxConcurrency] = useState(''); // vacío = sin tope propio
-  const [retriesOn, setRetriesOn] = useState(true);
-  const [maxAttempts, setMaxAttempts] = useState('3');
-  const [delayVoicemailMin, setDelayVoicemailMin] = useState('240');
-  const [delayNoAnswerMin, setDelayNoAnswerMin] = useState('120');
-  const [delayBusyMin, setDelayBusyMin] = useState('60');
-
-  // Concurrencia en vivo del workspace elegido (informativa + valida el tope)
+  // Reparte los contactos en `partsCount` partes. La config de cada parte se
+  // preserva por índice al re-dividir; solo se recalcula su chunk de contactos.
   useEffect(() => {
-    if (!workspaceId) return;
-    let alive = true;
-    setConcurrency(null);
-    fetchWorkspaceConcurrency(clientId, workspaceId)
-      .then(c => { if (alive) setConcurrency(c); })
-      .catch(() => { /* informativo, no bloquea */ });
-    return () => { alive = false; };
-  }, [clientId, workspaceId]);
+    const n = Math.max(1, partsCount || 1);
+    setParts(prev => {
+      const chunks = splitEvenly(tasks, n);
+      const next: CampaignPart[] = [];
+      for (let i = 0; i < n; i++) {
+        const existing = prev[i] ?? makeBlankPart(detectedTz);
+        next.push({ ...existing, tasks: chunks[i] ?? [] });
+      }
+      return next;
+    });
+  }, [tasks, partsCount, detectedTz]);
 
-  const workspace = workspaces.find(w => w.id === workspaceId) ?? null;
-  const wsNumbers = workspace?.numbers ?? (workspace?.active_number ? [workspace.active_number] : []);
-  const wsAgents = workspace?.agents ?? (workspace?.active_agent ? [workspace.active_agent] : []);
-
-  // Al cambiar de workspace, resetear número/agente a sus defaults
+  // Mantener una parte expandida válida cuando cambia la cantidad de partes.
   useEffect(() => {
-    const ws = workspaces.find(w => w.id === workspaceId);
-    setFromNumber(ws?.active_number?.number ?? ws?.numbers?.[0]?.number ?? '');
-    setAgentId(ws?.active_agent?.retell_agent_id ?? ws?.agents?.[0]?.retell_agent_id ?? '');
-  }, [workspaceId, workspaces]);
-
-  // Si el workspace elegido EN EL MODAL no tiene sus números/agentes importados,
-  // disparar el sync individual (mismo mecanismo que el selector de la lista).
-  useEffect(() => {
-    const ws = workspaces.find(w => w.id === workspaceId);
-    if (ws && (!ws.numbers?.length || !ws.agents?.length) && onSyncWorkspace) {
-      onSyncWorkspace(ws.id);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId]);
+    setExpandedId(prev => (prev && parts.some(p => p.id === prev) ? prev : parts[0]?.id ?? null));
+  }, [parts]);
 
   const handleFile = async (file: File) => {
     setParsing(true);
@@ -127,75 +82,99 @@ export function CreateBatchCampaignModal({ clientId, workspaces, syncing, onSync
     }
   };
 
-  const toggleDay = (id: string) =>
-    setWindowDays(prev => (prev.includes(id) ? prev.filter(d => d !== id) : [...prev, id]));
+  const updatePart = (id: string, patch: Partial<CampaignPart>) =>
+    setParts(prev => prev.map(p => (p.id === id ? { ...p, ...patch } : p)));
 
-  const canSubmit =
-    !submitting && name.trim().length > 0 && workspaceId && tasks.length > 0 &&
-    Boolean(fromNumber) &&
-    (mode === 'now' || scheduledAt) &&
-    (!useWindow || (windowDays.length > 0 && toMinutes(windowEnd) > toMinutes(windowStart)));
-
-  const submit = async () => {
-    if (!canSubmit) return;
-    setSubmitting(true);
+  // Crea (o reintenta) todas las partes que aún no se crearon, una por una.
+  // No es atómico: cada parte es un POST independiente; las que quedan OK se
+  // marcan 'success' y no se recrean; las que fallan se pueden reintentar.
+  async function createAll() {
+    setCreating(true);
     setError(null);
-    try {
-      const call_window: CallWindow | null = useWindow
-        ? {
-            windows: [{ start: toMinutes(windowStart), end: toMinutes(windowEnd) }],
-            timezone,
-            day: windowDays,
-          }
-        : null;
+    const snapshot = parts;
+    for (let i = 0; i < snapshot.length; i++) {
+      const p = snapshot[i];
+      if (p.status === 'success' || !canCreatePart(p)) continue;
+      updatePart(p.id, { status: 'creating', errorMsg: undefined });
+      try {
+        const call_window: CallWindow | null = p.useWindow
+          ? { windows: [{ start: toMinutes(p.windowStart), end: toMinutes(p.windowEnd) }], timezone: p.timezone, day: p.windowDays }
+          : null;
+        const minutes = (v: string) => {
+          const x = parseInt(v, 10);
+          return Number.isFinite(x) && x > 0 ? x * 60 : null; // → segundos
+        };
+        const maxConc = parseInt(p.maxConcurrency, 10);
+        const finalName = p.name.trim();
+        // El form pide REINTENTOS (adicionales a la llamada inicial); el backend
+        // espera intentos TOTALES = reintentos + 1. Apagado = 1 (solo la inicial).
+        const retries = Math.min(9, Math.max(1, parseInt(p.maxRetries, 10) || 3));
 
-      const minutes = (v: string) => {
-        const n = parseInt(v, 10);
-        return Number.isFinite(n) && n > 0 ? n * 60 : null; // → segundos
-      };
-      const maxConc = parseInt(maxConcurrency, 10);
-
-      await createBatchCampaign(clientId, {
-        workspace_id: workspaceId,
-        name: name.trim(),
-        tasks,
-        from_number: fromNumber,
-        ...(agentId ? { override_agent_id: agentId } : {}),
-        scheduled_at: mode === 'scheduled' && scheduledAt ? new Date(scheduledAt).getTime() : null,
-        call_window,
-        max_concurrency: Number.isFinite(maxConc) && maxConc > 0 ? maxConc : null,
-        // Reintentos: apagados = 1 intento total; encendidos = intentos + esperas elegidas
-        max_retry_attempts: retriesOn ? (parseInt(maxAttempts, 10) || 3) : 1,
-        retry_delay_voicemail: retriesOn ? minutes(delayVoicemailMin) : null,
-        retry_delay_no_answer: retriesOn ? minutes(delayNoAnswerMin) : null,
-        retry_delay_busy: retriesOn ? minutes(delayBusyMin) : null,
-      });
-      onCreated(workspaceId);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al crear la campaña');
-      setSubmitting(false);
+        const res = await createBatchCampaign(clientId, {
+          workspace_id: p.workspaceId,
+          name: finalName,
+          tasks: p.tasks,
+          from_number: p.fromNumber,
+          ...(p.agentId ? { override_agent_id: p.agentId } : {}),
+          scheduled_at: p.mode === 'scheduled' && p.scheduledAt ? new Date(p.scheduledAt).getTime() : null,
+          call_window,
+          max_concurrency: Number.isFinite(maxConc) && maxConc > 0 ? maxConc : null,
+          max_retry_attempts: p.retriesOn ? retries + 1 : 1,
+          retry_delay_voicemail: p.retriesOn ? minutes(p.delayVoicemailMin) : null,
+          retry_delay_no_answer: p.retriesOn ? minutes(p.delayNoAnswerMin) : null,
+          retry_delay_busy: p.retriesOn ? minutes(p.delayBusyMin) : null,
+        });
+        updatePart(p.id, { status: 'success', batchId: res.batch_id, errorMsg: undefined });
+      } catch (err) {
+        updatePart(p.id, { status: 'error', errorMsg: err instanceof Error ? err.message : 'Error al crear la campaña' });
+      }
     }
-  };
+    setCreating(false);
+  }
 
-  // filter(Boolean): descarta encabezados vacíos (comas de más en el CSV) que
-  // además producían keys duplicadas en la tabla de preview.
   const previewColumns = (headers.length ? headers : ['phone_number']).filter(Boolean);
   const previewTasks = tasks.slice(0, PREVIEW_ROWS);
 
-  const label = 'block text-sm font-medium text-slate-700 mb-1';
-  const input = 'w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500';
+  const totalTasks = tasks.length;
+  const pendingParts = parts.filter(p => p.status !== 'success');
+  const successCount = parts.filter(p => p.status === 'success').length;
+  const errorCount = parts.filter(p => p.status === 'error').length;
+  const allPendingValid = pendingParts.length > 0 && pendingParts.every(canCreatePart);
+  const canCreate = !creating && totalTasks > 0 && allPendingValid;
+  const anySuccess = successCount > 0;
+  // Una vez que se creó ≥1 parte (o mientras se crea), no se puede cambiar el CSV
+  // ni la cantidad de partes: rompería la correspondencia parte↔contactos ya enviados.
+  const lockSetup = creating || anySuccess;
 
+  const createLabel = creating
+    ? 'Creando…'
+    : anySuccess && errorCount > 0
+      ? `Reintentar fallidas (${errorCount})`
+      : parts.length <= 1
+        ? 'Crear campaña'
+        : `Crear ${pendingParts.length} campaña${pendingParts.length !== 1 ? 's' : ''}`;
+
+  function handleClose() {
+    if (successCount > 0) {
+      const firstWs = parts.find(p => p.status === 'success')?.workspaceId;
+      onCreated(firstWs);
+    } else {
+      onClose();
+    }
+  }
+
+  const label = 'block text-sm font-medium text-slate-700 mb-1';
+
+  // El backdrop NO cierra el modal: solo la X / Cerrar lo cierran, para no perder la
+  // configuración por un click accidental fuera del popup.
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div
-        className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
         <div className="p-5 border-b border-slate-200 flex items-center justify-between sticky top-0 bg-white rounded-t-xl z-10">
           <h4 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
             <CalendarClock className="w-5 h-5 text-blue-700" /> Nueva campaña programada
           </h4>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500">
+          <button onClick={handleClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -207,64 +186,7 @@ export function CreateBatchCampaignModal({ clientId, workspaces, syncing, onSync
             </div>
           )}
 
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div>
-              <label className={label}>Nombre de la campaña *</label>
-              <input className={input} value={name} onChange={e => setName(e.target.value)} placeholder="Ej: Confirmaciones julio" />
-            </div>
-            <div>
-              <label className={label}>Workspace *</label>
-              <select className={input} value={workspaceId} onChange={e => setWorkspaceId(e.target.value)}>
-                {workspaces.map(w => (
-                  <option key={w.id} value={w.id}>{w.name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div>
-              <label className={label}>Número de origen *</label>
-              {wsNumbers.length > 0 ? (
-                <select className={input} value={fromNumber} onChange={e => setFromNumber(e.target.value)}>
-                  {wsNumbers.map(n => (
-                    <option key={n.id} value={n.number}>
-                      {n.number}{n.label ? ` · ${n.label}` : ''}
-                    </option>
-                  ))}
-                </select>
-              ) : syncing ? (
-                <p className="text-xs text-blue-600 mt-1 flex items-center gap-1.5">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  Importando los números de este workspace desde Retell...
-                </p>
-              ) : (
-                <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
-                  <AlertCircle className="w-3.5 h-3.5" />
-                  Este workspace no tiene números en Retell (o falló la importación — reintentá eligiéndolo de nuevo).
-                </p>
-              )}
-            </div>
-            <div>
-              <label className={label}>Agente</label>
-              {wsAgents.length > 0 ? (
-                <select className={input} value={agentId} onChange={e => setAgentId(e.target.value)}>
-                  {wsAgents.map(a => (
-                    <option key={a.id} value={a.retell_agent_id}>{a.name}</option>
-                  ))}
-                </select>
-              ) : syncing ? (
-                <p className="text-xs text-blue-600 mt-1 flex items-center gap-1.5">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  Importando agentes...
-                </p>
-              ) : (
-                <p className="text-xs text-slate-500 mt-1">Sin agentes importados — se usará el agente vinculado al número en Retell.</p>
-              )}
-            </div>
-          </div>
-
-          {/* CSV */}
+          {/* CSV (uno solo, se reparte en las partes) */}
           <div>
             <label className={label}>Contactos (CSV) *</label>
             <input
@@ -277,8 +199,8 @@ export function CreateBatchCampaignModal({ clientId, workspaces, syncing, onSync
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
-              disabled={parsing}
-              className="w-full border-2 border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50/50 rounded-xl p-6 text-center transition-colors disabled:opacity-60"
+              disabled={parsing || lockSetup}
+              className="w-full border-2 border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50/50 rounded-xl p-6 text-center transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {parsing ? (
                 <span className="flex items-center justify-center gap-2 text-slate-600">
@@ -293,7 +215,7 @@ export function CreateBatchCampaignModal({ clientId, workspaces, syncing, onSync
                   <Upload className="w-6 h-6" />
                   <span className="font-medium text-slate-700">Subir CSV</span>
                   <span className="text-xs">
-                    La primera columna debe llamarse <code className="bg-slate-100 px-1 rounded">phone_number</code>.
+                    La primera columna es el teléfono — vale <code className="bg-slate-100 px-1 rounded">phone_number</code>, <code className="bg-slate-100 px-1 rounded">phone</code>, <code className="bg-slate-100 px-1 rounded">number</code>, <code className="bg-slate-100 px-1 rounded">teléfono</code>… se detecta sola.
                     El resto de columnas se envían como variables al agente.
                   </span>
                 </span>
@@ -301,7 +223,7 @@ export function CreateBatchCampaignModal({ clientId, workspaces, syncing, onSync
             </button>
           </div>
 
-          {/* Preview */}
+          {/* Preview del CSV completo */}
           {tasks.length > 0 && (
             <div className="border border-slate-200 rounded-lg overflow-hidden">
               <div className="overflow-x-auto max-h-56 overflow-y-auto">
@@ -337,169 +259,74 @@ export function CreateBatchCampaignModal({ clientId, workspaces, syncing, onSync
             </div>
           )}
 
-          {/* Programación */}
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div>
-              <label className={label}>¿Cuándo se lanza?</label>
-              <div className="flex rounded-lg border border-slate-300 overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => setMode('now')}
-                  className={`flex-1 px-3 py-2 text-sm font-medium ${mode === 'now' ? 'bg-[#0a2a5a] text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
-                >
-                  Ahora
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMode('scheduled')}
-                  className={`flex-1 px-3 py-2 text-sm font-medium ${mode === 'scheduled' ? 'bg-[#0a2a5a] text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
-                >
-                  Programar
-                </button>
-              </div>
-              {mode === 'scheduled' && (
-                <input
-                  type="datetime-local"
-                  className={`${input} mt-2`}
-                  value={scheduledAt}
-                  min={new Date(Date.now() + 60_000).toISOString().slice(0, 16)}
-                  onChange={e => setScheduledAt(e.target.value)}
-                />
-              )}
-            </div>
-
-            <div>
-              <label className={`${label} flex items-center gap-2`}>
-                <input
-                  type="checkbox"
-                  checked={useWindow}
-                  onChange={e => setUseWindow(e.target.checked)}
-                  className="rounded border-slate-300"
-                />
-                <Clock className="w-4 h-4 text-slate-500" />
-                Solo llamar en una franja horaria
-              </label>
-              {useWindow && (
-                <div className="mt-2 space-y-2">
-                  <div className="flex flex-wrap gap-1.5">
-                    {DAYS.map(d => (
-                      <button
-                        key={d.id}
-                        type="button"
-                        onClick={() => toggleDay(d.id)}
-                        className={`px-2 py-1 rounded-md text-xs font-medium border ${
-                          windowDays.includes(d.id)
-                            ? 'bg-blue-600 border-blue-600 text-white'
-                            : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
-                        }`}
-                      >
-                        {d.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input type="time" className={input} value={windowStart} onChange={e => setWindowStart(e.target.value)} />
-                    <span className="text-slate-400 text-sm">a</span>
-                    <input type="time" className={input} value={windowEnd} onChange={e => setWindowEnd(e.target.value)} />
-                  </div>
-                  <select className={input} value={timezone} onChange={e => setTimezone(e.target.value)}>
-                    {timezones.map(tz => (
-                      <option key={tz} value={tz}>{tz}{tz === detectedTz ? ' (tu zona)' : ''}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Opciones avanzadas: concurrencia + reintentos por campaña */}
-          <div className="border border-slate-200 rounded-lg">
-            <button
-              type="button"
-              onClick={() => setShowAdvanced(v => !v)}
-              className="w-full px-4 py-2.5 flex items-center gap-2 text-sm font-medium text-slate-700 hover:bg-slate-50 rounded-lg"
-            >
-              {showAdvanced ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-              Opciones avanzadas
-              <span className="text-xs text-slate-400 font-normal ml-1">concurrencia y reintentos</span>
-            </button>
-
-            {showAdvanced && (
-              <div className="px-4 pb-4 space-y-4 border-t border-slate-100 pt-3">
+          {/* Cantidad de partes + tarjetas por parte */}
+          {tasks.length > 0 && (
+            <>
+              <div className="flex flex-wrap items-end gap-4">
                 <div>
-                  <label className={`${label} flex items-center gap-1.5`}>
-                    <Gauge className="w-4 h-4 text-slate-500" />
-                    Llamadas simultáneas máximas de esta campaña
-                  </label>
+                  <label className={label}>Dividir en cuántas partes</label>
                   <input
                     type="number"
                     min={1}
-                    className={input}
-                    value={maxConcurrency}
-                    onChange={e => setMaxConcurrency(e.target.value)}
-                    placeholder={concurrency ? `Sin tope propio (la cuenta permite ${concurrency.limit})` : 'Sin tope propio'}
+                    max={MAX_PARTS}
+                    disabled={lockSetup}
+                    value={partsCount}
+                    onChange={e => {
+                      const v = parseInt(e.target.value || '1', 10);
+                      setPartsCount(Math.max(1, Math.min(MAX_PARTS, Number.isFinite(v) ? v : 1)));
+                    }}
+                    className="w-32 px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
                   />
-                  <p className="text-xs text-slate-500 mt-1">
-                    {concurrency
-                      ? <>Tu cuenta de Retell permite <b>{concurrency.limit}</b> llamadas simultáneas ({concurrency.current} en uso ahora). El sistema nunca supera ese techo; acá podés bajarlo solo para esta campaña.</>
-                      : 'Consultando el límite de tu cuenta de Retell...'}
-                  </p>
                 </div>
-
-                <div>
-                  <label className={`${label} flex items-center gap-2`}>
-                    <input
-                      type="checkbox"
-                      checked={retriesOn}
-                      onChange={e => setRetriesOn(e.target.checked)}
-                      className="rounded border-slate-300"
-                    />
-                    Reintentar llamadas no atendidas
-                  </label>
-                  {retriesOn && (
-                    <div className="mt-2 grid sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs text-slate-600 mb-1">Intentos máximos por número</label>
-                        <input type="number" min={2} max={10} className={input} value={maxAttempts} onChange={e => setMaxAttempts(e.target.value)} />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-slate-600 mb-1">Buzón de voz → reintentar en (min)</label>
-                        <input type="number" min={1} className={input} value={delayVoicemailMin} onChange={e => setDelayVoicemailMin(e.target.value)} />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-slate-600 mb-1">No contesta → reintentar en (min)</label>
-                        <input type="number" min={1} className={input} value={delayNoAnswerMin} onChange={e => setDelayNoAnswerMin(e.target.value)} />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-slate-600 mb-1">Ocupado → reintentar en (min)</label>
-                        <input type="number" min={1} className={input} value={delayBusyMin} onChange={e => setDelayBusyMin(e.target.value)} />
-                      </div>
-                    </div>
-                  )}
-                  {!retriesOn && (
-                    <p className="text-xs text-slate-500 mt-1">Cada número se llama UNA sola vez, sin importar el resultado.</p>
-                  )}
-                </div>
+                <p className="text-xs text-slate-500 pb-2.5">
+                  Cada parte es una campaña independiente (su propio workspace, número, agente y horario).
+                  {parts.length > 1 && ' Elegí workspaces distintos para que corran en paralelo.'}
+                </p>
               </div>
-            )}
-          </div>
+
+              <div className="space-y-3">
+                {parts.map((part, i) => (
+                  <CampaignPartCard
+                    key={part.id}
+                    part={part}
+                    index={i}
+                    total={parts.length}
+                    workspaces={workspaces}
+                    clientId={clientId}
+                    syncing={syncing}
+                    onSyncWorkspace={onSyncWorkspace}
+                    onChange={patch => updatePart(part.id, patch)}
+                    expanded={expandedId === part.id}
+                    onToggleExpand={() => setExpandedId(prev => (prev === part.id ? null : part.id))}
+                    detectedTz={detectedTz}
+                    timezones={timezones}
+                    disabled={creating || part.status === 'success'}
+                  />
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
         <div className="p-5 border-t border-slate-200 flex items-center justify-between gap-3 sticky bottom-0 bg-white rounded-b-xl">
           <p className="text-xs text-slate-500">
-            {tasks.length > 0 && <>{tasks.length.toLocaleString('es')} llamadas se {mode === 'now' ? 'lanzarán al confirmar' : 'programarán'}{useWindow ? ' respetando la franja horaria' : ''}.</>}
+            {anySuccess || errorCount > 0
+              ? <>{successCount} creada{successCount !== 1 ? 's' : ''}{errorCount > 0 ? `, ${errorCount} con error` : ''}.</>
+              : totalTasks > 0
+                ? <>{totalTasks.toLocaleString('es')} contactos en {parts.length} parte{parts.length !== 1 ? 's' : ''}.</>
+                : null}
           </p>
           <div className="flex gap-2">
-            <button onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50">
-              Cancelar
+            <button onClick={handleClose} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50">
+              {anySuccess ? 'Cerrar' : 'Cancelar'}
             </button>
             <button
-              onClick={submit}
-              disabled={!canSubmit}
+              onClick={createAll}
+              disabled={!canCreate}
               className="px-4 py-2 rounded-lg bg-[#0a2a5a] hover:bg-[#1e4a8a] disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium flex items-center gap-2"
             >
-              {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-              {submitting ? 'Creando...' : 'Crear campaña'}
+              {creating && <Loader2 className="w-4 h-4 animate-spin" />}
+              {createLabel}
             </button>
           </div>
         </div>

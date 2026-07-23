@@ -7,6 +7,7 @@ import { authedFetch } from '../../services/api/http';
 
 import { saveBatchCallSettings, getRetellConfig, updateRetellConfig } from '../../services/api/seguimientos';
 import { COMMON_TIMEZONES } from '../../lib/timezones';
+import { splitEvenly } from '../../lib/splitEvenly';
 
 
 type BatchStatus = 'pending' | 'sending' | 'success' | 'error';
@@ -162,20 +163,6 @@ function rowsToCsv(headers: string[], rows: Record<string, string>[]): string {
   return [headerLine, ...lines].join('\n');
 }
 
-function splitEvenly<T>(items: T[], parts: number): T[][] {
-  if (parts <= 1) return [items];
-  const result: T[][] = [];
-  const base = Math.floor(items.length / parts);
-  let remainder = items.length % parts;
-  let start = 0;
-  for (let i = 0; i < parts; i++) {
-    const size = base + (remainder > 0 ? 1 : 0);
-    result.push(items.slice(start, start + size));
-    start += size;
-    if (remainder > 0) remainder--;
-  }
-  return result;
-}
 
 function normalizePhone(value: string): NormalizedPhoneResult {
   const compact = (value || '').trim().replace(/[\s\-().]/g, '');

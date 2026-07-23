@@ -443,15 +443,19 @@ function formatWindow(cw: NonNullable<BatchCampaign['call_window']>): string {
 }
 
 function retrySummary(c: BatchCampaign): string {
-  if (c.max_retry_attempts === 1) return 'Sin reintentos (1 solo intento)';
   const min = (s: number | null | undefined) => (s ? `${Math.round(s / 60)}m` : null);
   const parts = [
     min(c.retry_delay_voicemail) && `buzón ${min(c.retry_delay_voicemail)}`,
     min(c.retry_delay_no_answer) && `no contesta ${min(c.retry_delay_no_answer)}`,
     min(c.retry_delay_busy) && `ocupado ${min(c.retry_delay_busy)}`,
   ].filter(Boolean);
-  if (!c.max_retry_attempts && !parts.length) return 'Config del workspace (3 intentos)';
-  return `${c.max_retry_attempts ?? 3} intentos${parts.length ? ' · ' + parts.join(' · ') : ''}`;
+  // max_retry_attempts del backend = intentos TOTALES (incluye la llamada inicial).
+  // Se muestra como reintentos = total − 1 para alinear con el formulario de creación.
+  if (c.max_retry_attempts === 1) return 'Sin reintentos (1 sola llamada)';
+  if (!c.max_retry_attempts && !parts.length) return 'Config del workspace';
+  const total = c.max_retry_attempts ?? 3;
+  const retries = Math.max(0, total - 1);
+  return `${retries} reintento${retries !== 1 ? 's' : ''} (hasta ${total} llamadas)${parts.length ? ' · ' + parts.join(' · ') : ''}`;
 }
 
 // Arma y descarga un CSV compatible con el importador de "Nueva campaña"
@@ -626,7 +630,7 @@ function BatchCampaignDetailModal({ clientId, campaign, workspace, onClose }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div
-        className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto"
+        className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[85vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-5 border-b border-slate-200 flex items-start justify-between gap-4 sticky top-0 bg-white rounded-t-xl z-20">
@@ -676,30 +680,33 @@ function BatchCampaignDetailModal({ clientId, campaign, workspace, onClose }: {
           </div>
 
           {/* Configuración de la campaña */}
-          <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2 text-sm bg-slate-50 border border-slate-200 rounded-lg p-4">
-            <div className="flex justify-between gap-3">
-              <span className="text-slate-500">Número de origen</span>
-              <span className="text-slate-800 font-medium">{campaign.from_number}</span>
-            </div>
-            <div className="flex justify-between gap-3">
-              <span className="text-slate-500">Agente</span>
-              <span className="text-slate-800 font-medium truncate max-w-[200px]" title={agentName}>{agentName}</span>
-            </div>
-            <div className="flex justify-between gap-3">
-              <span className="text-slate-500">Lanzamiento</span>
-              <span className="text-slate-800 font-medium">{scheduled ? `Programada ${scheduled}` : 'Inmediato'}</span>
-            </div>
-            <div className="flex justify-between gap-3">
-              <span className="text-slate-500">Franja horaria</span>
-              <span className="text-slate-800 font-medium text-right">{campaign.call_window ? formatWindow(campaign.call_window) : 'Sin restricción'}</span>
-            </div>
-            <div className="flex justify-between gap-3">
-              <span className="text-slate-500">Reintentos</span>
-              <span className="text-slate-800 font-medium text-right">{retrySummary(campaign)}</span>
-            </div>
-            <div className="flex justify-between gap-3">
-              <span className="text-slate-500">Simultáneas máx.</span>
-              <span className="text-slate-800 font-medium">{campaign.max_concurrency ?? 'Sin tope propio'}</span>
+          <div>
+            <h5 className="text-sm font-semibold text-slate-700 mb-2">Configuración</h5>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4 bg-slate-50 border border-slate-200 rounded-lg p-4">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Número de origen</p>
+                <p className="text-sm font-medium text-slate-700 break-words">{campaign.from_number}</p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Agente</p>
+                <p className="text-sm font-medium text-slate-700 break-words" title={agentName}>{agentName}</p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Lanzamiento</p>
+                <p className="text-sm font-medium text-slate-700">{scheduled ? `Programada ${scheduled}` : 'Inmediato'}</p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Franja horaria</p>
+                <p className="text-sm font-medium text-slate-700">{campaign.call_window ? formatWindow(campaign.call_window) : 'Sin restricción'}</p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Reintentos</p>
+                <p className="text-sm font-medium text-slate-700">{retrySummary(campaign)}</p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Simultáneas máx.</p>
+                <p className="text-sm font-medium text-slate-700">{campaign.max_concurrency ?? 'Sin tope propio'}</p>
+              </div>
             </div>
           </div>
 
