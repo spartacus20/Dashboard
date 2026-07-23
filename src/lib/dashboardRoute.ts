@@ -16,6 +16,7 @@ export const PAGE_IDS = [
   'campaign',
   'ventas',
   'lanzamiento',
+  'lanzamiento-v2',
   'no-llamar',
   'tickets',
   'recoveries',

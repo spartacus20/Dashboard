@@ -39,6 +39,7 @@ import {
   canAccessSeguimientos,
   canAccessBudget,
   canAccessAgentes,
+  canAccessLanzamientoV2,
   hasPermissionsDefined,
   getClientTest,
   getClientIdFromSession,
@@ -137,6 +138,7 @@ export function Sidebar({
   const [seguimientosEnabled, setSeguimientosEnabled] = React.useState(() => canAccessSeguimientos());
   const [budgetEnabled, setBudgetEnabled] = React.useState(() => canAccessBudget());
   const [agentesEnabled, setAgentesEnabled] = React.useState(() => canAccessAgentes());
+  const [lanzamientoV2Enabled, setLanzamientoV2Enabled] = React.useState(() => canAccessLanzamientoV2());
 
   // Revisar metadata cuando cambie (ej. al cambiar de cliente)
   React.useEffect(() => {
@@ -148,6 +150,7 @@ export function Sidebar({
       setSeguimientosEnabled(canAccessSeguimientos());
       setBudgetEnabled(canAccessBudget());
       setAgentesEnabled(canAccessAgentes());
+      setLanzamientoV2Enabled(canAccessLanzamientoV2());
     };
     update();
     window.addEventListener("metadataUpdated", update);
@@ -692,6 +695,20 @@ export function Sidebar({
             >
               <Rocket className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
               Lanzamiento
+            </button>
+          )}
+          {lanzamientoV2Enabled && (
+            <button
+              onClick={() => { navigateWithParams("lanzamiento-v2"); }}
+              className={`group flex w-full items-center gap-2 px-4 py-2 ${
+                currentPage === "lanzamiento-v2"
+                  ? "text-white bg-[#0a2a5a] border border-[#1e4a8a]"
+                  : "text-gray-300 hover:bg-[#0a2a5a]"
+              } rounded-lg`}
+            >
+              <Rocket className="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" />
+              Lanzamiento v2
+              <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[#1e4a8a] text-blue-100">beta</span>
             </button>
           )}
           {canAccessDontCall && (
