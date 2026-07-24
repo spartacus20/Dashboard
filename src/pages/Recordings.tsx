@@ -8,6 +8,24 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { listCalls, exportCallsWithColumns, fetchAgents, createPhoneCall, getCallTranscript, getAudioUrl } from '../api';
 import { RECORDINGS_PAGE_SIZE, RECORDINGS_PAGE_SIZE_OPTIONS } from '../lib/constants';
 
+// Formatea el motivo de fin/desconexión crudo (ej. "agent_hangup") a texto
+// legible ("Agent Hangup"): separa por _ / - / espacios y capitaliza cada
+// palabra. Algunas siglas conocidas van en mayúsculas (LLM, API, IVR…).
+const END_REASON_ACRONYMS = new Set(['llm', 'api', 'ivr', 'sip', 'dtmf', 'tts', 'stt', 'id', 'sms']);
+
+function formatEndReason(raw?: string | null): string {
+  if (!raw || raw === '—') return '—';
+  const words = String(raw).trim().split(/[_\-\s]+/).filter(Boolean);
+  if (!words.length) return '—';
+  return words
+    .map((w) =>
+      END_REASON_ACRONYMS.has(w.toLowerCase())
+        ? w.toUpperCase()
+        : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(),
+    )
+    .join(' ');
+}
+
 // Componentes UI simplificados
 const Input = ({ className = "", ...props }: { className?: string; [key: string]: any }) => (
   <input 
@@ -2431,7 +2449,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                               >
                                 <SelectItem value="all">Todas</SelectItem>
                                 {contextDisconnectionReasons.map(reason => (
-                                  <SelectItem key={reason} value={reason}>{reason}</SelectItem>
+                                  <SelectItem key={reason} value={reason}>{formatEndReason(reason)}</SelectItem>
                                 ))}
                               </Select>
                             </div>
@@ -2760,7 +2778,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                             <td className="px-4 py-3 whitespace-nowrap">
                               <span className="inline-flex items-center gap-1.5 text-slate-600 text-xs">
                                 <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${endReasonColor}`} />
-                                {endReason}
+                                {formatEndReason(endReason)}
                               </span>
                             </td>
 
@@ -3001,7 +3019,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                     {modalCallForTransition.disconnection_reason && (
                       <div>
                         <p className="text-sm text-slate-600">Razón de Desconexión</p>
-                        <p className="text-slate-800">{modalCallForTransition.disconnection_reason}</p>
+                        <p className="text-slate-800">{formatEndReason(modalCallForTransition.disconnection_reason)}</p>
                       </div>
                     )}
                   </div>
