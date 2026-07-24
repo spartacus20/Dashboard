@@ -514,6 +514,12 @@ export const canAccessAgentes = (): boolean => canAccessFeature('agentes');
 // (batch service — flag clients.metadata.batch_campaigns, gateado también en backend)
 export const canAccessBatchCampaigns = (): boolean => canAccessFeature('batch_campaigns');
 
+// Función para verificar acceso a la nueva página de Lanzamiento v2 (rediseño horario).
+// Gateada por permissions + metadata (clients.metadata.lanzamiento_v2), igual que el resto
+// de features. Para habilitarla a un usuario: metadata.lanzamiento_v2 = true (y permissions
+// .lanzamiento_v2 = true si el usuario tiene permissions definidos).
+export const canAccessLanzamientoV2 = (): boolean => canAccessFeature('lanzamiento_v2');
+
 // Obtiene el role del usuario desde userData en sessionStorage
 export const getUserRole = (): string | null => {
   try {

@@ -7,6 +7,9 @@ import { authedFetch } from '../../services/api/http';
 
 import { saveBatchCallSettings, getRetellConfig, updateRetellConfig } from '../../services/api/seguimientos';
 import { COMMON_TIMEZONES } from '../../lib/timezones';
+import { splitEvenly } from '../../lib/splitEvenly';
+import { formatScheduledDate } from '../../lib/formatScheduled';
+import { zonedTimeToUtc } from '../../lib/dateUtils';
 
 
 type BatchStatus = 'pending' | 'sending' | 'success' | 'error';
@@ -162,20 +165,6 @@ function rowsToCsv(headers: string[], rows: Record<string, string>[]): string {
   return [headerLine, ...lines].join('\n');
 }
 
-function splitEvenly<T>(items: T[], parts: number): T[][] {
-  if (parts <= 1) return [items];
-  const result: T[][] = [];
-  const base = Math.floor(items.length / parts);
-  let remainder = items.length % parts;
-  let start = 0;
-  for (let i = 0; i < parts; i++) {
-    const size = base + (remainder > 0 ? 1 : 0);
-    result.push(items.slice(start, start + size));
-    start += size;
-    if (remainder > 0) remainder--;
-  }
-  return result;
-}
 
 function normalizePhone(value: string): NormalizedPhoneResult {
   const compact = (value || '').trim().replace(/[\s\-().]/g, '');
@@ -191,23 +180,6 @@ function normalizePhone(value: string): NormalizedPhoneResult {
 
 function isValidE164(value: string): boolean {
   return /^\+[1-9]\d{7,14}$/.test(value);
-}
-
-function formatScheduledDate(value: unknown, timezone?: string): string | null {
-  if (value === null || value === undefined || value === '') return null;
-  const raw = Number(value);
-  if (!Number.isFinite(raw)) return null;
-  const ms = raw > 1e12 ? raw : raw * 1000;
-  const date = new Date(ms);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleString('es-ES', {
-    timeZone: timezone || undefined,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 }
 
 const DEFAULT_TIMEZONE = 'Europe/Madrid';
@@ -558,8 +530,21 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
       if (target.config.agentId.trim()) body.agent_id = target.config.agentId.trim();
       if (target.config.batchName.trim()) body.batch_name = target.config.batchName.trim();
       if (target.config.startTime.trim()) {
-        const parsed = new Date(target.config.startTime);
-        body.start_time = Number.isNaN(parsed.getTime()) ? target.config.startTime.trim() : parsed.toISOString();
+        const raw = target.config.startTime.trim();
+        const tz = target.config.timezone.trim() || DEFAULT_TIMEZONE;
+        // El input es <input type="datetime-local"> ('YYYY-MM-DDTHH:mm', sin zona).
+        // Esos dígitos son la hora de PARED en la zona ELEGIDA (tz), NO en la del
+        // navegador. zonedTimeToUtc los convierte al instante UTC real, así
+        // "18:25 + Europe/Madrid" se guarda como 16:25Z sin importar dónde esté el
+        // navegador (antes se usaba new Date(raw), que interpretaba en la zona del
+        // navegador → desfase por el offset, ej. +5h desde Argentina).
+        const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+        if (m) {
+          body.start_time = zonedTimeToUtc(+m[1], +m[2], +m[3], +m[4], +m[5], m[6] ? +m[6] : 0, tz).toISOString();
+        } else {
+          const parsed = new Date(raw);
+          body.start_time = Number.isNaN(parsed.getTime()) ? raw : parsed.toISOString();
+        }
       }
       if (target.config.timezone.trim()) body.timezone = target.config.timezone.trim();
       if (target.config.reservedConcurrency.trim()) body.reserved_concurrency = target.config.reservedConcurrency.trim();

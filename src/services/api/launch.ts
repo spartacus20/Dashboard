@@ -189,6 +189,36 @@ export async function fetchLanzamientoMetricsCustom(fechaInicio: string, fechaFi
   }
 }
 
+// Obtener llamadas por hora del día (gráfico horario de Lanzamiento v2).
+// El backend reetiqueta las horas a la zona horaria del usuario (tz-aware).
+// Endpoint nuevo (requiere desplegar mas-sol-dashboard): si aún no existe,
+// el llamador debe hacer fallback a datos de ejemplo.
+export async function fetchLanzamientoCallsByHour(
+  fechaInicio?: string,
+  fechaFin?: string
+): Promise<{ hora: number; total_llamadas: number; llamadas_efectivas: number }[]> {
+  const url = `${BASE_URL}/api/lanzamiento/calls/metrics/by-hour`;
+  const body: any = { client_id: getClientId() };
+  if (fechaInicio) body.fecha_inicio = fechaInicio;
+  if (fechaFin) body.fecha_fin = fechaFin;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Error en fetchLanzamientoCallsByHour: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  if (!data.success) {
+    throw new Error(data.error || 'Error al obtener llamadas por hora');
+  }
+  return data.data || [];
+}
+
 // Obtener métricas de lanzamiento de la semana
 export async function fetchLanzamientoMetricsWeek(): Promise<{
   totalLlamadas: number;

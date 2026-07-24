@@ -11,6 +11,7 @@ const Agendas = lazy(() => import('./pages/Agendas').then((m) => ({ default: m.A
 const Callbacks = lazy(() => import('./pages/Callbacks').then((m) => ({ default: m.Callbacks })));
 const Ventas = lazy(() => import('./pages/Ventas').then((m) => ({ default: m.Ventas })));
 const Lanzamiento = lazy(() => import('./pages/Lanzamiento'));
+const LanzamientoV2 = lazy(() => import('./pages/LanzamientoV2'));
 const NoLlamar = lazy(() => import('./pages/NoLlamar'));
 const Campaign = lazy(() => import('./pages/Campaign').then((m) => ({ default: m.Campaign })));
 const Tickets = lazy(() => import('./pages/Tickets').then((m) => ({ default: m.Tickets })));
@@ -32,6 +33,7 @@ import {
   canAccessBudget,
   canAccessSeguimientos,
   canAccessAgentes,
+  canAccessLanzamientoV2,
   canAccessDashboard,
   isAdmin,
   isClientActive,
@@ -168,6 +170,7 @@ function DashboardApp() {
   const [budgetEnabled, setBudgetEnabled] = React.useState(() => canAccessBudget());
   const [seguimientosEnabled, setSeguimientosEnabled] = React.useState(() => canAccessSeguimientos());
   const [agentesEnabled, setAgentesEnabled] = React.useState(() => canAccessAgentes());
+  const [lanzamientoV2Enabled, setLanzamientoV2Enabled] = React.useState(() => canAccessLanzamientoV2());
   React.useEffect(() => {
     const update = () => {
       setTicketsEnabled(canAccessTickets());
@@ -177,6 +180,7 @@ function DashboardApp() {
       setBudgetEnabled(canAccessBudget());
       setSeguimientosEnabled(canAccessSeguimientos());
       setAgentesEnabled(canAccessAgentes());
+      setLanzamientoV2Enabled(canAccessLanzamientoV2());
     };
     update();
     window.addEventListener('metadataUpdated', update);
@@ -192,6 +196,11 @@ function DashboardApp() {
       navigateDashboard('dashboard', undefined, { replace: true });
     }
   }, [currentPage, recoveriesEnabled]);
+  React.useEffect(() => {
+    if (currentPage === 'lanzamiento-v2' && !lanzamientoV2Enabled) {
+      navigateDashboard('dashboard', undefined, { replace: true });
+    }
+  }, [currentPage, lanzamientoV2Enabled]);
   React.useEffect(() => {
     if (currentPage === 'interesados' && !hydroEnabled) {
       navigateDashboard('dashboard', undefined, { replace: true });
@@ -397,6 +406,9 @@ function DashboardApp() {
         )}
         {currentPage === 'lanzamiento' && launchEnabled && (
           <Lanzamiento />
+        )}
+        {currentPage === 'lanzamiento-v2' && lanzamientoV2Enabled && (
+          <LanzamientoV2 />
         )}
         {currentPage === 'no-llamar' && dontCallEnabled && (
           <NoLlamar />
