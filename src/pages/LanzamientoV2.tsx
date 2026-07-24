@@ -5,6 +5,7 @@ import {
   Calendar,
   Lock,
   Phone,
+  PhoneCall,
   MousePointer,
   Link as LinkIcon,
   Activity,
@@ -337,6 +338,7 @@ const LanzamientoV2: React.FC = () => {
   };
 
   // ─── Métricas derivadas (datos reales) ──────────────────────────────────────
+  const totalLlamadas = metrics?.total_llamadas ?? 0;
   const efectivas = metrics?.llamadas_contestadas ?? 0;
   const clicksAsistencia = metrics?.total_clicks_totales ?? 0;
   const enlaces = linksUnique ?? metrics?.total_enlaces_enviados ?? 0;
@@ -534,7 +536,8 @@ const LanzamientoV2: React.FC = () => {
           <>
             {/* KPIs */}
             <div style={{ display: 'flex', gap: 14, marginBottom: 20, flexWrap: 'wrap' }}>
-              <KpiCard label="Llamadas efectivas" value={fmt(efectivas)} icon={<Phone size={14} color={MUTED} />} sub="contestadas en el período" />
+              <KpiCard label="Llamadas totales" value={fmt(totalLlamadas)} icon={<Phone size={14} color={MUTED} />} sub="llamadas realizadas en el período" />
+              <KpiCard label="Llamadas efectivas" value={fmt(efectivas)} icon={<PhoneCall size={14} color={MUTED} />} sub="contestadas en el período" />
               <KpiCard label="Clicks de asistencia" value={fmt(clicksAsistencia)} valueColor={GREEN} icon={<MousePointer size={14} color={MUTED} />} sub="clicks en enlaces enviados" onClick={() => setShowClicksModal(true)} />
               <KpiCard label="Enlaces enviados" value={fmt(enlaces)} valueColor={RED} icon={<LinkIcon size={14} color={MUTED} />} sub="enlaces únicos (1 por teléfono)" onClick={() => setShowLinksModal(true)} />
               <div style={{ flex: 1, minWidth: 180, background: NAVY, borderRadius: 16, padding: '18px 20px', color: '#fff' }}>
