@@ -9,6 +9,7 @@ import { saveBatchCallSettings, getRetellConfig, updateRetellConfig } from '../.
 import { COMMON_TIMEZONES } from '../../lib/timezones';
 import { splitEvenly } from '../../lib/splitEvenly';
 import { formatScheduledDate } from '../../lib/formatScheduled';
+import { zonedTimeToUtc } from '../../lib/dateUtils';
 
 
 type BatchStatus = 'pending' | 'sending' | 'success' | 'error';
@@ -529,8 +530,21 @@ export function BatchCallingTab({ apiKeys, workspaceNameByApiKey }: BatchCalling
       if (target.config.agentId.trim()) body.agent_id = target.config.agentId.trim();
       if (target.config.batchName.trim()) body.batch_name = target.config.batchName.trim();
       if (target.config.startTime.trim()) {
-        const parsed = new Date(target.config.startTime);
-        body.start_time = Number.isNaN(parsed.getTime()) ? target.config.startTime.trim() : parsed.toISOString();
+        const raw = target.config.startTime.trim();
+        const tz = target.config.timezone.trim() || DEFAULT_TIMEZONE;
+        // El input es <input type="datetime-local"> ('YYYY-MM-DDTHH:mm', sin zona).
+        // Esos dígitos son la hora de PARED en la zona ELEGIDA (tz), NO en la del
+        // navegador. zonedTimeToUtc los convierte al instante UTC real, así
+        // "18:25 + Europe/Madrid" se guarda como 16:25Z sin importar dónde esté el
+        // navegador (antes se usaba new Date(raw), que interpretaba en la zona del
+        // navegador → desfase por el offset, ej. +5h desde Argentina).
+        const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+        if (m) {
+          body.start_time = zonedTimeToUtc(+m[1], +m[2], +m[3], +m[4], +m[5], m[6] ? +m[6] : 0, tz).toISOString();
+        } else {
+          const parsed = new Date(raw);
+          body.start_time = Number.isNaN(parsed.getTime()) ? raw : parsed.toISOString();
+        }
       }
       if (target.config.timezone.trim()) body.timezone = target.config.timezone.trim();
       if (target.config.reservedConcurrency.trim()) body.reserved_concurrency = target.config.reservedConcurrency.trim();
