@@ -244,6 +244,30 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
     return 'bg-slate-100 text-slate-700';
   };
 
+  // Traduce el estado del batch al español (SOLO el texto; el color no cambia).
+  // Estados desconocidos caen a su versión con la primera letra en mayúscula.
+  const STATUS_ES: Record<string, string> = {
+    planned: 'Programada',
+    scheduled: 'Programada',
+    pending: 'Pendiente',
+    draft: 'Borrador',
+    sent: 'Enviada',
+    in_progress: 'En progreso',
+    running: 'En curso',
+    ongoing: 'En curso',
+    paused: 'Pausada',
+    completed: 'Completada',
+    cancelled: 'Cancelada',
+    canceled: 'Cancelada',
+    failed: 'Fallida',
+    error: 'Error',
+  };
+  const translateStatus = (status?: string | null): string => {
+    const raw = (status ?? '').trim();
+    if (!raw || raw === '—') return '—';
+    return STATUS_ES[raw.toLowerCase()] ?? (raw.charAt(0).toUpperCase() + raw.slice(1));
+  };
+
   return (
     <div className="p-8">
       <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -408,7 +432,7 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
                   </div>
                   <div className="flex items-center gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeClass(status)}`}>
-                      {status}
+                      {translateStatus(status)}
                     </span>
                     {isPlannedStatus(status) && (
                       <>
@@ -555,7 +579,7 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
                         {selectedBatch.name || selectedBatch.batch_call_id}
                       </h3>
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeClass(selectedBatch.status || '—')}`}>
-                        {selectedBatch.status || '—'}
+                        {translateStatus(selectedBatch.status)}
                       </span>
                     </div>
                     <p className="text-xs text-slate-400 mt-0.5 font-mono">{selectedBatch.batch_call_id}</p>
