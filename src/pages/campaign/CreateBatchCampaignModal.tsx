@@ -4,11 +4,26 @@ import { parseBatchCsv, BatchTaskInput, PhoneColumnCandidate, CsvColumn } from '
 import { BatchWorkspace, CallWindow, createBatchCampaign } from '../../services/api/batchCampaigns';
 import { COMMON_TIMEZONES } from '../../lib/timezones';
 import { splitEvenly } from '../../lib/splitEvenly';
+import { zonedTimeToUtc } from '../../lib/dateUtils';
 import { CampaignPartCard } from './CampaignPartCard';
 import { CampaignPart, canCreatePart, makeBlankPart, toMinutes } from './campaignParts';
 
 const PREVIEW_ROWS = 60;
 const MAX_PARTS = 50;
+
+// Convierte el valor de un <input type="datetime-local"> ("YYYY-MM-DDTHH:mm", sin
+// zona) al instante UTC (ms), interpretándolo como hora de pared en `timezone` —
+// la que el usuario eligió en el dropdown — y NO en la zona del navegador.
+// Sin esto, programar "18:25" con "Europe/Madrid" desde un navegador en Argentina
+// guardaba las 18:25 de Argentina (= 23:25 en Madrid).
+function scheduledLocalToUtcMs(local: string, timezone: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(local);
+  if (!m) {
+    const t = new Date(local).getTime();
+    return Number.isNaN(t) ? null : t;
+  }
+  return zonedTimeToUtc(Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4]), Number(m[5]), 0, timezone).getTime();
+}
 
 export function CreateBatchCampaignModal({ clientId, workspaces, syncing, onSyncWorkspace, onClose, onCreated }: {
   clientId: string;
@@ -161,7 +176,7 @@ export function CreateBatchCampaignModal({ clientId, workspaces, syncing, onSync
           tasks: p.tasks,
           from_number: p.fromNumber,
           ...(p.agentId ? { override_agent_id: p.agentId } : {}),
-          scheduled_at: p.mode === 'scheduled' && p.scheduledAt ? new Date(p.scheduledAt).getTime() : null,
+          scheduled_at: p.mode === 'scheduled' && p.scheduledAt ? scheduledLocalToUtcMs(p.scheduledAt, p.timezone) : null,
           call_window,
           max_concurrency: Number.isFinite(maxConc) && maxConc > 0 ? maxConc : null,
           max_retry_attempts: p.retriesOn ? retries + 1 : 1,

@@ -7,6 +7,7 @@ import { useCallsContext } from '../context/CallsContext';
 import { BatchCallingTab } from './campaign/BatchCallingTab';
 import { BatchCampaignsTab } from './campaign/BatchCampaignsTab';
 import { canAccessBatchCampaigns } from '../lib/supabase';
+import { formatScheduledDate } from '../lib/formatScheduled';
 import { Button } from '../components/ui/button';
 import { CAMPAIGN_PAGE_SIZE as ITEMS_PER_PAGE } from '../lib/constants';
 
@@ -607,9 +608,7 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
                   <div>
                     <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Programado</p>
                     <p className="text-sm font-medium text-slate-700">
-                      {selectedBatch.scheduled_timestamp
-                        ? new Date(selectedBatch.scheduled_timestamp * 1000).toLocaleString()
-                        : '—'}
+                      {formatScheduledDate(selectedBatch.scheduled_timestamp, selectedBatch.timezone) ?? '—'}
                     </p>
                   </div>
                 )}

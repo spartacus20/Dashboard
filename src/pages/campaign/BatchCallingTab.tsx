@@ -8,6 +8,7 @@ import { authedFetch } from '../../services/api/http';
 import { saveBatchCallSettings, getRetellConfig, updateRetellConfig } from '../../services/api/seguimientos';
 import { COMMON_TIMEZONES } from '../../lib/timezones';
 import { splitEvenly } from '../../lib/splitEvenly';
+import { formatScheduledDate } from '../../lib/formatScheduled';
 
 
 type BatchStatus = 'pending' | 'sending' | 'success' | 'error';
@@ -178,23 +179,6 @@ function normalizePhone(value: string): NormalizedPhoneResult {
 
 function isValidE164(value: string): boolean {
   return /^\+[1-9]\d{7,14}$/.test(value);
-}
-
-function formatScheduledDate(value: unknown, timezone?: string): string | null {
-  if (value === null || value === undefined || value === '') return null;
-  const raw = Number(value);
-  if (!Number.isFinite(raw)) return null;
-  const ms = raw > 1e12 ? raw : raw * 1000;
-  const date = new Date(ms);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleString('es-ES', {
-    timeZone: timezone || undefined,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 }
 
 const DEFAULT_TIMEZONE = 'Europe/Madrid';
