@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, CalendarClock, FileSpreadsheet, Loader2, Upload, X } from 'lucide-react';
-import { parseBatchCsv, BatchTaskInput } from '../../lib/parseBatchCsv';
+import { AlertCircle, CalendarClock, FileSpreadsheet, Loader2, Phone, Upload, X } from 'lucide-react';
+import { parseBatchCsv, BatchTaskInput, PhoneColumnCandidate, CsvColumn } from '../../lib/parseBatchCsv';
 import { BatchWorkspace, CallWindow, createBatchCampaign } from '../../services/api/batchCampaigns';
 import { COMMON_TIMEZONES } from '../../lib/timezones';
 import { splitEvenly } from '../../lib/splitEvenly';
@@ -32,6 +32,12 @@ export function CreateBatchCampaignModal({ clientId, workspaces, syncing, onSync
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Detección de la columna de teléfono en el CSV
+  const [csvText, setCsvText] = useState<string | null>(null);
+  const [columns, setColumns] = useState<CsvColumn[]>([]);
+  const [phonePicker, setPhonePicker] = useState<{ candidates: PhoneColumnCandidate[]; showAll: boolean } | null>(null);
+  const [phoneHeader, setPhoneHeader] = useState<string | null>(null);
+
   // Partes: cada una es una campaña independiente
   const [partsCount, setPartsCount] = useState(1);
   const [parts, setParts] = useState<CampaignPart[]>([]);
@@ -58,28 +64,67 @@ export function CreateBatchCampaignModal({ clientId, workspaces, syncing, onSync
     setExpandedId(prev => (prev && parts.some(p => p.id === prev) ? prev : parts[0]?.id ?? null));
   }, [parts]);
 
+  // Aplica el resultado del parser al estado. `uploadName` no-null = venimos de un
+  // upload nuevo (se setea/limpia el nombre de archivo); null = elección manual de columna.
+  const applyParsed = (parsed: ReturnType<typeof parseBatchCsv>, uploadName: string | null) => {
+    setColumns(parsed.columns ?? []);
+
+    if (parsed.needsSelection) {
+      const candidates = parsed.candidates ?? [];
+      setError(null);
+      setTasks([]);
+      setHeaders([]);
+      setPhoneHeader(null);
+      setPhonePicker({ candidates, showAll: candidates.length === 0 });
+      if (uploadName !== null) setFileName(uploadName);
+      return;
+    }
+
+    if (parsed.error) {
+      setError(parsed.error);
+      setTasks([]);
+      setHeaders([]);
+      setPhoneHeader(null);
+      // Upload nuevo con error → limpiar archivo y cerrar selector; elección manual
+      // con error → dejamos el selector abierto para reintentar.
+      if (uploadName !== null) { setFileName(null); setPhonePicker(null); }
+      return;
+    }
+
+    setError(null);
+    setTasks(parsed.tasks);
+    setHeaders(parsed.headers);
+    setPhonePicker(null);
+    if (uploadName !== null) setFileName(uploadName);
+    const col = (parsed.columns ?? []).find((c) => c.index === parsed.phoneColIndex);
+    setPhoneHeader(col?.header ?? null);
+  };
+
   const handleFile = async (file: File) => {
     setParsing(true);
     setError(null);
     try {
       const text = await file.text();
-      const parsed = parseBatchCsv(text);
-      if (parsed.error) {
-        setError(parsed.error);
-        setTasks([]);
-        setHeaders([]);
-        setFileName(null);
-      } else {
-        setTasks(parsed.tasks);
-        setHeaders(parsed.headers);
-        setFileName(file.name);
-      }
+      setCsvText(text);
+      applyParsed(parseBatchCsv(text), file.name);
     } catch {
       setError('No se pudo leer el archivo.');
     } finally {
       setParsing(false);
       if (fileRef.current) fileRef.current.value = '';
     }
+  };
+
+  // El usuario elige la columna de teléfono (caso ambiguo o cambio manual).
+  const choosePhoneColumn = (index: number) => {
+    if (!csvText) return;
+    applyParsed(parseBatchCsv(csvText, index), null);
+  };
+
+  // Reabre el selector mostrando TODAS las columnas (para corregir la detección).
+  const openManualPicker = () => {
+    if (!columns.length) return;
+    setPhonePicker({ candidates: [], showAll: true });
   };
 
   const updatePart = (id: string, patch: Partial<CampaignPart>) =>
@@ -215,13 +260,72 @@ export function CreateBatchCampaignModal({ clientId, workspaces, syncing, onSync
                   <Upload className="w-6 h-6" />
                   <span className="font-medium text-slate-700">Subir CSV</span>
                   <span className="text-xs">
-                    La primera columna es el teléfono — vale <code className="bg-slate-100 px-1 rounded">phone_number</code>, <code className="bg-slate-100 px-1 rounded">phone</code>, <code className="bg-slate-100 px-1 rounded">number</code>, <code className="bg-slate-100 px-1 rounded">teléfono</code>… se detecta sola.
+                    La columna de teléfono se detecta sola — por el nombre (<code className="bg-slate-100 px-1 rounded">phone_number</code>, <code className="bg-slate-100 px-1 rounded">phone</code>, <code className="bg-slate-100 px-1 rounded">teléfono</code>…) o por el contenido, esté en la posición que esté. Si hay varias que parecen teléfono, te dejamos elegirla.
                     El resto de columnas se envían como variables al agente.
                   </span>
                 </span>
               )}
             </button>
           </div>
+
+          {/* Selector de columna de teléfono (ambiguo o manual) */}
+          {phonePicker && (
+            <div className="border border-amber-300 bg-amber-50 rounded-xl p-4 space-y-3">
+              <div className="flex items-start gap-2">
+                <Phone className="w-4 h-4 text-amber-700 mt-0.5 flex-shrink-0" />
+                <div className="text-sm text-amber-900">
+                  {phonePicker.showAll
+                    ? 'Elegí cuál columna es el número de teléfono a llamar:'
+                    : phonePicker.candidates.length >= 2
+                      ? 'Encontramos varias columnas que parecen teléfono. ¿Cuál es el número a llamar?'
+                      : 'Elegí la columna de teléfono:'}
+                </div>
+              </div>
+              <div className="grid gap-2">
+                {(phonePicker.showAll ? columns : phonePicker.candidates).map((col) => {
+                  const cand = phonePicker.candidates.find((c) => c.index === col.index);
+                  return (
+                    <button
+                      key={col.index}
+                      type="button"
+                      onClick={() => choosePhoneColumn(col.index)}
+                      className="flex items-center justify-between gap-3 text-left border border-slate-200 bg-white hover:border-blue-400 hover:bg-blue-50 rounded-lg px-3 py-2 transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-slate-800 truncate">{col.header || `(columna ${col.index + 1})`}</div>
+                        <div className="text-xs text-slate-500 truncate">ej: {col.sample || '—'}</div>
+                      </div>
+                      {cand && (
+                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 whitespace-nowrap">
+                          {cand.byHeader ? 'por nombre' : 'parece teléfono'}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              {!phonePicker.showAll && columns.length > phonePicker.candidates.length && (
+                <button
+                  type="button"
+                  onClick={() => setPhonePicker({ ...phonePicker, showAll: true })}
+                  className="text-xs text-blue-600 hover:underline"
+                >
+                  Ninguna de estas — ver todas las columnas
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Columna de teléfono detectada (con opción de cambiarla) */}
+          {tasks.length > 0 && phoneHeader && (
+            <div className="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap">
+              <Phone className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+              Teléfono: <span className="font-medium text-slate-700">{phoneHeader}</span>
+              <button type="button" onClick={openManualPicker} className="text-blue-600 hover:underline ml-1">
+                Cambiar columna
+              </button>
+            </div>
+          )}
 
           {/* Preview del CSV completo */}
           {tasks.length > 0 && (
