@@ -55,10 +55,6 @@ const RED = '#EF4444';
 const GREEN = '#16A34A';
 const BORDER = '#E7ECF3';
 
-// Fallback (solo si el endpoint de llamadas-por-hora aún no está desplegado).
-// Cubre las horas 08:00–20:00. Se marca con el badge "⚠ Datos de ejemplo".
-const PLACEHOLDER_CALLS_0800_2000 = [1, 0, 3, 2, 655, 499, 8, 446, 5, 57, 2740, 509, 2];
-
 const hourLabel = (h: number) => `${String(h).padStart(2, '0')}:00`;
 
 // Mapeo nombre de país (ES, como llega del backend) → nombre en el mapa mundial
@@ -138,7 +134,6 @@ const LanzamientoV2: React.FC = () => {
   // Datos horarios (índice = hora local 0-23)
   const [callsByHour, setCallsByHour] = useState<number[]>(emptyHours);
   const [clicksByHour, setClicksByHour] = useState<number[]>(emptyHours);
-  const [callsReal, setCallsReal] = useState(false); // false → serie de llamadas es placeholder
   const [showLinksModal, setShowLinksModal] = useState(false);
   const [showClicksModal, setShowClicksModal] = useState(false);
   const [loadingExport, setLoadingExport] = useState(false);
@@ -206,18 +201,13 @@ const LanzamientoV2: React.FC = () => {
       }
 
       const callsArr = emptyHours();
-      let cReal = false;
       if (callsRes.status === 'fulfilled') {
-        cReal = true;
         callsRes.value.forEach((r) => { if (r.hora >= 0 && r.hora < 24) callsArr[r.hora] = r.llamadas_efectivas || 0; });
-      } else {
-        // Fallback: el endpoint de llamadas-por-hora aún no está desplegado.
-        PLACEHOLDER_CALLS_0800_2000.forEach((v, i) => { callsArr[8 + i] = v; });
       }
+      // Sin fallback de ejemplo: si no hay datos de llamadas, el gráfico queda vacío.
 
       setClicksByHour(clicksArr);
       setCallsByHour(callsArr);
-      setCallsReal(cReal);
     } catch (err) {
       if (reqId !== reqRef.current) return;
       setError(err instanceof Error ? err.message : 'Error al cargar las métricas');
@@ -558,7 +548,6 @@ const LanzamientoV2: React.FC = () => {
                   <div style={{ fontSize: 13, color: MUTED, marginTop: 3 }}>La asistencia (clicks) sigue el ritmo de las llamadas</div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-                  {!callsReal && <PlaceholderBadge label="Llamadas: datos de ejemplo" />}
                   <div style={{ display: 'flex', gap: 16, font: `600 12px ${FONT_MONO}` }}>
                     <Legend color={RED} label="Llamadas" />
                     <Legend color={GREEN} label="Clicks" />
@@ -658,7 +647,6 @@ const LanzamientoV2: React.FC = () => {
               <div style={{ flex: '1 1 240px', ...card, borderRadius: 18, padding: '20px 22px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 8 }}>
                   <div style={{ fontWeight: 700, fontSize: 15 }}>Top horas</div>
-                  {!callsReal && <PlaceholderBadge label="Ejemplo" />}
                 </div>
                 {topHoras.length === 0 ? (
                   <div style={{ color: MUTED, fontSize: 13, padding: '8px 0' }}>Sin llamadas en el período.</div>
@@ -782,13 +770,6 @@ const ExportModal: React.FC<{
 const Legend: React.FC<{ color: string; label: string }> = ({ color, label }) => (
   <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#4A5A75' }}>
     <span style={{ width: 11, height: 11, borderRadius: 3, background: color }} />{label}
-  </span>
-);
-
-const PlaceholderBadge: React.FC<{ label?: string }> = ({ label = 'Datos de ejemplo' }) => (
-  <span title="El endpoint de llamadas por hora aún no está desplegado; se muestran datos de ejemplo."
-    style={{ font: `600 10px ${FONT_MONO}`, letterSpacing: '.06em', textTransform: 'uppercase', color: '#B45309', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 6, padding: '3px 8px', whiteSpace: 'nowrap' }}>
-    ⚠ {label}
   </span>
 );
 
