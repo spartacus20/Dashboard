@@ -143,6 +143,7 @@ const LanzamientoV2: React.FC = () => {
   const [showClicksModal, setShowClicksModal] = useState(false);
   const [loadingExport, setLoadingExport] = useState(false);
   const [loadingExportLinks, setLoadingExportLinks] = useState(false);
+  const [showAllPaises, setShowAllPaises] = useState(false);
   const reqRef = useRef(0);
 
   // Inyectar la fuente IBM Plex (una sola vez) para respetar el diseño.
@@ -350,8 +351,9 @@ const LanzamientoV2: React.FC = () => {
     return [...metrics.porPais].sort((a, b) => b.total_llamadas - a.total_llamadas);
   }, [metrics]);
 
-  const topPaises = paisesOrdenados.slice(0, 6);
-  const maxLlamadasPais = topPaises.length ? Math.max(1, ...topPaises.map((p) => p.total_llamadas)) : 1;
+  const topPaises = showAllPaises ? paisesOrdenados : paisesOrdenados.slice(0, 6);
+  const hayMasPaises = paisesOrdenados.length > 6;
+  const maxLlamadasPais = paisesOrdenados.length ? Math.max(1, ...paisesOrdenados.map((p) => p.total_llamadas)) : 1;
 
   // Ventana de horas a mostrar: rango con actividad (± 1h), o 08–20 si no hay datos.
   const { axisHours, callsSeries, clicksSeries } = useMemo(() => {
@@ -587,7 +589,14 @@ const LanzamientoV2: React.FC = () => {
                 {topPaises.length === 0 ? (
                   <div style={{ color: MUTED, fontSize: 13, padding: '12px 0' }}>Sin datos por país en el período.</div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 14,
+                      ...(showAllPaises ? { maxHeight: 320, overflowY: 'auto', paddingRight: 6 } : {}),
+                    }}
+                  >
                     {topPaises.map((p) => {
                       const tasa = calcPct(p.llamadas_contestadas, p.total_llamadas);
                       return (
@@ -608,6 +617,24 @@ const LanzamientoV2: React.FC = () => {
                       );
                     })}
                   </div>
+                )}
+                {hayMasPaises && (
+                  <button
+                    onClick={() => setShowAllPaises((v) => !v)}
+                    style={{
+                      marginTop: 14,
+                      width: '100%',
+                      padding: '8px 0',
+                      border: '1px solid #E7ECF3',
+                      borderRadius: 10,
+                      background: '#F7F9FC',
+                      color: '#4A5A75',
+                      font: `600 12px ${FONT_MONO}`,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {showAllPaises ? 'Ver menos' : `Ver más (${paisesOrdenados.length - 6})`}
+                  </button>
                 )}
               </div>
             </div>
