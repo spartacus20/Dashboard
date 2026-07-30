@@ -23,6 +23,7 @@ interface AuthContextType {
   signUp: (
     email: string,
     password: string,
+    fullName: string,
   ) => Promise<{ error: AuthError | null }>;
   signInWithProvider: (
     provider: "google" | "github",
@@ -228,21 +229,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return { error };
   };
 
-  const signUp = async (email: string, password: string) => {
+  const signUp = async (email: string, password: string, fullName: string) => {
+    // full_name viaja como metadata del usuario: el trigger on_auth_user_created lo lee
+    // (COALESCE(NEW.raw_user_meta_data->>'full_name', '')) y lo escribe en public.users.
+    // Es el mismo camino por el que Google completa el nombre solo; sin esto, las cuentas
+    // creadas con email quedaban sin nombre y el admin aprobaba a ciegas desde el
+    // backoffice.
     const { error } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        data: { full_name: fullName.trim() },
+      },
     });
 
-    // Si el registro es exitoso, guardar la contraseña encriptada en la tabla users
-    if (!error) {
-      try {
-        await updateAccountPassword(email, password);
-      } catch {
-        // No retornamos error: el usuario ya se creó en Supabase
-      }
-    }
-
+    // Antes acá se llamaba a updateAccountPassword para guardar la contraseña en
+    // public.users. No podía funcionar nunca: ese endpoint está detrás de requireClient y
+    // un usuario recién registrado todavía no tiene client_id, así que respondía 403
+    // siempre — el error quedaba tragado por un catch vacío. La contraseña real vive en
+    // Supabase Auth; la copia de public.users la carga el admin al dar de alta.
     return { error };
   };
 
