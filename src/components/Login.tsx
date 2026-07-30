@@ -1,26 +1,60 @@
 import React, { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { Mail, Lock, AlertCircle, Loader2 } from 'lucide-react'
+import { Mail, Lock, User, AlertCircle, Loader2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+
+// Mismo mínimo que exige changePassword en AuthContext: si acá se permitiera menos,
+// alguien podría registrarse con una contraseña que después no puede volver a elegir.
+const LARGO_MINIMO_PASSWORD = 8
 
 export function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [fullName, setFullName] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [isSignUp, setIsSignUp] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  
+
   const { signIn, signUp, signInWithProvider } = useAuth()
   const navigate = useNavigate()
+
+  // Solo para el alta. En el login no se valida el largo: las cuentas viejas pueden tener
+  // contraseñas más cortas que el mínimo actual y hay que dejarlas entrar.
+  const validarRegistro = (): string | null => {
+    if (!fullName.trim()) return 'Ingresá tu nombre completo'
+    if (password.length < LARGO_MINIMO_PASSWORD) {
+      return `La contraseña debe tener al menos ${LARGO_MINIMO_PASSWORD} caracteres`
+    }
+    if (password !== confirmPassword) return 'Las contraseñas no coinciden'
+    return null
+  }
+
+  const cambiarModo = () => {
+    setIsSignUp(!isSignUp)
+    setError(null)
+    setPassword('')
+    setConfirmPassword('')
+    setFullName('')
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+
+    if (isSignUp) {
+      const problema = validarRegistro()
+      if (problema) {
+        setError(problema)
+        return
+      }
+    }
+
     setLoading(true)
 
     try {
-      const { error } = isSignUp 
-        ? await signUp(email, password)
+      const { error } = isSignUp
+        ? await signUp(email, password, fullName)
         : await signIn(email, password)
 
       if (error) {
@@ -62,6 +96,26 @@ export function Login() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
+            {isSignUp && (
+              <div>
+                <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-2">
+                  Nombre completo
+                </label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <input
+                    id="fullName"
+                    type="text"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+                    placeholder="Tu nombre y apellido"
+                    required
+                  />
+                </div>
+              </div>
+            )}
+
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
                 Correo electrónico
@@ -96,7 +150,35 @@ export function Login() {
                   required
                 />
               </div>
+              {isSignUp && (
+                <p className="mt-2 text-xs text-gray-500">
+                  Mínimo {LARGO_MINIMO_PASSWORD} caracteres.
+                </p>
+              )}
             </div>
+
+            {isSignUp && (
+              <div>
+                <label
+                  htmlFor="confirmPassword"
+                  className="block text-sm font-medium text-gray-700 mb-2"
+                >
+                  Repetir contraseña
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <input
+                    id="confirmPassword"
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+                    placeholder="••••••••"
+                    required
+                  />
+                </div>
+              </div>
+            )}
 
             <button
               type="submit"
@@ -142,7 +224,7 @@ export function Login() {
 
           <div className="mt-6 text-center">
             <button
-              onClick={() => setIsSignUp(!isSignUp)}
+              onClick={cambiarModo}
               className="text-sm text-[#05163b] hover:text-[#0a2a5a]"
             >
               {isSignUp 
