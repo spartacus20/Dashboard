@@ -30,10 +30,23 @@ export interface RetellCall {
   call_analysis?: CallAnalysis;
   call_cost?: CallCost;
   agent_id?: string;
+  tipo_vivienda?: string; // Tipo de vivienda de la base de datos
   metadata?: Record<string, any>;
 }
 
-export type DetailedRetellCall = RetellCall;
+export interface DetailedRetellCall extends RetellCall {
+  // Campos adicionales de la base de datos
+  id?: number;
+  client_id?: string;
+  summary?: string;
+  interest?: string;
+  tipo_vivienda?: string;
+  created_at?: string;
+  end_reason?: string;
+  cost?: number;
+  from_number_norm?: string;
+  to_number_norm?: string;
+}
 
 export interface TranscriptEntry {
   timestamp: number;
@@ -98,16 +111,38 @@ export interface CallStats {
   averageDurationSeconds: number;
 }
 
+export interface RetellPhoneNumberAgent {
+  agent_id: string;
+  agent_version?: number;
+  weight: number;
+}
+
 export interface RetellPhoneNumber {
   phone_number: string;
   phone_number_type: string;
   phone_number_pretty: string;
-  inbound_agent_id: string;
-  outbound_agent_id: string;
+  inbound_agents?: RetellPhoneNumberAgent[];
+  outbound_agents?: RetellPhoneNumberAgent[];
+  // Campos legacy (deprecated por Retell desde 03/31/2026, mantenidos para compatibilidad)
+  inbound_agent_id?: string;
+  outbound_agent_id?: string;
   area_code: number;
   nickname?: string;
   inbound_webhook_url?: string;
+  inbound_sms_webhook_url?: string;
+  fallback_number?: string;
+  allowed_inbound_country_list?: string[];
+  allowed_outbound_country_list?: string[];
+  sip_outbound_trunk_config?: {
+    termination_uri?: string;
+    transport?: string;
+    auth_username?: string;
+    auth_password?: string;
+  };
   last_modification_timestamp: number;
+  // Campos enriquecidos al pasar por el backend proxy
+  workspace_name?: string;
+  workspace_index?: number;
 }
 
 export interface RetellAgent {
@@ -176,6 +211,16 @@ export interface RetellBatchCall {
   completed: number;
   last_sent_timestamp: number;
   tasks_url: string;
+  workspace_index?: number;
+}
+
+export interface RetellFolder {
+  orgId: string;
+  agentIds: string[];
+  folderName: string;
+  createdTimestamp: number;
+  folderId: string;
+  userModifiedTimestamp: number;
 }
 
 export interface BatchCallTask {
@@ -196,15 +241,53 @@ export interface ClientData {
   email: string;
   client_id: string;
   api_key: string;
+  api_key_test?: string[]; // Array de API keys para múltiples números de teléfono
+  uri_retell?: string[]; // Lista de URIs de terminación de Retell
   full_name?: string;
   created_at?: string;
   updated_at?: string;
   // Campos opcionales de configuración que pueden venir desde get-client
   agenda_enabled?: boolean;
   calls_enabled?: boolean;
+  sales?: boolean;
+  agenda?: boolean;
+  num_tel?: boolean;
+  records?: boolean;
+  callbacks?: boolean;
   phone_filter?: string;
+  // Permisos del usuario desde la tabla users
+  permissions?: {
+    sales?: boolean;
+    agenda?: boolean;
+    num_tel?: boolean;
+    records?: boolean;
+    callbacks?: boolean;
+    launch?: boolean;
+    dont_call?: boolean;
+    [key: string]: any;
+  };
+  // Objeto de metadata que viene del backend
+  metadata?: {
+    sales?: boolean;
+    agenda?: boolean;
+    num_tel?: boolean;
+    records?: boolean;
+    callbacks?: boolean;
+    seguimiento?: boolean;
+    [key: string]: any;
+  };
+  // Objeto de metadata específico para llamadas
+  metadata_llamadas?: Record<string, any>;
   // Objeto de configuración genérico por si el backend devuelve un blob
   config?: Record<string, any>;
+  // client_test para selector de client_id (JSONB)
+  client_test?: string | string[] | Record<string, string>;
+}
+
+export interface BlockedNumber {
+  number: string;
+  name: string | null;
+  pais: string;
 }
 
 export interface Agenda {
@@ -223,6 +306,26 @@ export interface Agenda {
   tipo_agenda: string;
   recordings?: string;
   transcript?: string;
+  agent_id?: string;
+  aprobada?: boolean | null;
+  revisada?: boolean | null;
+  detalles?: string | null;
+  estado?: 'pendiente' | 'aceptado' | 'rechazado' | null;
+  motivo_rechazo?: 'Edad' | 'Pago mensual bajo' | 'Otros' | 'Ubicacion fuera alcance' | 'Casco historico' | 'No interesado' | 'Detecta IA' | 'Tiene bateria' | 'Incidencia' | null;
+  initial_address?: string | null;
+  url_maps?: string | null;
+  llamada_enviada?: boolean | null;
+}
+
+export interface AgendaSlot {
+  id: string;
+  fecha: string;
+  hora: string;
+  provincia: string;
+  max_citas: number;
+  ocupadas: number;
+  created_at: string;
+  tipo?: string; // "placas_solares" | "bateria"
 }
 
 export interface Callback {
@@ -249,6 +352,17 @@ export interface CallbackResponse {
   total_callbacks: number;
   total_paginas: number;
   callbacks: Callback[];
+}
+
+export interface Ticket {
+  id: number;
+  created_at: string;
+  client_id: string;
+  title: string;
+  description: string;
+  comment?: string | null;
+  responsible: string;
+  state: string;
 }
 
 // Respuesta del endpoint get-calls-by-phone
@@ -286,4 +400,14 @@ export interface CallsByPhoneResponse {
     como_origen?: any[];
     como_destino?: any[];
   };
+}
+
+export interface DontCall {
+  id: number;
+  created_at: string;
+  phone_number: string;
+  client_id: string;
+  name?: string;
+  campaña?: string;
+  region?: string;
 }

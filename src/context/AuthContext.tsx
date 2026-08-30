@@ -1,127 +1,424 @@
-import React, { createContext, useContext, useEffect, useState } from 'react'
-import { User, Session, AuthError } from '@supabase/supabase-js'
-import { supabase, getClientId } from '../lib/supabase'
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
+import { User, Session, AuthError } from "@supabase/supabase-js";
+import {
+  supabase,
+  getClientId,
+  get_client_id,
+  selected_client_id,
+  clearSessionData,
+  setClientId,
+  updateClientSubscriptionStatus,
+} from "../lib/supabase";
+import { getClientApiKey } from "../api";
+import { updateAccountPassword } from "../services/api/account";
 
 interface AuthContextType {
-  user: User | null
-  session: Session | null
-  loading: boolean
-  signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>
-  signUp: (email: string, password: string) => Promise<{ error: AuthError | null }>
-  signInWithProvider: (provider: 'google' | 'github') => Promise<{ error: AuthError | null }>
-  signOut: () => Promise<{ error: AuthError | null }>
-  resetPassword: (email: string) => Promise<{ error: AuthError | null }>
+  user: User | null;
+  session: Session | null;
+  loading: boolean;
+  signIn: (
+    email: string,
+    password: string,
+  ) => Promise<{ error: AuthError | null }>;
+  signUp: (
+    email: string,
+    password: string,
+    fullName: string,
+  ) => Promise<{ error: AuthError | null }>;
+  signInWithProvider: (
+    provider: "google" | "github",
+  ) => Promise<{ error: AuthError | null }>;
+  signOut: () => Promise<{ error: AuthError | null }>;
+  resetPassword: (email: string) => Promise<{ error: AuthError | null }>;
+  changePassword: (
+    currentPassword: string,
+    newPassword: string,
+  ) => Promise<{ error: Error | null }>;
+  changeClientId: (newClientId: string) => Promise<{ error: Error | null }>;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined)
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const useAuth = () => {
-  const context = useContext(AuthContext)
+  const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth debe ser usado dentro de un AuthProvider')
+    throw new Error("useAuth debe ser usado dentro de un AuthProvider");
   }
-  return context
-}
+  return context;
+};
 
 interface AuthProviderProps {
-  children: React.ReactNode
+  children: React.ReactNode;
 }
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null)
-  const [session, setSession] = useState<Session | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
+  // Evita que getInitialSession corra dos veces por el doble-montaje de React.StrictMode
+  // (dev). Dos refrescos casi simultáneos pueden gatillar la detección de "refresh token
+  // reutilizado" de Supabase y revocar la sesión → te saca al login al hacer F5.
+  const didInit = useRef(false);
 
   useEffect(() => {
-    // Obtener la sesión inicial
-    const getInitialSession = async () => {
-      const { data: { session }, error } = await supabase.auth.getSession()
-      if (error) {
-        console.error('Error obteniendo sesión:', error)
-      } else {
-        setSession(session)
-        setUser(session?.user ?? null)
-      }
-      setLoading(false)
-    }
+    // Función para recuperar datos del usuario (incluyendo permissions)
+    const restoreUserData = async (email: string) => {
+      try {
+        // Siempre recuperar los datos del servidor cuando hay una sesión activa
+        // Esto asegura que los permissions estén siempre actualizados y correctos
+        // especialmente importante después de un refresh donde sessionStorage puede estar vacío o incorrecto
+        // console.log('🔄 Recuperando datos del usuario desde el servidor (sesión activa detectada)...')
+        await getClientId(email);
 
-    getInitialSession()
-
-    // Escuchar cambios en la autenticación
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setSession(session)
-        setUser(session?.user ?? null)
-        setLoading(false)
-        
-        // Si hay una nueva sesión (login exitoso), obtener el client_id
-        if (event === 'SIGNED_IN' && session?.user?.email) {
+        // Verificar que se guardaron correctamente
+        const savedPermissions = sessionStorage.getItem("permissions");
+        if (savedPermissions) {
           try {
-            await getClientId(session.user.email)
-          } catch (err) {
-            console.warn('No se pudo obtener el client_id de get-client:', err)
+            const parsed = JSON.parse(savedPermissions);
+            // console.log('✅ Permissions recuperados y guardados correctamente:', parsed)
+          } catch (e) {
+            // console.warn('⚠️ Error parseando permissions guardados:', e)
+          }
+        } else {
+          // console.warn('⚠️ No se pudieron guardar permissions en sessionStorage')
+        }
+      } catch (err) {
+        // console.warn('No se pudo recuperar los datos del usuario:', err)
+      }
+    };
+
+    // Corre una promesa con tope de tiempo: si se cuelga, rechaza en vez de bloquear la UI.
+    const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> =>
+      Promise.race([
+        promise,
+        new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`timeout:${label}`)), ms)),
+      ]);
+
+    // Obtener la sesión inicial. Robusto: nunca deja la app colgada en "Cargando...".
+    // Si getSession se cuelga o falla (p. ej. refresh token viejo tras inactividad), se
+    // limpia la sesión local y se muestra el login — sin tener que borrar localStorage a mano.
+    // Cierra la sesión local (limpia el token viejo) y muestra el login, sin colgar.
+    const forceLocalLogout = async () => {
+      setSession(null);
+      setUser(null);
+      try {
+        await withTimeout(supabase.auth.signOut({ scope: "local" }), 3000, "signOut");
+      } catch {
+        /* si signOut también se cuelga, no bloqueamos igual */
+      }
+    };
+
+    const getInitialSession = async () => {
+      try {
+        const {
+          data: { session },
+          error,
+        } = await withTimeout(supabase.auth.getSession(), 8000, "getSession");
+
+        if (error || !session?.user) {
+          setSession(null);
+          setUser(null);
+          return;
+        }
+
+        // Garantizar un token vivo. getSession() puede devolver un access_token ya VENCIDO
+        // sin haberlo refrescado todavía; usarlo así hacía que /get-client y todo lo demás
+        // dieran 401 (parecía logueado pero no cargaba nada, y cambiar de cliente fallaba).
+        // Solo refrescamos si está vencido/por vencer: evita refrescos redundantes que
+        // podrían disparar la detección de "refresh token reutilizado" y revocar la sesión.
+        // Si el refresh token ya no sirve, refreshSession devuelve error → login limpio.
+        let live = session;
+        const expMs = (session.expires_at ?? 0) * 1000;
+        const necesitaRefresh = !session.expires_at || expMs - Date.now() < 30_000;
+        if (necesitaRefresh) {
+          const { data: refreshed, error: refreshError } = await withTimeout(
+            supabase.auth.refreshSession(),
+            8000,
+            "refreshSession",
+          );
+          if (refreshError || !refreshed.session?.user) {
+            await forceLocalLogout();
+            return;
+          }
+          live = refreshed.session;
+        }
+
+        setSession(live);
+        setUser(live.user);
+        // Datos del usuario (permissions) — no bloqueantes: si tardan/fallan, seguimos.
+        if (live.user.email) {
+          try {
+            await withTimeout(restoreUserData(live.user.email), 10000, "restoreUserData");
+          } catch {
+            /* se reintenta en el próximo evento de auth */
           }
         }
+      } catch (e) {
+        // Sesión vencida/no renovable o getSession/refresh colgado → login limpio.
+        await forceLocalLogout();
+      } finally {
+        setLoading(false);
       }
-    )
+    };
 
-    return () => subscription.unsubscribe()
-  }, [])
+    // Solo una vez, aunque StrictMode monte el efecto dos veces (evita doble refresh).
+    if (!didInit.current) {
+      didInit.current = true;
+      getInitialSession();
+    }
+
+    // Escuchar cambios en la autenticación.
+    // IMPORTANTE: nunca tocamos `loading` aquí. El loading solo existe durante
+    // getInitialSession (primera carga). Cualquier evento posterior (SIGNED_IN por
+    // renovación de sesión, TOKEN_REFRESHED, etc.) se maneja en silencio para no
+    // desmontar el dashboard ni cerrar modales abiertos.
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+
+      if (event === "SIGNED_IN" && session?.user?.email) {
+        // CRÍTICO: este callback corre DENTRO del lock interno de supabase-js. NO se debe
+        // await-ear (ni llamar sin diferir) otra función de supabase auth acá adentro:
+        // getClientId → authHeaders → getSession()/refreshSession() intentan tomar el MISMO
+        // lock → deadlock. En el F5 eso colgaba el getSession() de getInitialSession hasta
+        // el timeout de 8s → forceLocalLogout → te sacaba al login (primera carga OK, F5 no).
+        // Se difiere con setTimeout(0): el callback retorna, se libera el lock, y recién ahí
+        // corre getClientId. TOKEN_REFRESHED se omite a propósito (solo refresca el JWT).
+        const email = session.user.email;
+        setTimeout(() => {
+          getClientId(email).catch(() => {
+            // silencioso: se reintenta en el próximo evento/carga
+          });
+          try {
+            localStorage.setItem("dashboard_time_period", "today");
+          } catch {}
+        }, 0);
+        return;
+      }
+
+      if (event === "SIGNED_OUT") {
+        clearSessionData();
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
-    })
-    
+    });
+
     // Si el login es exitoso, obtener el client_id de get-client
     if (!error) {
       try {
-        await getClientId(email)
+        await getClientId(email);
       } catch (err) {
-        console.warn('No se pudo obtener el client_id de get-client:', err)
+        // console.warn("No se pudo obtener el client_id de get-client:", err);
       }
-    }
-    
-    return { error }
-  }
 
-  const signUp = async (email: string, password: string) => {
+      // Establecer filtro por defecto del dashboard a "today" en login con email/contraseña
+      try {
+        localStorage.setItem("dashboard_time_period", "today");
+      } catch {}
+    }
+
+    return { error };
+  };
+
+  const signUp = async (email: string, password: string, fullName: string) => {
+    // full_name viaja como metadata del usuario: el trigger on_auth_user_created lo lee
+    // (COALESCE(NEW.raw_user_meta_data->>'full_name', '')) y lo escribe en public.users.
+    // Es el mismo camino por el que Google completa el nombre solo; sin esto, las cuentas
+    // creadas con email quedaban sin nombre y el admin aprobaba a ciegas desde el
+    // backoffice.
     const { error } = await supabase.auth.signUp({
       email,
       password,
-    })
-    return { error }
-  }
+      options: {
+        data: { full_name: fullName.trim() },
+      },
+    });
 
-  const signInWithProvider = async (provider: 'google' | 'github') => {
+    // Antes acá se llamaba a updateAccountPassword para guardar la contraseña en
+    // public.users. No podía funcionar nunca: ese endpoint está detrás de requireClient y
+    // un usuario recién registrado todavía no tiene client_id, así que respondía 403
+    // siempre — el error quedaba tragado por un catch vacío. La contraseña real vive en
+    // Supabase Auth; la copia de public.users la carga el admin al dar de alta.
+    return { error };
+  };
+
+  const signInWithProvider = async (provider: "google" | "github") => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: `${window.location.origin}/dashboard`
-      }
-    })
-    return { error }
-  }
+        redirectTo: `${window.location.origin}/dashboard`,
+      },
+    });
+    return { error };
+  };
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut()
-    
-    // Limpiar el client_id del localStorage al cerrar sesión
-    if (!error) {
-      localStorage.removeItem(get_client_id)
-      console.log('Client ID eliminado del localStorage al cerrar sesión')
+    try {
+      await supabase.auth.signOut({ scope: "local" });
+    } catch {
+      // Ignorar: sesión inválida/expirada, limpiamos local de todos modos
     }
-    
-    return { error }
-  }
+    setSession(null);
+    setUser(null);
+    localStorage.removeItem(get_client_id);
+    localStorage.removeItem("selected_client_id");
+    clearSessionData();
+    return { error: null };
+  };
 
   const resetPassword = async (email: string) => {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reset-password`,
-    })
-    return { error }
-  }
+    });
+    return { error };
+  };
+
+  const changePassword = async (
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<{ error: Error | null }> => {
+    const email = user?.email;
+    if (!email) {
+      return { error: new Error("No hay sesión activa") };
+    }
+
+    if (newPassword.length < 8) {
+      return {
+        error: new Error("La nueva contraseña debe tener al menos 8 caracteres"),
+      };
+    }
+
+    const { error: verifyError } = await supabase.auth.signInWithPassword({
+      email,
+      password: currentPassword,
+    });
+    if (verifyError) {
+      return { error: new Error("La contraseña actual es incorrecta") };
+    }
+
+    const { error: updateError } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+    if (updateError) {
+      return {
+        error: new Error(
+          updateError.message || "No se pudo actualizar la contraseña",
+        ),
+      };
+    }
+
+    try {
+      await updateAccountPassword(email, newPassword);
+    } catch (err) {
+      return {
+        error:
+          err instanceof Error
+            ? err
+            : new Error("No se pudo guardar la contraseña en el sistema"),
+      };
+    }
+
+    return { error: null };
+  };
+
+  const changeClientId = async (newClientId: string) => {
+    try {
+      // console.log("🔄 AuthContext - Cambiando client_id a:", newClientId);
+
+      // Guardar el client_id seleccionado en localStorage (persistente)
+      localStorage.setItem("selected_client_id", newClientId);
+
+      // Actualizar el client_id en localStorage y sessionStorage
+      setClientId(newClientId);
+      sessionStorage.setItem("clientId", newClientId);
+      // console.log(
+      //   "✅ AuthContext - client_id seleccionado guardado en localStorage y sessionStorage",
+      // );
+
+      // Actualizar estado de suscripción y API key en paralelo,
+      // esperar ambas antes de disparar clientIdChanged
+      const [, result] = await Promise.all([
+        updateClientSubscriptionStatus(newClientId).catch(() => {}),
+        getClientApiKey(newClientId),
+      ]);
+      // console.log("📋 AuthContext - Resultado de getClientApiKey:", {
+      //   hasApiKey: !!result.apiKey,
+      //   hasApiKeyTest: !!result.apiKeyTest,
+      //   apiKeyTestLength: result.apiKeyTest?.length || 0,
+      //   hasConfig: !!result.config,
+      //   clientId: result.clientId,
+      // });
+
+      // Usar apiKeyTest si está disponible, sino usar apiKey
+      if (result.apiKeyTest && result.apiKeyTest.length > 0) {
+        // console.log(
+        //   `📞 AuthContext - Usando ${result.apiKeyTest.length} API keys de api_key_test`,
+        // );
+        // Chunk 13a: la key NO se persiste en sessionStorage; viaja solo en el
+        // evento clientIdChanged (memoria) hacia CallsContext.
+
+        // Disparar evento personalizado para notificar el cambio de client_id
+        const eventDetail = {
+          clientId: newClientId,
+          apiKey: result.apiKeyTest[0], // Usar la primera para compatibilidad
+          apiKeyTest: result.apiKeyTest, // Incluir el array completo
+          config: result.config,
+        };
+        // console.log(
+        //   "📢 AuthContext - Disparando evento clientIdChanged con:",
+        //   eventDetail,
+        // );
+        window.dispatchEvent(
+          new CustomEvent("clientIdChanged", {
+            detail: eventDetail,
+          }),
+        );
+
+        return { error: null };
+      } else if (result.apiKey) {
+        // Chunk 13a: la key NO se persiste en sessionStorage (solo va en el evento).
+
+        // Disparar evento personalizado para notificar el cambio de client_id
+        const eventDetail = {
+          clientId: newClientId,
+          apiKey: result.apiKey,
+          config: result.config,
+        };
+        // console.log(
+        //   "📢 AuthContext - Disparando evento clientIdChanged con:",
+        //   eventDetail,
+        // );
+        window.dispatchEvent(
+          new CustomEvent("clientIdChanged", {
+            detail: eventDetail,
+          }),
+        );
+
+        return { error: null };
+      } else {
+        throw new Error(
+          "No se pudo obtener la API key para el nuevo client_id",
+        );
+      }
+    } catch (error) {
+      // console.error("❌ AuthContext - Error al cambiar client_id:", error);
+      return {
+        error:
+          error instanceof Error
+            ? error
+            : new Error("Error desconocido al cambiar client_id"),
+      };
+    }
+  };
 
   const value = {
     user,
@@ -132,11 +429,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     signInWithProvider,
     signOut,
     resetPassword,
-  }
+    changePassword,
+    changeClientId,
+  };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  )
-}
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
