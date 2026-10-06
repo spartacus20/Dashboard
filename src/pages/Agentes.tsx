@@ -3,17 +3,24 @@ import { toast } from 'sonner';
 import {
   RefreshCw, Save, Bot,
   Loader2, Search, ChevronLeft, Pencil, AlignJustify,
+  Copy, Globe, Plus, X,
 } from 'lucide-react';
 import { useCallsContext } from '../context/CallsContext';
 import { fetchFolders } from '../api';
 import { getCachedFolderName, setCachedFolderName } from '../lib/folderNameCache';
 import {
   fetchAgentsList,
+  fetchAgentDetail,
   fetchAgentLLM,
   updateAgentLLM,
+  duplicateAgent,
   type RetellAgent,
   type RetellLLM,
+  type RetellLLMEdge,
+  type RetellLLMState,
 } from '../services/api/agents';
+import { StageSettingsCard } from '../components/agents/StageSettingsCard';
+import { CreateAgentModal } from '../components/agents/CreateAgentModal';
 
 interface AgentesProps {
   onNavigate: (page: string) => void;
@@ -202,6 +209,46 @@ function langFlag(lang: string): string {
   return '🌐';
 }
 
+// ─── Secciones editables del LLM ──────────────────────────────────────────────
+// 'general' = general_prompt (compartido por todos los stages); 'state:<uid>' = un stage.
+// Cada stage lleva un _uid local estable: índice y nombre cambian al agregar, borrar o renombrar.
+
+type SectionKey = 'general' | `state:${string}`;
+type WorkingState = RetellLLMState & { _uid: string };
+
+// Formato de nombre de stage que acepta Retell.
+const STATE_NAME_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
+function uidOf(key: SectionKey): string | null {
+  return key.startsWith('state:') ? key.slice(6) : null;
+}
+
+function stripUid(working: WorkingState): RetellLLMState {
+  const state: Partial<WorkingState> = { ...working };
+  delete state._uid;
+  return state as RetellLLMState;
+}
+
+// Valida los stages antes de mandarlos a Retell; devuelve el error o null.
+function validateStates(states: RetellLLMState[], startingState: string): string | null {
+  const names = new Set<string>();
+  for (const st of states) {
+    if (!STATE_NAME_RE.test(st.name)) return `Nombre de stage inválido: "${st.name}" (solo letras, números, _ y -)`;
+    if (names.has(st.name)) return `Hay dos stages llamados "${st.name}"`;
+    names.add(st.name);
+  }
+  if (states.length > 0 && !names.has(startingState)) return 'Elegí cuál es el stage inicial';
+  for (const st of states) {
+    for (const edge of st.edges ?? []) {
+      if (!names.has(edge.destination_state_name) || edge.destination_state_name === st.name) {
+        return `El stage "${st.name}" tiene una transición sin destino válido`;
+      }
+      if (!edge.description?.trim()) return `Falta la condición de una transición en "${st.name}"`;
+    }
+  }
+  return null;
+}
+
 // ─── Workspace hook ───────────────────────────────────────────────────────────
 
 function useWorkspaces() {
@@ -275,15 +322,34 @@ export function Agentes({ onNavigate: _onNavigate }: AgentesProps) {
   const [loadingLLM, setLoadingLLM]       = useState(false);
   const [llmError, setLlmError]           = useState<string | null>(null);
 
-  // editor fields — states[0].state_prompt only
+  // editor fields — statePrompt es el contenido de la sección activa (general o un stage)
+  const [activeKey, setActiveKey]         = useState<SectionKey>('general');
+  // Copia de trabajo del LLM. El contenido de la sección activa vive en el editor
+  // (statePrompt / DOM) y se vuelca acá al cambiar de sección o al guardar.
+  const [generalDraft, setGeneralDraft]   = useState('');
+  const [workingStates, setWorkingStates] = useState<WorkingState[]>([]);
+  const [startingState, setStartingState] = useState('');
+  const [beginMessage, setBeginMessage]   = useState('');
+  const [beginDirty, setBeginDirty]       = useState(false);
   const [statePrompt, setStatePrompt]     = useState('');
   const [previewMode, setPreviewMode]     = useState<'preview' | 'markdown'>('preview');
   // Incremented only on external loads (new agent / save). Never incremented by user edits.
   const [previewKey, setPreviewKey]       = useState(0);
 
+  // isDirty = la sección ACTIVA tiene ediciones sin volcar a drafts
   const [isDirty, setIsDirty]             = useState(false);
   const [saving, setSaving]               = useState(false);
   const [showOutline, setShowOutline]     = useState(false);
+
+  // duplicar
+  const [dupSource, setDupSource]         = useState<RetellAgent | null>(null);
+  const [dupName, setDupName]             = useState('');
+  const [duplicating, setDuplicating]     = useState(false);
+
+  // crear
+  const [showCreate, setShowCreate]       = useState(false);
+
+  const activeUid = uidOf(activeKey);
 
   const textareaRef             = useRef<HTMLTextAreaElement>(null);
   const previewRef              = useRef<HTMLDivElement>(null);
@@ -291,6 +357,11 @@ export function Agentes({ onNavigate: _onNavigate }: AgentesProps) {
   // statePromptRef always holds the latest value so the effect closure is never stale
   const statePromptRef          = useRef(statePrompt);
   const isProgrammaticChange    = useRef(false);
+  // Agente que se está abriendo: descarta respuestas tardías si el usuario ya volvió o abrió otro.
+  const openingAgentRef         = useRef<string | null>(null);
+  // uid → JSON del stage tal como vino de Retell (para marcar los editados)
+  const originalStatesRef       = useRef<Record<string, string>>({});
+  const uidCounterRef           = useRef(0);
 
   useEffect(() => { statePromptRef.current = statePrompt; });
 
@@ -333,47 +404,223 @@ export function Agentes({ onNavigate: _onNavigate }: AgentesProps) {
   useEffect(() => { loadList(workspaceIdx); }, [workspaceIdx, clientId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── open agent ──────────────────────────────────────────────────────────────
-  const openAgent = useCallback(async (agent: RetellAgent) => {
-    setSelectedAgent(agent);
+  const resetEditor = () => {
     setLlm(null); setLlmError(null); setIsDirty(false); setPreviewMode('preview');
-    const llmId = agent.response_engine?.llm_id;
-    if (!llmId) return;
+    setWorkingStates([]); setGeneralDraft(''); setStartingState('');
+    setBeginDirty(false); setActiveKey('general');
+  };
+
+  // Carga el contenido de una sección en el editor (textarea + preview).
+  const loadSection = (key: SectionKey, content: string) => {
+    statePromptRef.current = content;
+    setStatePrompt(content);
+    setActiveKey(key);
+    setIsDirty(false);
+    setPreviewKey(k => k + 1);
+  };
+
+  const newUid = () => `s${++uidCounterRef.current}`;
+
+  // Arma la copia de trabajo desde el LLM de Retell y abre `focus` (nombre de stage,
+  // null = prompt general). Por defecto, el stage inicial: ahí suele estar el script.
+  const initWorking = (data: RetellLLM, focus?: string | null) => {
+    const states: WorkingState[] = (data.states ?? []).map(st => ({ ...st, _uid: newUid() }));
+    originalStatesRef.current = Object.fromEntries(states.map(w => [w._uid, JSON.stringify(stripUid(w))]));
+    const starting = data.starting_state ?? states[0]?.name ?? '';
+    setWorkingStates(states);
+    setStartingState(starting);
+    setGeneralDraft(data.general_prompt ?? '');
+    setBeginMessage(data.begin_message ?? '');
+    setBeginDirty(false);
+    const wanted = focus === undefined ? starting : focus;
+    const target = wanted === null ? undefined : states.find(st => st.name === wanted);
+    if (target) loadSection(`state:${target._uid}`, target.state_prompt ?? '');
+    else loadSection('general', data.general_prompt ?? '');
+  };
+
+  const openAgent = useCallback(async (agent: RetellAgent) => {
+    openingAgentRef.current = agent.agent_id;
+    const stillOpening = () => openingAgentRef.current === agent.agent_id;
+    setSelectedAgent(agent);
+    resetEditor();
     setLoadingLLM(true);
     try {
+      // El listado v2 no trae response_engine: hay que pedir el detalle del agente.
+      const detail = { ...agent, ...(await fetchAgentDetail(clientId!, agent.agent_id, workspaceIdx)) };
+      if (!stillOpening()) return;
+      setSelectedAgent(detail);
+      const llmId = detail.response_engine?.type === 'retell-llm' ? detail.response_engine.llm_id : undefined;
+      if (!llmId) return;
       const data = await fetchAgentLLM(clientId!, llmId, workspaceIdx);
+      if (!stillOpening()) return;
       setLlm(data);
-      setStatePrompt(data.states?.[0]?.state_prompt || '');
-      setPreviewKey(k => k + 1);
+      initWorking(data);
     } catch (e) {
-      setLlmError(e instanceof Error ? e.message : 'Error al cargar LLM');
+      if (stillOpening()) setLlmError(e instanceof Error ? e.message : 'Error al cargar el agente');
     } finally {
-      setLoadingLLM(false);
+      if (stillOpening()) setLoadingLLM(false);
     }
-  }, [clientId, workspaceIdx]);
+  }, [clientId, workspaceIdx]); // eslint-disable-line react-hooks/exhaustive-deps -- initWorking solo usa setters y refs
 
-  const backToList = () => { setSelectedAgent(null); setLlm(null); setIsDirty(false); };
+  const backToList = () => {
+    openingAgentRef.current = null;
+    setSelectedAgent(null); setLoadingLLM(false); resetEditor();
+  };
+
+  // Contenido actual de la sección activa. En preview se lee del DOM porque
+  // statePrompt puede estar atrasado (no re-renderizamos mientras se tipea).
+  const currentEditorContent = () =>
+    (previewMode === 'preview' && previewRef.current)
+      ? htmlToMarkdown(previewRef.current.innerHTML)
+      : statePromptRef.current;
+
+  const contentOf = (key: SectionKey, states: WorkingState[], general: string) => {
+    const uid = uidOf(key);
+    return uid ? states.find(st => st._uid === uid)?.state_prompt ?? '' : general;
+  };
+
+  // Vuelca el editor en la copia de trabajo (si la sección activa se editó) y la devuelve.
+  const applyCommit = (): { states: WorkingState[]; general: string } => {
+    if (!isDirty) return { states: workingStates, general: generalDraft };
+    const content = currentEditorContent();
+    const states = activeUid
+      ? workingStates.map(st => (st._uid === activeUid ? { ...st, state_prompt: content } : st))
+      : workingStates;
+    const general = activeUid ? generalDraft : content;
+    setWorkingStates(states);
+    setGeneralDraft(general);
+    // statePrompt también, para que el modo Markdown no muestre una versión vieja.
+    statePromptRef.current = content;
+    setStatePrompt(content);
+    setIsDirty(false);
+    return { states, general };
+  };
+
+  const selectSection = (key: SectionKey) => {
+    if (key === activeKey) return;
+    const { states, general } = applyCommit();
+    setShowOutline(false);
+    loadSection(key, contentOf(key, states, general));
+  };
+
+  const selectStateByName = (name: string) => {
+    const st = workingStates.find(w => w.name === name);
+    if (st) selectSection(`state:${st._uid}`);
+  };
+
+  // ── stages: estructura ──────────────────────────────────────────────────────
+  const updateState = (uid: string, fn: (st: WorkingState) => WorkingState) =>
+    setWorkingStates(ws => ws.map(st => (st._uid === uid ? fn(st) : st)));
+
+  const addState = () => {
+    const { states } = applyCommit();
+    let n = states.length + 1;
+    while (states.some(st => st.name === `stage_${n}`)) n++;
+    const created: WorkingState = { _uid: newUid(), name: `stage_${n}`, state_prompt: '', edges: [] };
+    setWorkingStates([...states, created]);
+    // Agente de un solo prompt que pasa a tener stages: el primero es el inicial.
+    if (!states.some(st => st.name === startingState)) setStartingState(created.name);
+    setShowOutline(false);
+    loadSection(`state:${created._uid}`, '');
+  };
+
+  // Renombrar actualiza también las transiciones que apuntan al stage y el stage inicial.
+  const renameState = (uid: string, raw: string): boolean => {
+    const target = workingStates.find(st => st._uid === uid);
+    const newName = raw.trim().replace(/\s+/g, '_');
+    if (!target || newName === target.name) return true;
+    if (!STATE_NAME_RE.test(newName)) {
+      toast.error('El nombre solo puede tener letras, números, _ y - (máx. 64)');
+      return false;
+    }
+    if (workingStates.some(st => st._uid !== uid && st.name === newName)) {
+      toast.error(`Ya existe un stage "${newName}"`);
+      return false;
+    }
+    const oldName = target.name;
+    setWorkingStates(ws => ws.map(st => {
+      const renamed = st._uid === uid ? { ...st, name: newName } : st;
+      if (!renamed.edges?.some(e => e.destination_state_name === oldName)) return renamed;
+      return {
+        ...renamed,
+        edges: renamed.edges.map(e => (e.destination_state_name === oldName ? { ...e, destination_state_name: newName } : e)),
+      };
+    }));
+    if (startingState === oldName) setStartingState(newName);
+    return true;
+  };
+
+  // Borrar quita también las transiciones que apuntaban al stage.
+  const deleteState = (uid: string) => {
+    const { states, general } = applyCommit();
+    const target = states.find(st => st._uid === uid);
+    if (!target || states.length <= 1) return;
+    const remaining = states
+      .filter(st => st._uid !== uid)
+      .map(st => (st.edges?.some(e => e.destination_state_name === target.name)
+        ? { ...st, edges: st.edges.filter(e => e.destination_state_name !== target.name) }
+        : st));
+    setWorkingStates(remaining);
+    if (startingState === target.name) setStartingState(remaining[0].name);
+    if (activeUid === uid) loadSection('general', general);
+  };
+
+  const addEdge = (uid: string) => {
+    const dest = workingStates.find(st => st._uid !== uid);
+    updateState(uid, st => ({
+      ...st,
+      edges: [...(st.edges ?? []), { destination_state_name: dest?.name ?? '', description: '' }],
+    }));
+  };
+
+  const updateEdge = (uid: string, index: number, patch: Partial<RetellLLMEdge>) =>
+    updateState(uid, st => ({ ...st, edges: (st.edges ?? []).map((e, j) => (j === index ? { ...e, ...patch } : e)) }));
+
+  const removeEdge = (uid: string, index: number) =>
+    updateState(uid, st => ({ ...st, edges: (st.edges ?? []).filter((_, j) => j !== index) }));
 
   // ── save ────────────────────────────────────────────────────────────────────
+  // Lo que hay que mandar a Retell: solo lo que cambió respecto del LLM cargado.
+  const buildPayload = (states: WorkingState[], general: string): Record<string, unknown> => {
+    if (!llm) return {};
+    const payload: Record<string, unknown> = {};
+    if (general !== (llm.general_prompt ?? '')) payload.general_prompt = general;
+    const clean = states.map(stripUid);
+    const statesChanged = JSON.stringify(clean) !== JSON.stringify(llm.states ?? []);
+    const startChanged = clean.length > 0 && startingState !== (llm.starting_state ?? '');
+    if (statesChanged || startChanged) {
+      payload.states = clean;
+      payload.starting_state = startingState;
+    }
+    // Solo si se tocó: null (lo genera el LLM) y "" (espera al usuario) no son lo mismo.
+    if (beginDirty) payload.begin_message = beginMessage;
+    return payload;
+  };
+
+  const hasUnsaved = isDirty || Object.keys(buildPayload(workingStates, generalDraft)).length > 0;
+
   const handleSave = async () => {
     if (!llm?.llm_id || !clientId) return;
-    setSaving(true);
-    // If editing in preview mode, get the latest content directly from the DOM
-    // (statePrompt might be stale since we avoid re-renders during preview editing)
-    const promptToSave = (previewMode === 'preview' && previewRef.current)
-      ? htmlToMarkdown(previewRef.current.innerHTML)
-      : statePrompt;
-    try {
-      const updatedStates = llm.states
-        ? [{ ...llm.states[0], state_prompt: promptToSave }, ...llm.states.slice(1)]
-        : undefined;
-      const payload: Record<string, unknown> = {};
-      if (updatedStates) payload.states = updatedStates;
+    const { states, general } = applyCommit();
+    const payload = buildPayload(states, general);
 
+    if (Object.keys(payload).length === 0) {
+      setBeginDirty(false);
+      toast.info('No hay cambios para guardar');
+      return;
+    }
+    if (payload.states) {
+      const error = validateStates(payload.states as RetellLLMState[], startingState);
+      if (error) { toast.error(error); return; }
+    }
+
+    // Tras guardar, reabrir la misma sección (por nombre: los uids se regeneran).
+    const focus = activeUid ? states.find(st => st._uid === activeUid)?.name ?? null : null;
+    setSaving(true);
+    try {
       const updated = await updateAgentLLM(clientId, llm.llm_id, payload, workspaceIdx);
       setLlm(updated);
-      setStatePrompt(updated.states?.[0]?.state_prompt || '');
-      setPreviewKey(k => k + 1);
-      setIsDirty(false);
+      initWorking(updated, focus);
       toast.success('Configuración guardada correctamente');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error al guardar');
@@ -382,14 +629,49 @@ export function Agentes({ onNavigate: _onNavigate }: AgentesProps) {
     }
   };
 
+  // ── duplicate ───────────────────────────────────────────────────────────────
+  const openDuplicate = (agent: RetellAgent) => {
+    setDupSource(agent);
+    setDupName(`${agent.agent_name || 'Agente'} (copia)`);
+  };
+
+  const handleDuplicate = async () => {
+    if (!dupSource || !clientId) return;
+    setDuplicating(true);
+    try {
+      const created = await duplicateAgent(clientId, dupSource.agent_id, dupName.trim(), workspaceIdx);
+      toast.success(`Agente "${created.agent_name || dupName}" creado`);
+      setDupSource(null);
+      await loadList(workspaceIdx);
+      openAgent(created);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error al duplicar el agente');
+    } finally {
+      setDuplicating(false);
+    }
+  };
+
+  const handleCreated = async (created: RetellAgent) => {
+    setShowCreate(false);
+    await loadList(workspaceIdx);
+    openAgent(created);
+  };
+
   const filtered = agents.filter(a =>
     search === '' ||
     (a.agent_name || '').toLowerCase().includes(search.toLowerCase()) ||
     a.agent_id.toLowerCase().includes(search.toLowerCase())
   );
 
-  const firstStateName = llm?.states?.[0]?.name ?? 'State';
   const hasLLM = !!llm?.llm_id;
+  const activeState = activeUid ? workingStates.find(st => st._uid === activeUid) : undefined;
+  const isEdited = (key: SectionKey): boolean => {
+    if (key === activeKey && isDirty) return true;
+    const uid = uidOf(key);
+    if (!uid) return generalDraft !== (llm?.general_prompt ?? '');
+    const st = workingStates.find(w => w._uid === uid);
+    return !!st && originalStatesRef.current[uid] !== JSON.stringify(stripUid(st));
+  };
 
   // ── Extract headings for the outline panel ───────────────────────────────────
   const getOutlineHeadings = useCallback(() => {
@@ -700,6 +982,13 @@ export function Agentes({ onNavigate: _onNavigate }: AgentesProps) {
           </div>
         )}
         {!selectedAgent && (
+          <button onClick={() => setShowCreate(true)} disabled={loadingList || !clientId}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#0a2a5a] hover:bg-[#081f47] text-sm font-medium text-white transition-colors disabled:opacity-50">
+            <Plus className="w-4 h-4" />
+            Nuevo agente
+          </button>
+        )}
+        {!selectedAgent && (
           <button onClick={() => loadList(workspaceIdx)} disabled={loadingList}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-sm font-medium text-gray-700 transition-colors disabled:opacity-50">
             {loadingList ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
@@ -707,9 +996,9 @@ export function Agentes({ onNavigate: _onNavigate }: AgentesProps) {
           </button>
         )}
         {selectedAgent && (
-          <button onClick={handleSave} disabled={saving || !isDirty}
+          <button onClick={handleSave} disabled={saving || !hasUnsaved}
             className={`flex items-center gap-2 px-5 py-2 rounded-lg font-medium text-sm transition-colors ${
-              saving || !isDirty ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' : 'bg-[#0a2a5a] hover:bg-[#081f47] text-white shadow-sm'
+              saving || !hasUnsaved ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' : 'bg-[#0a2a5a] hover:bg-[#081f47] text-white shadow-sm'
             }`}>
             {saving ? <><Loader2 className="animate-spin w-4 h-4" />Guardando…</> : <><Save className="w-4 h-4" />Guardar cambios</>}
           </button>
@@ -747,7 +1036,7 @@ export function Agentes({ onNavigate: _onNavigate }: AgentesProps) {
                   <th className="px-5 py-3 text-left font-semibold">Nombre</th>
                   <th className="px-5 py-3 text-left font-semibold">Idioma</th>
                   <th className="px-5 py-3 text-left font-semibold">Voz</th>
-                  <th className="px-5 py-3 text-center font-semibold w-24"></th>
+                  <th className="px-5 py-3 text-center font-semibold w-48"></th>
                 </tr>
               </thead>
               <tbody>
@@ -783,16 +1072,69 @@ export function Agentes({ onNavigate: _onNavigate }: AgentesProps) {
                         : <span className="text-gray-300">—</span>}
                     </td>
                     <td className="px-5 py-3.5 text-gray-500 font-mono text-xs max-w-[180px] truncate">{agent.voice_id ? String(agent.voice_id) : <span className="text-gray-300">—</span>}</td>
-                    <td className="px-5 py-3.5 text-center">
+                    <td className="px-5 py-3.5 text-center whitespace-nowrap">
                       <button onClick={e => { e.stopPropagation(); openAgent(agent); }}
                         className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-300 text-gray-600 hover:text-blue-700 text-xs font-medium transition-colors">
                         <Pencil className="w-3 h-3" />Editar
+                      </button>
+                      <button onClick={e => { e.stopPropagation(); openDuplicate(agent); }}
+                        className="ml-2 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-300 text-gray-600 hover:text-blue-700 text-xs font-medium transition-colors">
+                        <Copy className="w-3 h-3" />Duplicar
                       </button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {showCreate && clientId && (
+          <CreateAgentModal
+            clientId={clientId}
+            workspaceIdx={workspaceIdx}
+            agents={agents}
+            onClose={() => setShowCreate(false)}
+            onCreated={handleCreated}
+          />
+        )}
+
+        {dupSource && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+            onMouseDown={e => { if (e.target === e.currentTarget && !duplicating) setDupSource(null); }}>
+            <form
+              onSubmit={e => { e.preventDefault(); if (dupName.trim()) handleDuplicate(); }}
+              className="w-full max-w-md rounded-xl bg-white shadow-xl overflow-hidden">
+              <div className="bg-[#0a2a5a] px-5 py-3.5 flex items-center justify-between">
+                <h3 className="text-white text-sm font-semibold">Duplicar agente</h3>
+                <button type="button" onClick={() => setDupSource(null)} disabled={duplicating}
+                  className="text-white/60 hover:text-white disabled:opacity-40">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-5 space-y-3">
+                <p className="text-sm text-gray-600">
+                  Se crea una copia de <strong>{dupSource.agent_name || dupSource.agent_id}</strong> en este workspace,
+                  con su propio prompt y stages: editar la copia no cambia el original.
+                  La copia no queda asignada a ningún número de teléfono.
+                </p>
+                <label className="block">
+                  <span className="text-xs font-medium text-gray-700">Nombre del nuevo agente</span>
+                  <input autoFocus type="text" value={dupName} onChange={e => setDupName(e.target.value)}
+                    className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </label>
+              </div>
+              <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-end gap-2">
+                <button type="button" onClick={() => setDupSource(null)} disabled={duplicating}
+                  className="px-4 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                  Cancelar
+                </button>
+                <button type="submit" disabled={duplicating || !dupName.trim()}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#0a2a5a] hover:bg-[#081f47] text-white text-sm font-medium disabled:opacity-50">
+                  {duplicating ? <><Loader2 className="w-4 h-4 animate-spin" />Duplicando…</> : <><Copy className="w-4 h-4" />Duplicar</>}
+                </button>
+              </div>
+            </form>
           </div>
         )}
       </div>
@@ -804,7 +1146,7 @@ export function Agentes({ onNavigate: _onNavigate }: AgentesProps) {
     <div className="p-8 space-y-5">
       <PageHeader />
 
-      {isDirty && (
+      {hasUnsaved && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-700 flex items-center justify-between">
           <span>Hay cambios sin guardar</span>
           <button onClick={backToList} className="text-xs underline hover:no-underline">Descartar y volver</button>
@@ -829,20 +1171,107 @@ export function Agentes({ onNavigate: _onNavigate }: AgentesProps) {
       )}
 
       {!loadingLLM && !llmError && hasLLM && (
-        <>
-          {/* State editor */}
+        <div className="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)] items-start">
+          {/* Estructura: prompt general + stages */}
+          <aside className="rounded-xl border border-gray-200 shadow-sm overflow-hidden bg-white lg:sticky lg:top-4">
+            <div className="bg-[#0a2a5a] px-4 py-3">
+              <h3 className="text-white text-sm font-semibold">Estructura</h3>
+              <p className="text-[11px] text-blue-200 mt-0.5">
+                {workingStates.length > 0
+                  ? `${workingStates.length} stage${workingStates.length !== 1 ? 's' : ''}`
+                  : 'Agente de un solo prompt'}
+              </p>
+            </div>
+            <button
+              onClick={() => selectSection('general')}
+              className={`w-full text-left px-4 py-2.5 flex items-center gap-2.5 text-sm transition-colors border-l-2 ${
+                activeKey === 'general' ? 'bg-blue-50 border-blue-600 text-blue-800 font-medium' : 'border-transparent text-gray-700 hover:bg-gray-50'
+              }`}>
+              <Globe className="w-4 h-4 shrink-0 text-gray-400" />
+              <span className="flex-1 truncate">Prompt general</span>
+              {isEdited('general') && <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" title="Sin guardar" />}
+            </button>
+            {workingStates.length > 0 && (
+              <>
+                <div className="px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 border-t border-gray-100">
+                  Stages
+                </div>
+                <ul className="pb-2">
+                  {workingStates.map((st, i) => {
+                    const key: SectionKey = `state:${st._uid}`;
+                    const edgeCount = st.edges?.length ?? 0;
+                    return (
+                      <li key={key}>
+                        <button
+                          onClick={() => selectSection(key)}
+                          className={`w-full text-left px-4 py-2.5 flex items-center gap-2.5 text-sm transition-colors border-l-2 ${
+                            activeKey === key ? 'bg-blue-50 border-blue-600 text-blue-800 font-medium' : 'border-transparent text-gray-700 hover:bg-gray-50'
+                          }`}>
+                          <span className="w-5 h-5 shrink-0 rounded-full bg-gray-100 text-gray-500 text-[10px] font-mono font-bold flex items-center justify-center">
+                            {i + 1}
+                          </span>
+                          <span className="flex-1 min-w-0">
+                            <span className="block truncate">{st.name}</span>
+                            <span className="block text-[10px] text-gray-400 font-normal">
+                              {edgeCount} {edgeCount === 1 ? 'transición' : 'transiciones'}
+                              {st.tools?.length ? ` · ${st.tools.length} tool${st.tools.length !== 1 ? 's' : ''}` : ''}
+                            </span>
+                          </span>
+                          {st.name === startingState && (
+                            <span className="text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded bg-green-100 text-green-700 shrink-0">Inicio</span>
+                          )}
+                          {isEdited(key) && <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" title="Sin guardar" />}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            )}
+            <div className="border-t border-gray-100 p-2">
+              <button onClick={addState}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-blue-700 hover:bg-blue-50 transition-colors">
+                <Plus className="w-3.5 h-3.5" />Agregar stage
+              </button>
+            </div>
+          </aside>
+
+          <div className="space-y-5 min-w-0">
+          {/* Mensaje inicial */}
+          <div className="rounded-xl border border-gray-200 shadow-sm bg-white px-5 py-4">
+            <label className="block">
+              <span className="text-sm font-semibold text-gray-800">Mensaje inicial</span>
+              <span className="block text-[11px] text-gray-500 mt-0.5">
+                Lo primero que dice el agente. Vacío = espera a que hable el usuario.
+                {llm?.begin_message == null && !beginDirty && ' Hoy no está definido: lo genera el LLM.'}
+              </span>
+              <textarea
+                value={beginMessage}
+                onChange={e => { setBeginMessage(e.target.value); setBeginDirty(true); }}
+                rows={2}
+                placeholder={llm?.begin_message == null ? 'Generado dinámicamente por el LLM' : ''}
+                className="mt-2 w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 resize-y focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30"
+              />
+            </label>
+          </div>
+
+          {/* Editor de la sección activa */}
           <div className="rounded-xl border border-gray-200 shadow-sm overflow-hidden">
 
             {/* Header — title + char count */}
             <div className="bg-[#0a2a5a] text-white px-5 py-3.5 flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="font-semibold text-sm">State: {firstStateName}</h3>
+                  <h3 className="font-semibold text-sm">{activeState ? `Stage: ${activeState.name}` : 'Prompt general'}</h3>
                   <span className="text-[10px] bg-white/15 border border-white/20 text-blue-200 px-2 py-0.5 rounded-full font-mono">
                     {statePrompt.length} chars
                   </span>
                 </div>
-                <p className="text-[11px] text-blue-200 mt-0.5">Script del primer estado del agente</p>
+                <p className="text-[11px] text-blue-200 mt-0.5">
+                  {activeState
+                    ? `${activeState.name === startingState ? 'Stage inicial · ' : ''}Script de este stage`
+                    : workingStates.length > 0 ? 'Se suma al prompt de todos los stages' : 'Script del agente'}
+                </p>
               </div>
             </div>
 
@@ -1049,7 +1478,7 @@ export function Agentes({ onNavigate: _onNavigate }: AgentesProps) {
                     rows={28}
                     spellCheck={false}
                     className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-gray-800 text-sm font-mono leading-relaxed resize-y focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 placeholder-gray-400"
-                    placeholder="# State prompt…"
+                    placeholder={activeState ? '# Prompt del stage…' : '# Prompt general…'}
                   />
                 </div>
               ) : (
@@ -1085,7 +1514,25 @@ export function Agentes({ onNavigate: _onNavigate }: AgentesProps) {
             </div>
           </div>
 
-        </>
+          {/* Configuración del stage activo: nombre, inicial, transiciones */}
+          {activeState && (
+            <StageSettingsCard
+              key={activeState._uid}
+              state={activeState}
+              stateNames={workingStates.map(st => st.name)}
+              isStarting={activeState.name === startingState}
+              canDelete={workingStates.length > 1}
+              onRename={name => renameState(activeState._uid, name)}
+              onSetStarting={() => setStartingState(activeState.name)}
+              onDelete={() => deleteState(activeState._uid)}
+              onAddEdge={() => addEdge(activeState._uid)}
+              onUpdateEdge={(i, patch) => updateEdge(activeState._uid, i, patch)}
+              onRemoveEdge={i => removeEdge(activeState._uid, i)}
+              onGoTo={selectStateByName}
+            />
+          )}
+          </div>
+        </div>
       )}
     </div>
   );
