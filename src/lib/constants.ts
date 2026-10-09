@@ -119,3 +119,16 @@ export const COUNTRY_FLAGS: Record<string, string> = {
   Bélgica: '🇧🇪',
   no_detectado: '🌐',
 };
+
+// ─── Clientes sin Retell ────────────────────────────────────────────────────
+/**
+ * Valor de `apiKey` en CallsContext para un cliente que NO tiene key de Retell
+ * (por ejemplo, solo usa CallShift). No es una key ni se manda a ningún lado: las
+ * páginas usan `apiKey` como señal de "cliente cargado" y los servicios ya no la
+ * envían al backend. Lo específico de Retell (workspaces, batch calls) tiene que
+ * comprobar `hasRetellKey()` antes de usarla.
+ */
+export const NO_RETELL_KEY = 'sin-key-retell';
+
+export const hasRetellKey = (apiKey: string | null | undefined): boolean =>
+  Boolean(apiKey) && apiKey !== NO_RETELL_KEY;
