@@ -1,0 +1,590 @@
+import { RetellCall, CallStats } from '../../types';
+import { BASE_URL } from './config';
+import { authHeaders } from './http';
+
+// Códigos de análisis para Recoveries (definición del negocio)
+export const RECOVERY_CODIGOS: Record<string, string> = {
+  TON: 'Teléfono ocupado o no contestó',
+  CSP1: 'Cliente responde pero no hay negociación efectiva',
+  CSP2: 'Cliente renuente de pago',
+  MCT: 'Mensaje con tercero',
+  TDP: 'Trámite de préstamo',
+  PRO: 'Promesa',
+  ADP: 'Acuerdo de pago',
+  CEC: 'Convenio',
+  CFA: 'Cliente fallecido',
+};
+
+
+
+export interface CallCountByFromNumber {
+  from_number: string;
+  from_number_norm: string | null;
+  total: number;
+  fallidas: number;
+  efectivas: number;
+}
+
+
+
+
+
+
+
+
+export function calculateStats(calls: RetellCall[]): CallStats {
+  const total = calls.length;
+  
+  // Contar llamadas efectivas y fallidas
+  // Los estados de llamada pueden venir en diferentes formatos según la API
+  const completed = calls.filter(call => {
+    const status = (call.call_status || call.status || '').toLowerCase();
+    return status === 'completed' || status === 'ended' || status === 'success';
+  }).length;
+  
+  const failed = calls.filter(call => {
+    const status = (call.call_status || call.status || '').toLowerCase();
+    return status === 'failed' || status === 'error' || status === 'failed_to_start';
+  }).length;
+  
+  // Calcular duración promedio
+  let totalDuration = 0;
+  let callsWithDuration = 0;
+  
+  calls.forEach(call => {
+    // Usar la duración directa si está disponible (viene en milisegundos del webhook)
+    if (call.duration) {
+      totalDuration += call.duration / 1000; // Convertir de milisegundos a segundos
+      callsWithDuration++;
+    } 
+    // Si no, calcular la duración con los timestamps si están disponibles
+    else if (call.start_timestamp && call.end_timestamp) {
+      const duration = (call.end_timestamp - call.start_timestamp) / 1000; // convertir a segundos
+      totalDuration += duration;
+      callsWithDuration++;
+    }
+  });
+  
+  const avgDuration = callsWithDuration > 0 ? totalDuration / callsWithDuration : 0;
+  
+  // Formatear la duración promedio en minutos:segundos
+  const minutes = Math.floor(avgDuration / 60);
+  const seconds = Math.floor(avgDuration % 60);
+  const averageDuration = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  
+  // console.log('Estadísticas calculadas:', { total, completed, failed, averageDuration, averageDurationSeconds: Math.round(avgDuration), callsWithDuration });
+  
+  return {
+    total,
+    completed,
+    failed,
+    averageDuration,
+    averageDurationSeconds: Math.round(avgDuration)
+  };
+}
+
+
+
+// Función auxiliar para obtener nombre de workspace a partir de la URL del webhook (exportada para páginas como Campaña y PhoneNumbers)
+export function getWorkspaceNameFromWebhook(webhookUrl?: string): string | null {
+  if (!webhookUrl) return null;
+
+  try {
+    const url = new URL(webhookUrl);
+    const segments = url.pathname.split('/').filter(Boolean);
+    const lastSegment = segments[segments.length - 1] || '';
+
+    // Intentar cortar por "-workspace" o el typo "-worspace" si existe
+    const workspaceSlug =
+      lastSegment.split(/-workspace|-worspace/i)[0].trim() || lastSegment.trim();
+
+    if (!workspaceSlug) return null;
+
+    const prettyName = workspaceSlug
+      .replace(/[-_]+/g, ' ')
+      .trim()
+      .split(' ')
+      .filter(Boolean)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+
+    return prettyName || null;
+  } catch {
+    return null;
+  }
+}
+
+
+
+// Función para listar llamadas usando el endpoint list-calls con BASE_URL
+export async function listCalls(
+  apiKey: string,
+  params: {
+    client_id: string;
+    from_number?: string;
+    to_number?: string;
+    status?: string;
+    fecha_inicio?: string;
+    fecha_fin?: string;
+    sort_order?: 'ASC' | 'DESC';
+    page?: number;
+    per_page?: number;
+    agent_id?: string;
+    end_reason?: string;
+    interest?: string;
+    tipo_vivienda?: string;
+    to_number_norm?: string;
+    bdd?: string;
+  }
+): Promise<{
+  calls: RetellCall[];
+  total_pages?: number;
+  total_calls?: number;
+  current_page?: number;
+}> {
+  try {
+    if (!params?.client_id) {
+      throw new Error('client_id es obligatorio para list-calls');
+    }
+    // console.log('Solicitando llamadas con parámetros:', params);
+    
+    // Usar siempre el endpoint de iacreatorhub
+    const url = `${BASE_URL}/api/calls/list-calls`;
+    
+    // console.log('URL de la petición:', url);
+    // console.log('Body de la petición:', params);
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: await authHeaders(),
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      // console.error('Error en la respuesta:', response.status, response.statusText, errorText);
+      throw new Error(`Error al obtener llamadas: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    // console.log('Respuesta del endpoint list-calls:', data);
+    
+    // Transformar las llamadas al formato RetellCall
+    const calls: RetellCall[] = (data.calls || data.llamadas || []).map((call: any) => ({
+      call_id: call.call_id || call.id || '',
+      duration: parseInt(call.duration) || 0,
+      start_time: call.created_at || call.start_time,
+      start_timestamp: new Date(call.created_at || call.start_time).getTime(),
+      end_timestamp: call.end_timestamp || (call.created_at && call.duration ? 
+        new Date(call.created_at).getTime() + (parseInt(call.duration) * 1000) : 
+        undefined),
+      disconnection_reason: call.end_reason || call.disconnection_reason,
+      status: call.status === 'fallida' ? 'failed' : (call.status || 'completed'),
+      call_status: call.status === 'fallida' ? 'failed' : (call.status || 'completed'),
+      transcript: call.transcript,
+      recording_url: call.recordings || call.recording_url,
+      to_number: call.phone_number || call.to_number,
+      from_number: call.from_number,
+      agent_id: call.agent_id, // Incluir agent_id del backend
+      tipo_vivienda: call.tipo_vivienda, // Incluir tipo_vivienda del backend
+      metadata: call.metadata || {}
+    }));
+    
+    return {
+      calls,
+      total_pages: data.total_pages || data.total_paginas,
+      total_calls: data.total_calls || data.total_llamadas,
+      current_page: data.current_page || data.pagina_actual || params.page || 1
+    };
+    
+  } catch (error) {
+    // console.error('Error al obtener llamadas con list-calls:', error);
+    throw error;
+  }
+}
+
+
+
+// Nuevo: listar TODAS las llamadas (sin paginación) para exportación usando backend propio
+export async function listAllCalls(
+  apiKey: string,
+  params: {
+    client_id: string;
+    from_number?: string;
+    to_number?: string;
+    status?: string;
+    fecha_inicio?: string; // Debe venir en ISO UTC o con sufijo 'Z'
+    fecha_fin?: string;    // Debe venir en ISO UTC o con sufijo 'Z'
+    sort_order?: 'ASC' | 'DESC';
+  }
+): Promise<{ calls: RetellCall[]; total_calls: number }>{
+  try {
+    if (!params?.client_id) throw new Error('client_id es obligatorio para listAllCalls');
+    const url = `${BASE_URL}/api/calls/list-calls-all`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: await authHeaders(),
+      body: JSON.stringify(params),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error en listAllCalls: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+    const data = await response.json();
+    // Transformar a RetellCall[]
+    const calls: RetellCall[] = (data.llamadas || data.calls || []).map((call: any) => ({
+      call_id: call.call_id || call.id || '',
+      duration: parseInt(call.duration) || 0,
+      start_time: call.created_at || call.start_time,
+      start_timestamp: new Date(call.created_at || call.start_time).getTime(),
+      end_timestamp: call.end_timestamp || (call.created_at && call.duration ? 
+        new Date(call.created_at).getTime() + (parseInt(call.duration) * 1000) : 
+        undefined),
+      disconnection_reason: call.end_reason || call.disconnection_reason,
+      status: call.status === 'fallida' ? 'failed' : (call.status || 'completed'),
+      call_status: call.status === 'fallida' ? 'failed' : (call.status || 'completed'),
+      transcript: call.transcript,
+      recording_url: call.recordings || call.recording_url,
+      to_number: call.phone_number || call.to_number,
+      from_number: call.from_number,
+      metadata: call.metadata || {}
+    }));
+    return { calls, total_calls: data.total_llamadas || calls.length };
+  } catch (error) {
+    // console.error('Error en listAllCalls:', error);
+    throw error;
+  }
+}
+
+
+
+// Función para obtener todas las llamadas usando list-calls con paginación automática
+export async function fetchAllCallsWithListCalls(
+  apiKey: string,
+  params: {
+    client_id?: string;
+    from_number?: string;
+    to_number?: string;
+    status?: string;
+    fecha_inicio?: string;
+    fecha_fin?: string;
+    sort_order?: 'ASC' | 'DESC';
+  } = {}
+): Promise<RetellCall[]> {
+  try {
+    // console.log('Obteniendo todas las llamadas con list-calls:', params);
+    
+    let allCalls: RetellCall[] = [];
+    let page = 1;
+    let hasMore = true;
+    let totalPages = 0;
+    
+    while (hasMore) {
+      if (!params.client_id) {
+        throw new Error('client_id es obligatorio para fetchAllCallsWithListCalls');
+      }
+      
+      const response = await listCalls(apiKey, {
+        ...params,
+        client_id: params.client_id, // Asegurar que client_id esté definido
+        page,
+        per_page: 100 // Máximo por página
+      });
+      
+      allCalls = [...allCalls, ...response.calls];
+      
+      // Si es la primera página, obtener el total de páginas
+      if (page === 1 && response.total_pages) {
+        totalPages = response.total_pages;
+      }
+      
+      // Determinar si hay más páginas
+      if (totalPages > 0) {
+        hasMore = page < totalPages;
+      } else {
+        // Si no conocemos el total, usar la heurística
+        hasMore = response.calls.length === 100;
+      }
+      
+      if (hasMore) {
+        page++;
+        // Pequeña pausa para no sobrecargar el servidor
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Verificación de seguridad para evitar bucles infinitos
+        if (page > 100) {
+          // console.warn('Límite de páginas alcanzado (100), deteniendo paginación');
+          break;
+        }
+      }
+    }
+    
+    // console.log(`Total de llamadas obtenidas con list-calls: ${allCalls.length}`);
+    return allCalls;
+    
+  } catch (error) {
+    // console.error('Error al obtener todas las llamadas con list-calls:', error);
+    throw error;
+  }
+}
+
+
+// Obtener todos los motivos de desconexión únicos
+export async function getDisconnectionReasons(
+  apiKey: string,
+  clientId: string
+): Promise<string[]> {
+  try {
+    if (!clientId) {
+      throw new Error('client_id es obligatorio para getDisconnectionReasons');
+    }
+    
+    // console.log('🔍 Obteniendo motivos de desconexión para client_id:', clientId);
+    
+    const url = `${BASE_URL}/api/calls/get-disconnection-reasons`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: await authHeaders(),
+      body: JSON.stringify({ client_id: clientId }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error al obtener motivos de desconexión: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    // console.log('✅ Motivos de desconexión obtenidos para client_id:', data.client_id || clientId);
+    if (data.client_id && data.client_id !== clientId) {
+      // console.warn('⚠️ Advertencia: El client_id de la respuesta no coincide con el solicitado');
+    }
+    
+    return data.disconnection_reasons || [];
+  } catch (error) {
+    // console.error('❌ Error al obtener motivos de desconexión:', error);
+    throw error;
+  }
+}
+
+// Conteos por analisis_codigo para página Recoveries (gráfico donut)
+export async function getRecoveryCountsByAnalisisCodigo(
+  apiKey: string,
+  params: { client_id: string; fecha_inicio?: string; fecha_fin?: string; analisis_codigo?: string }
+): Promise<{ analisis_codigo: string; total: number }[]> {
+  const url = `${BASE_URL}/api/calls/recovery-counts-by-analisis-codigo`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify(params),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Error en recovery-counts: ${response.status} - ${text}`);
+  }
+  const data = await response.json();
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.data)) return data.data;
+  if (Array.isArray(data?.rows)) return data.rows;
+  if (Array.isArray(data?.counts)) return data.counts;
+  return [];
+}
+
+// Listar llamadas de recovery (con analisis_codigo) - tabla paginada
+export async function listRecoveryCalls(
+  apiKey: string,
+  params: {
+    client_id: string;
+    page?: number;
+    per_page?: number;
+    fecha_inicio?: string;
+    fecha_fin?: string;
+    analisis_codigo?: string;
+    sort_order?: 'ASC' | 'DESC';
+  }
+): Promise<{
+  llamadas: any[];
+  pagina_actual: number;
+  total_paginas: number;
+  total_llamadas: number;
+  limit: number;
+  conteos_por_codigo?: { analisis_codigo: string; total: number }[];
+}> {
+  const url = `${BASE_URL}/api/calls/recovery-list-calls`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify(params),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Error en recovery-list-calls: ${response.status} - ${text}`);
+  }
+  const data = await response.json();
+  return {
+    llamadas: data.llamadas || [],
+    pagina_actual: data.pagina_actual ?? 1,
+    total_paginas: data.total_paginas ?? 0,
+    total_llamadas: data.total_llamadas ?? 0,
+    limit: data.limit ?? params.per_page ?? 50,
+    conteos_por_codigo: Array.isArray(data.conteos_por_codigo) ? data.conteos_por_codigo : undefined,
+  };
+}
+
+export type InteresadosCualificacion = 'todos' | 'agendados' | 'cualificado' | 'no_cualificado' | 'no_llamar';
+
+// Listar llamadas de interesados (efectivas + sentimiento positivo en metadata)
+export async function listInteresadosCalls(
+  apiKey: string,
+  params: {
+    client_id: string;
+    page?: number;
+    per_page?: number;
+    fecha_inicio?: string;
+    fecha_fin?: string;
+    min_duration_ms?: number;
+    sort_order?: 'ASC' | 'DESC';
+    cualificacion?: InteresadosCualificacion;
+    motivo?: string;
+  }
+): Promise<{
+  llamadas: any[];
+  pagina_actual: number;
+  total_paginas: number;
+  total_llamadas: number;
+  total_cualificados: number;
+  total_no_cualificados: number;
+  total_no_llamar: number;
+  total_con_agenda: number;
+  total_todos: number;
+}> {
+  const url = `${BASE_URL}/api/calls/interesados-list-calls`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify(params),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Error en interesados-list-calls: ${response.status} - ${text}`);
+  }
+  const data = await response.json();
+  return {
+    llamadas: data.llamadas || [],
+    pagina_actual: data.pagina_actual ?? 1,
+    total_paginas: data.total_paginas ?? 0,
+    total_llamadas: data.total_llamadas ?? 0,
+    total_cualificados: data.total_cualificados ?? 0,
+    total_no_cualificados: data.total_no_cualificados ?? 0,
+    total_no_llamar: data.total_no_llamar ?? 0,
+    total_con_agenda: data.total_con_agenda ?? 0,
+    total_todos: data.total_todos ?? 0,
+  };
+}
+
+export async function getInteresadosMotivos(
+  apiKey: string,
+  clientId: string,
+): Promise<string[]> {
+  const url = `${BASE_URL}/api/calls/interesados-motivos`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify({ client_id: clientId }),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Error en interesados-motivos: ${response.status} - ${text}`);
+  }
+  const data = await response.json();
+  return data.motivos ?? [];
+}
+
+export async function getCallCountsByFromNumber(clientId: string): Promise<CallCountByFromNumber[]> {
+  try {
+    const response = await fetch(`${BASE_URL}/api/calls/call-counts-by-from-number`, {
+      method: 'POST',
+      headers: await authHeaders(),
+      body: JSON.stringify({ client_id: clientId }),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error en call-counts-by-from-number: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    // console.error('Error al obtener conteos por número:', error);
+    throw error;
+  }
+}
+
+export async function getCallCountForNumber(
+  clientId: string,
+  fromNumber: string
+): Promise<{ total: number; efectivas: number; fallidas: number }> {
+  const response = await fetch(`${BASE_URL}/api/calls/call-count-for-number`, {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify({ client_id: clientId, from_number: fromNumber }),
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Error en call-count-for-number: ${response.status} - ${errorText}`);
+  }
+  return response.json();
+}
+
+export async function exportCallsWithColumns(
+  apiKey: string,
+  params: {
+    client_id: string;
+    columns: string[];
+    fecha_inicio?: string;
+    fecha_fin?: string;
+    from_number?: string;
+    to_number?: string;
+    to_number_norm?: string;
+    status?: string;
+    interest?: string;
+    tipo_vivienda?: string;
+    end_reason?: string;
+    bdd?: string;
+    sort_order?: 'ASC' | 'DESC';
+  }
+): Promise<{ calls: any[]; total_llamadas: number; columns_selected: string[] }> {
+  try {
+    if (!params?.client_id) {
+      throw new Error('client_id es obligatorio para exportCallsWithColumns');
+    }
+    
+    if (!params?.columns || params.columns.length === 0) {
+      throw new Error('Debe seleccionar al menos una columna para exportar');
+    }
+    
+    // console.log('Exportando llamadas con columnas seleccionadas:', params);
+    
+    const url = `${BASE_URL}/api/calls/export-calls-with-columns`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: await authHeaders(),
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error en exportCallsWithColumns: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    // console.log('Llamadas exportadas con columnas:', data);
+    
+    return {
+      calls: data.llamadas || [],
+      total_llamadas: data.total_llamadas || 0,
+      columns_selected: data.columns_selected || params.columns
+    };
+  } catch (error) {
+    // console.error('Error al exportar llamadas con columnas:', error);
+    throw error;
+  }
+}

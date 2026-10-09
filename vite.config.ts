@@ -5,9 +5,6 @@ import { corsHeaders } from './src/lib/cors';
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  optimizeDeps: {
-    exclude: ['lucide-react'],
-  },
   server: {
     headers: corsHeaders,
     proxy: {
@@ -18,10 +15,25 @@ export default defineConfig({
       }
     }
   },
+  // Configuración para `vite preview` / entorno de previsualización
+  // Necesaria para permitir el host devfront.iacreatorhub.com
+  preview: {
+    allowedHosts: ['devfront.iacreatorhub.com'],
+  },
   build: {
     rollupOptions: {
       input: {
         main: './index.html',
+      },
+      output: {
+        manualChunks: {
+          // Separar React core en su propio chunk (cambia raramente → excelente cache)
+          'vendor-react': ['react', 'react-dom'],
+          // Separar Recharts (muy pesado, ~400KB) en su propio chunk
+          'vendor-recharts': ['recharts'],
+          // Separar íconos de Lucide
+          'vendor-icons': ['lucide-react'],
+        },
       },
     },
     outDir: 'dist',
