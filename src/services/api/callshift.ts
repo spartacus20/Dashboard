@@ -69,7 +69,16 @@ export interface LaunchResult {
   scheduled_at: string | null;
   contacts_pushed: number;
   skipped: SkippedContact[];
-  webhook: { verified: boolean; agent_repaired: boolean };
+  webhook: CampaignWebhookCheck;
+}
+
+// verified=false → las llamadas del agente se registran en otro sistema (no se
+// cambió a dónde avisa); la campaña se lanzó igual y `warning` lo explica.
+export interface CampaignWebhookCheck {
+  verified: boolean;
+  managed: boolean;
+  agent_repaired: boolean;
+  warning: string | null;
 }
 
 // Error con los datos extra que manda el backend en fallos parciales.
@@ -118,7 +127,7 @@ export const launchCallshiftCampaign = (
 ) => call<LaunchResult>(clientId, '/campaigns', { method: 'POST', body: JSON.stringify(body) });
 
 export const setCallshiftCampaignActive = (clientId: string, campaignId: string, isActive: boolean) =>
-  call<{ campaign_id: string; active: boolean }>(clientId, `/campaigns/${encodeURIComponent(campaignId)}`, {
+  call<{ campaign_id: string; active: boolean; webhook?: CampaignWebhookCheck }>(clientId, `/campaigns/${encodeURIComponent(campaignId)}`, {
     method: 'PATCH',
     body: JSON.stringify({ is_active: isActive }),
   });

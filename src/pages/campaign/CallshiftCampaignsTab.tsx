@@ -78,7 +78,8 @@ export function CallshiftCampaignsTab({ clientId }: { clientId: string }) {
     setBusy(c.campaign_id);
     setError(null);
     try {
-      await setCallshiftCampaignActive(clientId, c.campaign_id, !c.active);
+      const res = await setCallshiftCampaignActive(clientId, c.campaign_id, !c.active);
+      if (res.webhook?.warning) setNotice(res.webhook.warning);
       await loadCampaigns();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo actualizar la campaña');

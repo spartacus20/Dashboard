@@ -175,6 +175,12 @@ export function CallshiftNewCampaignModal({
                 )}
               </div>
             </div>
+            {result.webhook.warning && (
+              <div className="flex items-start gap-3 rounded-lg bg-amber-50 p-4 text-sm text-amber-800">
+                <AlertTriangle className="w-5 h-5 mt-0.5 shrink-0" />
+                {result.webhook.warning}
+              </div>
+            )}
             <div className="flex justify-end">
               <Button type="button" onClick={onClose}>Cerrar</Button>
             </div>
