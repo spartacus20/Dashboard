@@ -26,9 +26,12 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
   const { apiKey, apiKeyTest, clientId } = useCallsContext();
   const [campaignTab, setCampaignTab] = useState<'campaigns' | 'batch-calling' | 'programadas' | 'callshift'>('campaigns');
   // Proveedores disponibles para el cliente: Retell si tiene key, CallShift si tiene
-  // agentes asignados (desde gestion_dashboard). Puede tener los dos.
+  // agentes asignados (desde gestion_dashboard). Puede tener los dos. El cliente no
+  // ve el nombre del proveedor: con uno solo, la página es "Campañas" sin pestañas;
+  // con los dos, CallShift es "Campañas" y la lista de Retell pasa a "Historial".
   const hasRetell = hasRetellKey(apiKey) || Boolean(apiKeyTest?.length);
   const [callshiftEnabled, setCallshiftEnabled] = useState(false);
+  const [callshiftChecked, setCallshiftChecked] = useState(false);
   // Pestaña "Campañas programadas" (batch service): solo clientes con el flag habilitado
   const showBatchCampaigns = canAccessBatchCampaigns();
   const [currentPage, setCurrentPage] = useState(1);
@@ -71,17 +74,19 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
   useEffect(() => {
     if (!clientId) return;
     let cancelled = false;
+    setCallshiftChecked(false);
     fetchCallshiftStatus(clientId)
       .then((st) => { if (!cancelled) setCallshiftEnabled(st.enabled); })
-      .catch(() => { if (!cancelled) setCallshiftEnabled(false); });
+      .catch(() => { if (!cancelled) setCallshiftEnabled(false); })
+      .finally(() => { if (!cancelled) setCallshiftChecked(true); });
     return () => { cancelled = true; };
   }, [clientId]);
 
-  // Sin Retell, las pestañas de Retell no aplican: se abre directo la de CallShift.
+  // Si el cliente tiene CallShift, esa es la vista principal de "Campañas".
   useEffect(() => {
-    if (!hasRetell && callshiftEnabled && campaignTab !== 'callshift') setCampaignTab('callshift');
+    if (callshiftEnabled && campaignTab === 'campaigns') setCampaignTab('callshift');
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasRetell, callshiftEnabled]);
+  }, [callshiftEnabled]);
 
   // Cargar nombres de folders en paralelo, actualizando el estado de forma incremental
   useEffect(() => {
@@ -298,6 +303,7 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
           <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800 mb-2">Campaña</h2>
           <p className="text-slate-600">Lista de campañas y creación de nuevas desde CSV</p>
         </div>
+        {hasRetell && (
         <div className="flex gap-2">
           {callshiftEnabled && (
             <button
@@ -309,11 +315,10 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
                   : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50'
               }`}
             >
-              <PhoneCall className="w-4 h-4" />
-              CallShift
+              <Megaphone className="w-4 h-4" />
+              Campañas
             </button>
           )}
-          {hasRetell && (<>
           <button
             type="button"
             onClick={() => setCampaignTab('campaigns')}
@@ -323,8 +328,8 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
                 : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50'
             }`}
           >
-            <Megaphone className="w-4 h-4" />
-            Campañas
+            {callshiftEnabled ? <PhoneCall className="w-4 h-4" /> : <Megaphone className="w-4 h-4" />}
+            {callshiftEnabled ? 'Historial' : 'Campañas'}
           </button>
           <button
             type="button"
@@ -338,7 +343,6 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
             <Upload className="w-4 h-4" />
             Crear Campaña
           </button>
-          </>)}
           {showBatchCampaigns && (
             <button
               type="button"
@@ -354,13 +358,14 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
             </button>
           )}
         </div>
+        )}
       </div>
 
       {campaignTab === 'callshift' && callshiftEnabled && clientId ? (
         <CallshiftCampaignsTab clientId={clientId} />
       ) : !hasRetell ? (
         <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-10 text-center text-slate-500">
-          {callshiftEnabled ? 'Cargando…' : 'Tu cuenta todavía no tiene un proveedor de llamadas configurado para campañas.'}
+          {!callshiftChecked || callshiftEnabled ? 'Cargando…' : 'Tu cuenta todavía no tiene las campañas configuradas. Contactá a soporte.'}
         </div>
       ) : campaignTab === 'programadas' && showBatchCampaigns ? (
         <BatchCampaignsTab />
