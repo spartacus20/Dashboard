@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Megaphone, RefreshCw, AlertCircle, Search, BarChart3, Upload, Pencil, Trash2, ChevronLeft, ChevronRight, X, Info, CalendarClock } from 'lucide-react';
+import { Megaphone, RefreshCw, AlertCircle, Search, BarChart3, Upload, Pencil, Trash2, ChevronLeft, ChevronRight, X, Info, CalendarClock, PhoneCall } from 'lucide-react';
 import { RetellBatchCall } from '../types';
 import { fetchBatchCalls, fetchFolders, deleteBatchCall, fetchAgentIdForBatch } from '../api';
 import { getCachedFolderName, setCachedFolderName } from '../lib/folderNameCache';
@@ -9,7 +9,9 @@ import { BatchCampaignsTab } from './campaign/BatchCampaignsTab';
 import { canAccessBatchCampaigns } from '../lib/supabase';
 import { formatScheduledDate } from '../lib/formatScheduled';
 import { Button } from '../components/ui/button';
-import { CAMPAIGN_PAGE_SIZE as ITEMS_PER_PAGE } from '../lib/constants';
+import { CAMPAIGN_PAGE_SIZE as ITEMS_PER_PAGE, hasRetellKey } from '../lib/constants';
+import { CallshiftCampaignsTab } from './campaign/CallshiftCampaignsTab';
+import { fetchCallshiftStatus } from '../services/api/callshift';
 
 interface BatchCallWithWorkspace extends RetellBatchCall {
   workspace_index: number;
@@ -22,7 +24,14 @@ interface CampaignProps {
 
 export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
   const { apiKey, apiKeyTest, clientId } = useCallsContext();
-  const [campaignTab, setCampaignTab] = useState<'campaigns' | 'batch-calling' | 'programadas'>('campaigns');
+  const [campaignTab, setCampaignTab] = useState<'campaigns' | 'batch-calling' | 'programadas' | 'callshift'>('campaigns');
+  // Proveedores disponibles para el cliente: Retell si tiene key, CallShift si tiene
+  // agentes asignados (desde gestion_dashboard). Puede tener los dos. El cliente no
+  // ve el nombre del proveedor: con uno solo, la página es "Campañas" sin pestañas;
+  // con los dos, CallShift es "Campañas" y la lista de Retell pasa a "Historial".
+  const hasRetell = hasRetellKey(apiKey) || Boolean(apiKeyTest?.length);
+  const [callshiftEnabled, setCallshiftEnabled] = useState(false);
+  const [callshiftChecked, setCallshiftChecked] = useState(false);
   // Pestaña "Campañas programadas" (batch service): solo clientes con el flag habilitado
   const showBatchCampaigns = canAccessBatchCampaigns();
   const [currentPage, setCurrentPage] = useState(1);
@@ -62,8 +71,26 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
     setCampaignTab('batch-calling');
   };
 
+  useEffect(() => {
+    if (!clientId) return;
+    let cancelled = false;
+    setCallshiftChecked(false);
+    fetchCallshiftStatus(clientId)
+      .then((st) => { if (!cancelled) setCallshiftEnabled(st.enabled); })
+      .catch(() => { if (!cancelled) setCallshiftEnabled(false); })
+      .finally(() => { if (!cancelled) setCallshiftChecked(true); });
+    return () => { cancelled = true; };
+  }, [clientId]);
+
+  // Si el cliente tiene CallShift, esa es la vista principal de "Campañas".
+  useEffect(() => {
+    if (callshiftEnabled && campaignTab === 'campaigns') setCampaignTab('callshift');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callshiftEnabled]);
+
   // Cargar nombres de folders en paralelo, actualizando el estado de forma incremental
   useEffect(() => {
+    if (!hasRetell) return;
     const apiKeysToUse = apiKeyTest && apiKeyTest.length > 0 ? apiKeyTest : apiKey ? [apiKey] : [];
     if (apiKeysToUse.length === 0) return;
 
@@ -129,10 +156,11 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
 
   // Lista de API keys a consultar (todas las cargadas por client_id)
   const apiKeysToFetch = useMemo(() => {
+    if (!hasRetell) return [];
     if (apiKeyTest && apiKeyTest.length > 0) return apiKeyTest;
     if (apiKey) return [apiKey];
     return [];
-  }, [apiKey, apiKeyTest]);
+  }, [apiKey, apiKeyTest, hasRetell]);
 
   // Nombres para el selector de workspace, desambiguando duplicados (ej: "soporteia (2)")
   const workspaceDisplayNames = useMemo(() => {
@@ -204,7 +232,7 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
 
   // Al montar (o cuando cambien clientId/keys), cargar el primer workspace por defecto
   useEffect(() => {
-    if (clientId) {
+    if (clientId && hasRetell) {
       setSelectedWorkspaceIndex(0);
       loadBatchCalls(0);
     } else {
@@ -275,7 +303,22 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
           <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-800 mb-2">Campaña</h2>
           <p className="text-slate-600">Lista de campañas y creación de nuevas desde CSV</p>
         </div>
+        {hasRetell && (
         <div className="flex gap-2">
+          {callshiftEnabled && (
+            <button
+              type="button"
+              onClick={() => setCampaignTab('callshift')}
+              className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 ${
+                campaignTab === 'callshift'
+                  ? 'bg-[#05163b] text-white'
+                  : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              <Megaphone className="w-4 h-4" />
+              Campañas
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setCampaignTab('campaigns')}
@@ -285,8 +328,8 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
                 : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50'
             }`}
           >
-            <Megaphone className="w-4 h-4" />
-            Campañas
+            {callshiftEnabled ? <PhoneCall className="w-4 h-4" /> : <Megaphone className="w-4 h-4" />}
+            {callshiftEnabled ? 'Historial' : 'Campañas'}
           </button>
           <button
             type="button"
@@ -315,9 +358,16 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
             </button>
           )}
         </div>
+        )}
       </div>
 
-      {campaignTab === 'programadas' && showBatchCampaigns ? (
+      {campaignTab === 'callshift' && callshiftEnabled && clientId ? (
+        <CallshiftCampaignsTab clientId={clientId} />
+      ) : !hasRetell ? (
+        <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-10 text-center text-slate-500">
+          {!callshiftChecked || callshiftEnabled ? 'Cargando…' : 'Tu cuenta todavía no tiene las campañas configuradas. Contactá a soporte.'}
+        </div>
+      ) : campaignTab === 'programadas' && showBatchCampaigns ? (
         <BatchCampaignsTab />
       ) : campaignTab === 'batch-calling' ? (
         <BatchCallingTab apiKeys={apiKeysToFetch} workspaceNameByApiKey={workspaceNameByApiKey} />

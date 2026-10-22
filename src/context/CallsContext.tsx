@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import { RetellCall, FilterCriteria, RetellPhoneNumber } from '../types';
 import { fetchPhoneNumbers, listCalls, getClientApiKey, getDashboardData, getDashboardToday, getDashboardWeek, getDashboardMonth, getDisconnectionReasons } from '../api';
 import { get_client_id, supabase, getClientId as fetchAndStoreClientId } from '../lib/supabase';
+import { NO_RETELL_KEY } from '../lib/constants';
 
 interface CallsContextType {
   allCalls: RetellCall[];
@@ -143,6 +144,23 @@ export function CallsProvider({ children }: CallsProviderProps) {
     return { clientId, phone };
   }, []);
   
+  // Cliente sin key de Retell (p. ej. solo CallShift): se aplica su configuración igual
+  // y apiKey queda en NO_RETELL_KEY para que las páginas lo den por cargado.
+  const applyClientWithoutRetell = useCallback((config?: Record<string, any>) => {
+    setApiKey(NO_RETELL_KEY);
+    setApiKeyTest(null);
+    if (!config) return;
+    setAgendaEnabled(config.agenda ?? true);
+    setCallsEnabled(config.calls_enabled ?? true);
+    setSalesEnabled(config.sales ?? false);
+    setNumTelEnabled(config.num_tel ?? false);
+    setRecordsEnabled(config.records ?? false);
+    setCallbacksEnabled(config.callbacks ?? false);
+    setLaunchEnabled(config.launch ?? false);
+    setDontCallEnabled(config.dont_call ?? false);
+    setCampaignEnabled(config.campaign ?? false);
+  }, []);
+
   // Obtener la API key y configuración cuando se monta el componente
   useEffect(() => {
     const fetchApiKey = async () => {
@@ -181,6 +199,9 @@ export function CallsProvider({ children }: CallsProviderProps) {
               setDontCallEnabled(result.config.dont_call ?? false);
               setCampaignEnabled(result.config.campaign ?? false);
             }
+          } else if (result.clientId) {
+            // Cliente sin Retell (p. ej. solo CallShift): config igual, sin key.
+            applyClientWithoutRetell(result.config);
           } else {
             // console.error('No se pudo obtener la API key para el client_id:', storedClientId);
             setError('No se pudo obtener la configuración para el client_id proporcionado');
@@ -227,6 +248,8 @@ export function CallsProvider({ children }: CallsProviderProps) {
                     setDontCallEnabled(result.config.dont_call ?? false);
                     setCampaignEnabled(result.config.campaign ?? false);
                   }
+                } else if (result.clientId) {
+                  applyClientWithoutRetell(result.config);
                 } else {
                   // console.error('No se pudo obtener la API key para el client_id:', newClientId);
                   setError('No se pudo obtener la configuración para el client_id proporcionado');
@@ -302,6 +325,8 @@ export function CallsProvider({ children }: CallsProviderProps) {
                     setDontCallEnabled(result.config.dont_call ?? false);
                     setCampaignEnabled(result.config.campaign ?? false);
                   }
+                } else if (result.clientId) {
+                  applyClientWithoutRetell(result.config);
                 } else {
                   // console.error('No se pudo obtener API key tras inicio de sesión');
                   setError('No se pudo obtener la configuración del cliente tras iniciar sesión');
@@ -345,6 +370,10 @@ export function CallsProvider({ children }: CallsProviderProps) {
         setApiKey(newApiKeyTest[0]);
       } else if (newApiKey) {
         setApiKey(newApiKey);
+        setApiKeyTest(null);
+      } else {
+        // Cliente sin Retell: no arrastrar la key del cliente anterior.
+        setApiKey(NO_RETELL_KEY);
         setApiKeyTest(null);
       }
       

@@ -404,9 +404,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         );
 
         return { error: null };
+      } else if (result.clientId) {
+        // Cliente sin key de Retell (p. ej. solo CallShift): se cambia igual, sin
+        // key; CallsContext lo marca con NO_RETELL_KEY.
+        window.dispatchEvent(
+          new CustomEvent("clientIdChanged", {
+            detail: { clientId: newClientId, config: result.config },
+          }),
+        );
+
+        return { error: null };
       } else {
         throw new Error(
-          "No se pudo obtener la API key para el nuevo client_id",
+          "No se pudo obtener la configuración del nuevo client_id",
         );
       }
     } catch (error) {

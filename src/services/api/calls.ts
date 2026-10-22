@@ -550,8 +550,14 @@ export async function exportCallsWithColumns(
     end_reason?: string;
     bdd?: string;
     sort_order?: 'ASC' | 'DESC';
+    include_dynamic_variables?: boolean;
   }
-): Promise<{ calls: any[]; total_llamadas: number; columns_selected: string[] }> {
+): Promise<{
+  calls: any[];
+  total_llamadas: number;
+  columns_selected: string[];
+  dynamic_variables?: { found: number; missing: number; ms: number; errors: string[] };
+}> {
   try {
     if (!params?.client_id) {
       throw new Error('client_id es obligatorio para exportCallsWithColumns');
@@ -581,7 +587,8 @@ export async function exportCallsWithColumns(
     return {
       calls: data.llamadas || [],
       total_llamadas: data.total_llamadas || 0,
-      columns_selected: data.columns_selected || params.columns
+      columns_selected: data.columns_selected || params.columns,
+      dynamic_variables: data.dynamic_variables
     };
   } catch (error) {
     // console.error('Error al exportar llamadas con columnas:', error);
