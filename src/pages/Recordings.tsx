@@ -752,6 +752,9 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   const [metadataFields, setMetadataFields] = React.useState<Record<string, boolean>>({});
   const [availableMetadataFields, setAvailableMetadataFields] = React.useState<string[]>([]);
 
+  // Variables dinámicas del agente: se piden a Retell al exportar, no se guardan en call_logs
+  const [includeDynamicVariables, setIncludeDynamicVariables] = React.useState(false);
+
   // Cargar campos de metadata del session storage. Re-ejecutar cuando cambia clientId para traer siempre el del cliente actual
   React.useEffect(() => {
     try {
@@ -1314,10 +1317,25 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       columnLabels[`metadata_${field}`] = `Metadata - ${field}`;
     });
 
+    // Variables dinámicas: una columna por cada clave que aparezca en alguna llamada,
+    // en el orden en que aparecen por primera vez
+    const dynamicVariableKeys: string[] = [];
+    dataToExport.forEach(call => {
+      Object.keys(call.dynamic_variables || {}).forEach(key => {
+        if (!dynamicVariableKeys.includes(key)) dynamicVariableKeys.push(key);
+      });
+    });
+    dynamicVariableKeys.forEach(key => {
+      columnLabels[`variable_${key}`] = `Variable - ${key}`;
+    });
+
     // Crear encabezados basados en las columnas seleccionadas y campos de metadata
     const allColumns = [...selectedColumns];
     selectedMetadataFields.forEach(field => {
       allColumns.push(`metadata_${field}`);
+    });
+    dynamicVariableKeys.forEach(key => {
+      allColumns.push(`variable_${key}`);
     });
     const headers = allColumns.map(col => columnLabels[col] || col);
     
@@ -1410,7 +1428,14 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         
         row[metadataKey] = fieldValue;
       });
-      
+
+      dynamicVariableKeys.forEach(key => {
+        const value = call.dynamic_variables?.[key];
+        row[`variable_${key}`] = value === null || value === undefined
+          ? ''
+          : typeof value === 'object' ? JSON.stringify(value) : String(value);
+      });
+
       return row;
     });
     
@@ -1558,6 +1583,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         columns: finalSelectedColumns,
         sort_order: sortOrderFilter
       };
+      if (includeDynamicVariables) params.include_dynamic_variables = true;
       if (statusFilter) params.status = statusFilter;
       
       // Agregar filtro de número de teléfono (normalizar el número)
@@ -3443,123 +3469,25 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                     Seleccionados: {Object.values(metadataFields).filter(Boolean).length} de {availableMetadataFields.length} campos de metadata
                   </div>
                 </div>
-              ) : (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                  <h4 className="text-md font-medium text-yellow-800 mb-2">Debug: Campos de Metadata</h4>
-                  <p className="text-sm text-yellow-700 mb-3">
-                    No se encontraron campos de metadata en sessionStorage con key 'metadata_llamadas'.
-                    <br />
-                    Campos disponibles: {availableMetadataFields.length}
-                    <br />
-                    SessionStorage metadata: {sessionStorage.getItem('metadata_llamadas') ? 'Existe' : 'No existe'}
-                    <br />
-                    <strong>Contenido del session storage:</strong>
-                    <br />
-                    <code className="text-xs bg-gray-100 p-1 rounded block mt-1">
-                      {sessionStorage.getItem('metadata_llamadas') || 'No hay datos'}
-                    </code>
-                  </p>
-                  <div className="flex gap-2 flex-wrap">
-                    <button
-                      onClick={() => {
-                        // Mostrar contenido exacto del session storage
-                        const storedMetadata = sessionStorage.getItem('metadata_llamadas');
-                        alert(`Contenido del session storage:\n\n${storedMetadata}\n\nTipo: ${typeof storedMetadata}\nLongitud: ${storedMetadata?.length}`);
-                      }}
-                      className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700"
-                    >
-                      Ver contenido exacto del session storage
-                    </button>
-                    
-                    <button
-                      onClick={() => {
-                        // Recargar metadata del session storage
-                        try {
-                          const storedMetadata = sessionStorage.getItem('metadata_llamadas');
-                          // console.log('🔍 [Recargar] Metadata del session storage:', storedMetadata);
-                          // console.log('🔍 [Recargar] Tipo de datos:', typeof storedMetadata);
-                          // console.log('🔍 [Recargar] Longitud:', storedMetadata?.length);
-                          
-                          if (storedMetadata) {
-                            const metadataArray = JSON.parse(storedMetadata);
-                            // console.log('🔍 [Recargar] Metadata parseada:', metadataArray);
-                            // console.log('🔍 [Recargar] Es array?', Array.isArray(metadataArray));
-                            // console.log('🔍 [Recargar] Longitud del array:', metadataArray?.length);
-                            
-                            if (Array.isArray(metadataArray) && metadataArray.length > 0) {
-                              // Si es un array, obtener las claves del primer objeto
-                              const fields = Object.keys(metadataArray[0]);
-                              // console.log('🔍 [Recargar] Campos de metadata encontrados (array):', fields);
-                              // console.log('🔍 [Recargar] Primer objeto:', metadataArray[0]);
-                              
-                              setAvailableMetadataFields(fields);
-                              // console.log('🔍 [Recargar] Estado actualizado - availableMetadataFields:', fields);
-                              
-                              const initialFields: Record<string, boolean> = {};
-                              fields.forEach(field => {
-                                initialFields[field] = false;
-                              });
-                              setMetadataFields(initialFields);
-                              // console.log('🔍 [Recargar] Estado actualizado - metadataFields:', initialFields);
-                            } else if (typeof metadataArray === 'object' && metadataArray !== null) {
-                              // Si es un objeto directo, obtener sus claves
-                              const fields = Object.keys(metadataArray);
-                              // console.log('🔍 [Recargar] Campos de metadata encontrados (objeto):', fields);
-                              // console.log('🔍 [Recargar] Objeto completo:', metadataArray);
-                              
-                              setAvailableMetadataFields(fields);
-                              // console.log('🔍 [Recargar] Estado actualizado - availableMetadataFields:', fields);
-                              
-                              const initialFields: Record<string, boolean> = {};
-                              fields.forEach(field => {
-                                initialFields[field] = false;
-                              });
-                              setMetadataFields(initialFields);
-                              // console.log('🔍 [Recargar] Estado actualizado - metadataFields:', initialFields);
-                            } else {
-                              // console.log('🔍 [Recargar] No es un array válido o está vacío');
-                            }
-                          } else {
-                            // console.log('🔍 [Recargar] No hay metadata en session storage');
-                          }
-                        } catch (error) {
-                          // console.error('Error al recargar metadata:', error);
-                        }
-                      }}
-                      className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
-                    >
-                      Recargar metadata del session storage
-                    </button>
-                    
-                    <button
-                      onClick={() => {
-                        // Simular datos de metadata para prueba
-                        const testMetadata = [
-                          {
-                            "total_llamadas": "12",
-                            "ultima_llamada": "hoy",
-                            "duracion_promedio": "",
-                            "llamadas_exitosas": ""
-                          }
-                        ];
-                        sessionStorage.setItem('metadata_llamadas', JSON.stringify(testMetadata));
-                        
-                        // Recargar los campos
-                        const fields = Object.keys(testMetadata[0]);
-                        setAvailableMetadataFields(fields);
-                        const initialFields: Record<string, boolean> = {};
-                        fields.forEach(field => {
-                          initialFields[field] = false;
-                        });
-                        setMetadataFields(initialFields);
-                      }}
-                      className="px-3 py-1 bg-yellow-600 text-white text-sm rounded hover:bg-yellow-700"
-                    >
-                      Simular datos de metadata para prueba
-                    </button>
-                  </div>
-                </div>
-              )}
+              ) : null}
+
+              {/* Variables dinámicas del agente (se consultan a Retell al exportar) */}
+              <div className="flex items-start border border-gray-200 rounded-lg p-4">
+                <input
+                  type="checkbox"
+                  id="export-dynamic-variables"
+                  checked={includeDynamicVariables}
+                  onChange={() => setIncludeDynamicVariables(!includeDynamicVariables)}
+                  className="mt-0.5 rounded bg-white border-slate-300 text-blue-600 focus:ring-blue-500"
+                  disabled={exportLoading}
+                />
+                <label htmlFor="export-dynamic-variables" className="ml-2 text-sm text-slate-700">
+                  <span className="font-medium">Variables del agente</span>
+                  <span className="block text-xs text-gray-500">
+                    Agrega una columna por cada variable que recibió el agente en la llamada. Puede tardar unos segundos más.
+                  </span>
+                </label>
+              </div>
 
               {exportError && (
                 <div className="text-red-600 text-sm">{exportError}</div>
@@ -3574,6 +3502,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                   setExportStartTime('');
                   setExportEndTime('');
                   setExportError(null);
+                  setIncludeDynamicVariables(false);
                   // Resetear columnas a valores por defecto
                   setExportColumns({
                     created_at: true,
