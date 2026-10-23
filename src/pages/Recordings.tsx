@@ -753,9 +753,9 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   const [availableMetadataFields, setAvailableMetadataFields] = React.useState<string[]>([]);
 
   // Variables dinámicas del agente: se piden a Retell al exportar, no se guardan en call_logs
-  const [includeDynamicVariables, setIncludeDynamicVariables] = React.useState(false);
+  const [includeDynamicVariables, setIncludeDynamicVariables] = React.useState(true);
   // Análisis post-llamada (custom_analysis_data de Retell): mismo mecanismo, columnas aparte
-  const [includePostCallAnalysis, setIncludePostCallAnalysis] = React.useState(false);
+  const [includePostCallAnalysis, setIncludePostCallAnalysis] = React.useState(true);
 
   // Cargar campos de metadata del session storage. Re-ejecutar cuando cambia clientId para traer siempre el del cliente actual
   React.useEffect(() => {
@@ -1369,8 +1369,8 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         if (column === 'created_at') {
           row[column] = formatTimestampUTC(call[column]);
         } else if (column === 'duration') {
-          // Formatear duración en MM:SS
-          const duration = parseInt(call[column]) || 0;
+          // Formatear duración en MM:SS (call_logs.duration viene en milisegundos, como en la tabla)
+          const duration = Math.floor((parseInt(call[column]) || 0) / 1000);
           const minutes = Math.floor(duration / 60);
           const seconds = duration % 60;
           row[column] = `${minutes}:${seconds.toString().padStart(2, '0')}`;
@@ -1463,7 +1463,8 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     });
     
     // Crear un blob y descargar
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    // El BOM hace que Excel abra el archivo como UTF-8 y no rompa las tildes
+    const blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
@@ -3531,8 +3532,8 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                   setExportStartTime('');
                   setExportEndTime('');
                   setExportError(null);
-                  setIncludeDynamicVariables(false);
-                  setIncludePostCallAnalysis(false);
+                  setIncludeDynamicVariables(true);
+                  setIncludePostCallAnalysis(true);
                   // Resetear columnas a valores por defecto
                   setExportColumns({
                     created_at: true,
