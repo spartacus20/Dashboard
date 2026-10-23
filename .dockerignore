@@ -1,0 +1,16 @@
+node_modules
+dist
+build
+.git
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+.vscode
+.idea
+coverage
+.bolt
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
