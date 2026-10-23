@@ -6,7 +6,7 @@ import { getCachedFolderName, setCachedFolderName } from '../lib/folderNameCache
 import { useCallsContext } from '../context/CallsContext';
 import { BatchCallingTab } from './campaign/BatchCallingTab';
 import { BatchCampaignsTab } from './campaign/BatchCampaignsTab';
-import { canAccessBatchCampaigns } from '../lib/supabase';
+import { canAccessBatchCampaigns, getMetadata } from '../lib/supabase';
 import { formatScheduledDate } from '../lib/formatScheduled';
 import { Button } from '../components/ui/button';
 import { CAMPAIGN_PAGE_SIZE as ITEMS_PER_PAGE, hasRetellKey } from '../lib/constants';
@@ -29,7 +29,10 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
   // agentes asignados (desde gestion_dashboard). Puede tener los dos. El cliente no
   // ve el nombre del proveedor: con uno solo, la página es "Campañas" sin pestañas;
   // con los dos, CallShift es "Campañas" y la lista de Retell pasa a "Historial".
-  const hasRetell = hasRetellKey(apiKey) || Boolean(apiKeyTest?.length);
+  // metadata.campaign_retell = false oculta las campañas de Retell aunque el cliente
+  // tenga key (la sigue usando en el resto del panel): solo lanza por CallShift.
+  const hasRetell =
+    (hasRetellKey(apiKey) || Boolean(apiKeyTest?.length)) && getMetadata()?.campaign_retell !== false;
   const [callshiftEnabled, setCallshiftEnabled] = useState(false);
   const [callshiftChecked, setCallshiftChecked] = useState(false);
   // Pestaña "Campañas programadas" (batch service): solo clientes con el flag habilitado
