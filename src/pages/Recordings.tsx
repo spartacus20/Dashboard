@@ -753,7 +753,9 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   const [availableMetadataFields, setAvailableMetadataFields] = React.useState<string[]>([]);
 
   // Variables dinámicas del agente: se piden a Retell al exportar, no se guardan en call_logs
-  const [includeDynamicVariables, setIncludeDynamicVariables] = React.useState(false);
+  const [includeDynamicVariables, setIncludeDynamicVariables] = React.useState(true);
+  // Análisis post-llamada (custom_analysis_data de Retell): mismo mecanismo, columnas aparte
+  const [includePostCallAnalysis, setIncludePostCallAnalysis] = React.useState(true);
 
   // Cargar campos de metadata del session storage. Re-ejecutar cuando cambia clientId para traer siempre el del cliente actual
   React.useEffect(() => {
@@ -1317,16 +1319,22 @@ export function Recordings({ onNavigate }: RecordingsProps) {
       columnLabels[`metadata_${field}`] = `Metadata - ${field}`;
     });
 
-    // Variables dinámicas: una columna por cada clave que aparezca en alguna llamada,
-    // en el orden en que aparecen por primera vez
-    const dynamicVariableKeys: string[] = [];
-    dataToExport.forEach(call => {
-      Object.keys(call.dynamic_variables || {}).forEach(key => {
-        if (!dynamicVariableKeys.includes(key)) dynamicVariableKeys.push(key);
+    // Datos traídos de Retell (variables del agente y análisis post-llamada): una columna
+    // por cada clave que aparezca en alguna llamada, en el orden en que aparecen por primera vez
+    const retellColumnGroups = [
+      { field: 'dynamic_variables', prefix: 'variable_', label: 'Variable' },
+      { field: 'post_call_analysis', prefix: 'analisis_', label: 'Análisis' }
+    ].map(group => {
+      const keys: string[] = [];
+      dataToExport.forEach(call => {
+        Object.keys(call[group.field] || {}).forEach(key => {
+          if (!keys.includes(key)) keys.push(key);
+        });
       });
-    });
-    dynamicVariableKeys.forEach(key => {
-      columnLabels[`variable_${key}`] = `Variable - ${key}`;
+      keys.forEach(key => {
+        columnLabels[`${group.prefix}${key}`] = `${group.label} - ${key}`;
+      });
+      return { ...group, keys };
     });
 
     // Crear encabezados basados en las columnas seleccionadas y campos de metadata
@@ -1334,8 +1342,8 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     selectedMetadataFields.forEach(field => {
       allColumns.push(`metadata_${field}`);
     });
-    dynamicVariableKeys.forEach(key => {
-      allColumns.push(`variable_${key}`);
+    retellColumnGroups.forEach(group => {
+      group.keys.forEach(key => allColumns.push(`${group.prefix}${key}`));
     });
     const headers = allColumns.map(col => columnLabels[col] || col);
     
@@ -1361,8 +1369,8 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         if (column === 'created_at') {
           row[column] = formatTimestampUTC(call[column]);
         } else if (column === 'duration') {
-          // Formatear duración en MM:SS
-          const duration = parseInt(call[column]) || 0;
+          // Formatear duración en MM:SS (call_logs.duration viene en milisegundos, como en la tabla)
+          const duration = Math.floor((parseInt(call[column]) || 0) / 1000);
           const minutes = Math.floor(duration / 60);
           const seconds = duration % 60;
           row[column] = `${minutes}:${seconds.toString().padStart(2, '0')}`;
@@ -1429,11 +1437,13 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         row[metadataKey] = fieldValue;
       });
 
-      dynamicVariableKeys.forEach(key => {
-        const value = call.dynamic_variables?.[key];
-        row[`variable_${key}`] = value === null || value === undefined
-          ? ''
-          : typeof value === 'object' ? JSON.stringify(value) : String(value);
+      retellColumnGroups.forEach(group => {
+        group.keys.forEach(key => {
+          const value = call[group.field]?.[key];
+          row[`${group.prefix}${key}`] = value === null || value === undefined
+            ? ''
+            : typeof value === 'object' ? JSON.stringify(value) : String(value);
+        });
       });
 
       return row;
@@ -1453,7 +1463,8 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     });
     
     // Crear un blob y descargar
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    // El BOM hace que Excel abra el archivo como UTF-8 y no rompa las tildes
+    const blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
@@ -1584,6 +1595,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
         sort_order: sortOrderFilter
       };
       if (includeDynamicVariables) params.include_dynamic_variables = true;
+      if (includePostCallAnalysis) params.include_post_call_analysis = true;
       if (statusFilter) params.status = statusFilter;
       
       // Agregar filtro de número de teléfono (normalizar el número)
@@ -3489,6 +3501,24 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                 </label>
               </div>
 
+              {/* Análisis post-llamada (custom_analysis_data, se consulta a Retell al exportar) */}
+              <div className="flex items-start border border-gray-200 rounded-lg p-4">
+                <input
+                  type="checkbox"
+                  id="export-post-call-analysis"
+                  checked={includePostCallAnalysis}
+                  onChange={() => setIncludePostCallAnalysis(!includePostCallAnalysis)}
+                  className="mt-0.5 rounded bg-white border-slate-300 text-blue-600 focus:ring-blue-500"
+                  disabled={exportLoading}
+                />
+                <label htmlFor="export-post-call-analysis" className="ml-2 text-sm text-slate-700">
+                  <span className="font-medium">Análisis post-llamada</span>
+                  <span className="block text-xs text-gray-500">
+                    Agrega una columna por cada dato del análisis que se genera al terminar la llamada. Puede tardar unos segundos más.
+                  </span>
+                </label>
+              </div>
+
               {exportError && (
                 <div className="text-red-600 text-sm">{exportError}</div>
               )}
@@ -3502,7 +3532,8 @@ export function Recordings({ onNavigate }: RecordingsProps) {
                   setExportStartTime('');
                   setExportEndTime('');
                   setExportError(null);
-                  setIncludeDynamicVariables(false);
+                  setIncludeDynamicVariables(true);
+                  setIncludePostCallAnalysis(true);
                   // Resetear columnas a valores por defecto
                   setExportColumns({
                     created_at: true,

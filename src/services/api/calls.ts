@@ -551,12 +551,13 @@ export async function exportCallsWithColumns(
     bdd?: string;
     sort_order?: 'ASC' | 'DESC';
     include_dynamic_variables?: boolean;
+    include_post_call_analysis?: boolean;
   }
 ): Promise<{
   calls: any[];
   total_llamadas: number;
   columns_selected: string[];
-  dynamic_variables?: { found: number; missing: number; ms: number; errors: string[] };
+  retell_data?: { found: number; missing: number; ms: number; errors: string[] };
 }> {
   try {
     if (!params?.client_id) {
@@ -588,7 +589,7 @@ export async function exportCallsWithColumns(
       calls: data.llamadas || [],
       total_llamadas: data.total_llamadas || 0,
       columns_selected: data.columns_selected || params.columns,
-      dynamic_variables: data.dynamic_variables
+      retell_data: data.retell_data
     };
   } catch (error) {
     // console.error('Error al exportar llamadas con columnas:', error);
