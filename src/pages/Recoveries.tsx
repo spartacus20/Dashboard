@@ -323,6 +323,16 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
     }
   };
 
+  // Código de análisis: prioriza metadata.analisis.analisis (o el ya resuelto por el backend),
+  // con fallback a la columna analisis_codigo. Las fallidas 'TON' se respetan.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const getCodigo = (row: any): string => {
+    if (row?.analisis_codigo === 'TON') return 'TON';
+    if (row?.analisis_codigo_resuelto) return row.analisis_codigo_resuelto;
+    const meta = parseMetadata(row?.metadata) as { analisis?: { analisis?: string }; analisis_codigo?: string } | null;
+    return (meta?.analisis?.analisis || '').trim() || row?.analisis_codigo || meta?.analisis_codigo || '';
+  };
+
   // Exporta TODOS los registros que matchean los filtros actuales, no solo la página
   // visible: se pagina contra el backend hasta traerlos a todos.
   const handleExportCSV = async () => {
@@ -361,7 +371,7 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
 
       const filas = todas.map((row) => {
         const meta = parseMetadata(row.metadata);
-        const codigo = row.analisis_codigo || meta?.analisis?.analisis || '';
+        const codigo = getCodigo(row);
         const nombre = meta?.datos?.last_name
           ? `${row.name || meta?.datos?.name || ''} ${meta.datos.last_name}`
           : (row.name || meta?.datos?.name || '');
@@ -414,7 +424,7 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
 
   const filteredLlamadas = llamadas.filter((r) => {
     if (searchCodigo) {
-      const cod = (r.analisis_codigo || (r.metadata?.analisis_codigo) || '');
+      const cod = getCodigo(r);
       if (cod !== searchCodigo) return false;
     }
     if (searchStatus) {
@@ -820,7 +830,7 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
           ) : (
             <div className="p-6 space-y-4">
               {filteredLlamadas.map((row) => {
-                const codigo = row.analisis_codigo || (parseMetadata(row.metadata)?.analisis?.analisis) || '-';
+                const codigo = getCodigo(row) || '-';
                 const color = getColorForCode(codigo, Object.keys(CODE_COLORS).indexOf(codigo));
                 const meta = parseMetadata(row.metadata);
                 const fullName = meta?.datos?.last_name ? `${row.name || meta?.datos?.name || '-'} ${meta.datos.last_name}` : (row.name || meta?.datos?.name || '-');
