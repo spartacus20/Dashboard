@@ -317,7 +317,7 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
     if (!raw) return null;
     try {
       const obj = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      return obj as { datos?: { name?: string; last_name?: string; saldo?: string; NOMBRE_ASESOR?: string; numero_asesor?: string }; analisis?: { resumen?: string; analisis?: string; sentimiento?: string } };
+      return obj as { datos?: { name?: string; last_name?: string; saldo?: string; NOMBRE_ASESOR?: string; numero_asesor?: string }; analisis?: string | { resumen?: string; analisis?: string; sentimiento?: string }; resumen?: string };
     } catch {
       return null;
     }
@@ -329,8 +329,18 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
   const getCodigo = (row: any): string => {
     if (row?.analisis_codigo === 'TON') return 'TON';
     if (row?.analisis_codigo_resuelto) return row.analisis_codigo_resuelto;
-    const meta = parseMetadata(row?.metadata) as { analisis?: { analisis?: string }; analisis_codigo?: string } | null;
-    return (meta?.analisis?.analisis || '').trim() || row?.analisis_codigo || meta?.analisis_codigo || '';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const meta = parseMetadata(row?.metadata) as any;
+    const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+    return (
+      str(meta?.analisis) ||
+      str(meta?.['análisis']) ||
+      str(meta?.raw_qualification?.analisis) ||
+      str(meta?.analisis?.analisis) ||
+      str(meta?.['análisis']?.['análisis']) ||
+      str(row?.analisis_codigo) ||
+      str(meta?.analisis_codigo)
+    );
   };
 
   // Exporta TODOS los registros que matchean los filtros actuales, no solo la página
@@ -387,7 +397,7 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
           row.call_id || '',
           row.end_reason || '',
           row.cost ?? '',
-          row.summary || meta?.analisis?.resumen || '',
+          row.summary || (typeof meta?.analisis === 'object' ? meta.analisis?.resumen : meta?.resumen) || '',
         ].map(escapar).join(',');
       });
 
@@ -835,7 +845,7 @@ export function Recoveries({ onNavigate: _onNavigate }: RecoveriesProps) {
                 const meta = parseMetadata(row.metadata);
                 const fullName = meta?.datos?.last_name ? `${row.name || meta?.datos?.name || '-'} ${meta.datos.last_name}` : (row.name || meta?.datos?.name || '-');
                 const phone = row.to_number || row.phone_number || '-';
-                const summary = row.summary || meta?.analisis?.resumen;
+                const summary = row.summary || (typeof meta?.analisis === 'object' ? meta.analisis?.resumen : meta?.resumen);
                 const transcript = row.transcript || '';
                 const recordings = row.recordings;
                 const endReason = row.end_reason;
