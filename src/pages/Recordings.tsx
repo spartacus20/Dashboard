@@ -588,6 +588,7 @@ export function Recordings({ onNavigate }: RecordingsProps) {
     loadAllCalls: contextLoadAllCalls,
     loadCallsPage,
     disconnectionReasons: contextDisconnectionReasons,
+    loadDisconnectionReasons,
     allCallsLoaded,
     apiKey,
     apiKeyTest,
@@ -638,6 +639,12 @@ export function Recordings({ onNavigate }: RecordingsProps) {
   
   // Estados para los filtros
   const [disconnectionReasonFilter, setDisconnectionReasonFilter] = React.useState<string | null>(null);
+
+  // Los motivos de desconexión solo se piden cuando se abre ese filtro (o si ya hay uno aplicado)
+  const disconnectionSectionOpen = expandedFilterSections.has('desconexion');
+  React.useEffect(() => {
+    if (disconnectionSectionOpen || disconnectionReasonFilter) loadDisconnectionReasons();
+  }, [disconnectionSectionOpen, disconnectionReasonFilter, loadDisconnectionReasons]);
   const [durationOperator, setDurationOperator] = React.useState<'gt' | 'lt' | 'eq' | null>(null);
   const [durationMinutes, setDurationMinutes] = React.useState<string>('');
   // Valor derivado para mantener compatibilidad con todos los checks de "filtro activo"
