@@ -57,6 +57,18 @@ Dashboard/
 
 ## Changelog
 
+### [v2.1.0] - 2025-03-11 - Fase de Estabilización y Resiliencia
+
+#### 🔧 Mejoras Arquitectónicas
+- **Depuración Core de Servicios**: Restauración de funciones auxiliares críticas en `agendas.ts` y corrección de imports en `telephony.ts`.
+- **Resiliencia de Módulos**: Estabilización de los módulos de Grabaciones, Agendas y Números de Teléfono tras una fase de refactorización.
+- **Optimización de Logs**: Implementación de limpieza selectiva de `console.log` para mejorar el rendimiento en producción sin perder trazabilidad en desarrollo.
+- **Soporte Multi-Workspace**: Mejora en la lógica de resolución de nombres de workspace para configuraciones con múltiples API Keys de Retell.
+
+#### ✅ Verificación
+- Validación completa del ciclo de build (`npm run build`).
+- Corrección de advertencias de linter y dependencias circulares.
+
 ### [v2.0.0] - 2024-12-19 - Implementación de Sistema de Autenticación
 
 #### ✨ Nuevas Características
