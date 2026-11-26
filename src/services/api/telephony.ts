@@ -51,7 +51,16 @@ export async function createPhoneCall(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Error al crear llamada: ${response.status} ${response.statusText} - ${errorText}`);
+    // Errores con `code` (p. ej. 402 insufficient_credits) traen un mensaje pensado para
+    // el usuario: se muestra tal cual en vez del texto técnico.
+    let friendly: string | null = null;
+    try {
+      const parsed = JSON.parse(errorText);
+      if (parsed?.code && typeof parsed.error === 'string') friendly = parsed.error;
+    } catch {
+      // cuerpo no JSON: queda el mensaje técnico
+    }
+    throw new Error(friendly ?? `Error al crear llamada: ${response.status} ${response.statusText} - ${errorText}`);
   }
 
   const result = await response.json();

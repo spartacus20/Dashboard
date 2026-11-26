@@ -11,6 +11,10 @@ import {
   resumeBatchCampaign, retryFailedBatchCampaign, syncBatchWorkspace,
 } from '../../services/api/batchCampaigns';
 import { CreateBatchCampaignModal } from './CreateBatchCampaignModal';
+import type { UseCreditsResult } from '../../hooks/useCredits';
+
+const NO_CREDITS_HINT = 'Sin créditos: contactá a soporte para recargar.';
+const PAUSED_NO_CREDITS_LABEL = 'Pausada · sin créditos';
 
 const POLL_MS = 6000;
 
@@ -46,8 +50,23 @@ function progressOf(campaign: BatchCampaign): number {
   return Math.min(100, Math.round((closed / campaign.total_tasks) * 100));
 }
 
-export function BatchCampaignsTab() {
+export function BatchCampaignsTab({ credits }: { credits?: UseCreditsResult } = {}) {
   const { clientId } = useCallsContext();
+  // Créditos prepago (solo algunos clientes): sin saldo no se puede crear, reanudar ni
+  // reintentar (el backend responde 402). Las pausadas por saldo se marcan aparte.
+  const noCredits = credits?.blocked === true;
+  const pausedForCredits = useMemo(
+    () => new Set(
+      (credits?.credits?.paused_campaigns ?? [])
+        .filter(p => p.provider === 'batch')
+        .map(p => p.campaign_id)
+    ),
+    [credits?.credits]
+  );
+  const statusLabel = (c: BatchCampaign) =>
+    c.status === 'paused' && pausedForCredits.has(c.id)
+      ? PAUSED_NO_CREDITS_LABEL
+      : (STATUS_LABEL[c.status] ?? c.status);
   const [workspaces, setWorkspaces] = useState<BatchWorkspace[]>([]);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>('');
   const [campaigns, setCampaigns] = useState<BatchCampaign[]>([]);
@@ -164,6 +183,9 @@ export function BatchCampaignsTab() {
       setError(err instanceof Error ? err.message : 'La acción falló');
     } finally {
       setActionBusy(null);
+      // Reanudar saca la campaña de "pausadas por saldo"; un 402 puede indicar que el
+      // saldo cambió desde la última consulta.
+      if (action === 'resume' || action === 'retry') void credits?.refresh();
     }
   };
 
@@ -218,12 +240,19 @@ export function BatchCampaignsTab() {
 
           <button
             onClick={() => setCreateOpen(true)}
-            className="flex items-center gap-1.5 bg-[#0a2a5a] border border-[#1e4a8a] hover:bg-[#1e4a8a] px-4 py-2 rounded-lg text-white text-sm font-medium"
+            disabled={noCredits}
+            title={noCredits ? NO_CREDITS_HINT : undefined}
+            className="flex items-center gap-1.5 bg-[#0a2a5a] border border-[#1e4a8a] hover:bg-[#1e4a8a] disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-white text-sm font-medium"
           >
             <Plus className="h-4 w-4" />
             Nueva campaña
           </button>
         </div>
+        {noCredits && (
+          <p className="w-full text-xs text-red-700 text-right">
+            No podés crear, reanudar ni reintentar campañas sin créditos. Contactá a soporte para recargar.
+          </p>
+        )}
       </div>
 
       <div className="p-6 space-y-4">
@@ -283,8 +312,8 @@ export function BatchCampaignsTab() {
                         </div>
                       </td>
                       <td className="py-3 pr-4">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_BADGE[c.status] ?? 'bg-slate-100 text-slate-700'}`}>
-                          {STATUS_LABEL[c.status] ?? c.status}
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${STATUS_BADGE[c.status] ?? 'bg-slate-100 text-slate-700'}`}>
+                          {statusLabel(c)}
                         </span>
                       </td>
                       <td className="py-3 pr-4 min-w-[130px]">
@@ -314,9 +343,9 @@ export function BatchCampaignsTab() {
                           {c.status === 'paused' && (
                             <button
                               onClick={() => runAction(c, 'resume')}
-                              disabled={actionBusy === `${c.id}:resume`}
+                              disabled={noCredits || actionBusy === `${c.id}:resume`}
                               className={`${btn} border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100`}
-                              title="Reanudar"
+                              title={noCredits ? NO_CREDITS_HINT : 'Reanudar'}
                             >
                               <Play className="w-3.5 h-3.5" /> Reanudar
                             </button>
@@ -324,9 +353,9 @@ export function BatchCampaignsTab() {
                           {c.status === 'sent' && c.failed > 0 && (
                             <button
                               onClick={() => runAction(c, 'retry')}
-                              disabled={actionBusy === `${c.id}:retry`}
+                              disabled={noCredits || actionBusy === `${c.id}:retry`}
                               className={`${btn} border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100`}
-                              title="Reintentar fallidas"
+                              title={noCredits ? NO_CREDITS_HINT : 'Reintentar fallidas'}
                             >
                               <RotateCcw className="w-3.5 h-3.5" /> Reintentar
                             </button>
@@ -375,6 +404,7 @@ export function BatchCampaignsTab() {
         <BatchCampaignDetailModal
           clientId={clientId}
           campaign={detail}
+          statusLabel={statusLabel(detail)}
           workspace={workspaces.find(w => w.id === detail.workspace_id) ?? null}
           onClose={() => setDetail(null)}
         />
@@ -582,9 +612,10 @@ function DownloadFailedMenu({ clientId, campaign, breakdown }: {
   );
 }
 
-function BatchCampaignDetailModal({ clientId, campaign, workspace, onClose }: {
+function BatchCampaignDetailModal({ clientId, campaign, statusLabel, workspace, onClose }: {
   clientId: string;
   campaign: BatchCampaign;
+  statusLabel: string;
   workspace: BatchWorkspace | null;
   onClose: () => void;
 }) {
@@ -638,7 +669,7 @@ function BatchCampaignDetailModal({ clientId, campaign, workspace, onClose }: {
             <h4 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
               {campaign.name}
               <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[campaign.status] ?? 'bg-slate-100 text-slate-700'}`}>
-                {STATUS_LABEL[campaign.status] ?? campaign.status}
+                {statusLabel}
               </span>
             </h4>
             <p className="text-sm text-slate-500">

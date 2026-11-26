@@ -16,6 +16,7 @@ import {
 import { fetchAccountProfile, updateMyTimezone, updateProfileName } from "../services/api/account";
 import { timezoneOptionsWithDetected } from "../lib/timezones";
 import { ApiTokensCard } from "../components/ApiTokensCard";
+import { CreditsCard } from "../components/CreditsCard";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 
@@ -243,6 +244,8 @@ export function Configuracion() {
 
       {activeTab === "cuenta" && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Solo aparece para clientes con créditos prepago */}
+      <CreditsCard />
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-6 py-5 border-b border-slate-100">
           <h2 className="text-lg font-semibold text-slate-900">Tu cuenta</h2>

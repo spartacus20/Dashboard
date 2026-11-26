@@ -12,6 +12,7 @@ import { Button } from '../components/ui/button';
 import { CAMPAIGN_PAGE_SIZE as ITEMS_PER_PAGE, hasRetellKey } from '../lib/constants';
 import { CallshiftCampaignsTab } from './campaign/CallshiftCampaignsTab';
 import { fetchCallshiftStatus } from '../services/api/callshift';
+import { useCredits } from '../hooks/useCredits';
 
 interface BatchCallWithWorkspace extends RetellBatchCall {
   workspace_index: number;
@@ -37,6 +38,14 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
   const [callshiftChecked, setCallshiftChecked] = useState(false);
   // Pestaña "Campañas programadas" (batch service): solo clientes con el flag habilitado
   const showBatchCampaigns = canAccessBatchCampaigns();
+  // Créditos prepago: el refresco periódico mantiene al día "sin créditos" y las campañas
+  // pausadas por saldo (al recargar NO se reanudan solas; las reanuda una persona).
+  const creditsState = useCredits(clientId, { pollMs: 60_000 });
+  const { credits } = creditsState;
+  // Clientes con créditos no pueden usar el batch nativo de Retell (no se puede pausar al
+  // quedarse sin saldo; el backend responde 403 native_batch_disabled): lanzan desde
+  // Campañas programadas, o contactan a soporte si no las tienen habilitadas.
+  const nativeBatchBlocked = credits !== null;
   const [currentPage, setCurrentPage] = useState(1);
   const [batchCallsByWorkspace, setBatchCallsByWorkspace] = useState<BatchCallWithWorkspace[]>([]);
   const [selectedWorkspaceIndex, setSelectedWorkspaceIndex] = useState<number | null>(null);
@@ -71,7 +80,7 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
   };
 
   const handleEditClick = () => {
-    setCampaignTab('batch-calling');
+    setCampaignTab(nativeBatchBlocked && showBatchCampaigns ? 'programadas' : 'batch-calling');
   };
 
   useEffect(() => {
@@ -334,6 +343,7 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
             {callshiftEnabled ? <PhoneCall className="w-4 h-4" /> : <Megaphone className="w-4 h-4" />}
             {callshiftEnabled ? 'Historial' : 'Campañas'}
           </button>
+          {!(nativeBatchBlocked && showBatchCampaigns) && (
           <button
             type="button"
             onClick={() => setCampaignTab('batch-calling')}
@@ -346,6 +356,7 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
             <Upload className="w-4 h-4" />
             Crear Campaña
           </button>
+          )}
           {showBatchCampaigns && (
             <button
               type="button"
@@ -364,16 +375,51 @@ export function Campaign({ onNavigate: _onNavigate }: CampaignProps) {
         )}
       </div>
 
+      {credits && (credits.blocked || credits.paused_campaigns.length > 0) && (
+        <div
+          className={`mb-6 flex items-start gap-2 rounded-lg border px-4 py-3 text-sm ${
+            credits.blocked ? 'border-red-300 bg-red-50 text-red-800' : 'border-orange-200 bg-orange-50 text-orange-800'
+          }`}
+        >
+          <AlertCircle className={`h-4 w-4 mt-0.5 shrink-0 ${credits.blocked ? 'text-red-500' : 'text-orange-500'}`} />
+          <span>
+            {credits.blocked
+              ? 'Sin créditos: no se pueden lanzar llamadas y las campañas en curso se pausaron. Contactá a soporte para recargar.'
+              : `Hay ${credits.paused_campaigns.length === 1 ? '1 campaña pausada' : `${credits.paused_campaigns.length} campañas pausadas`} por falta de créditos. Al recargar no se reanudan solas: reanudalas cuando quieras.`}
+          </span>
+        </div>
+      )}
+
       {campaignTab === 'callshift' && callshiftEnabled && clientId ? (
-        <CallshiftCampaignsTab clientId={clientId} />
+        <CallshiftCampaignsTab clientId={clientId} credits={creditsState} />
       ) : !hasRetell ? (
         <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-10 text-center text-slate-500">
           {!callshiftChecked || callshiftEnabled ? 'Cargando…' : 'Tu cuenta todavía no tiene las campañas configuradas. Contactá a soporte.'}
         </div>
       ) : campaignTab === 'programadas' && showBatchCampaigns ? (
-        <BatchCampaignsTab />
+        <BatchCampaignsTab credits={creditsState} />
       ) : campaignTab === 'batch-calling' ? (
-        <BatchCallingTab apiKeys={apiKeysToFetch} workspaceNameByApiKey={workspaceNameByApiKey} />
+        creditsState.loading ? (
+          <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-10 text-center text-slate-500">Cargando…</div>
+        ) : nativeBatchBlocked ? (
+          <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-10 text-center text-slate-600">
+            {showBatchCampaigns ? (
+              <>
+                Las campañas de tu cuenta se lanzan desde Campañas programadas.
+                <div className="mt-4">
+                  <Button type="button" onClick={() => setCampaignTab('programadas')}>
+                    <CalendarClock className="w-4 h-4 mr-1" />
+                    Ir a Campañas programadas
+                  </Button>
+                </div>
+              </>
+            ) : (
+              'Contactá a soporte para habilitar las campañas.'
+            )}
+          </div>
+        ) : (
+          <BatchCallingTab apiKeys={apiKeysToFetch} workspaceNameByApiKey={workspaceNameByApiKey} />
+        )
       ) : (
       <div className="bg-white rounded-xl shadow-lg border border-slate-200">
         <div className="p-6 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4 bg-gradient-to-r from-slate-50 to-blue-50">
