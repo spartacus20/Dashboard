@@ -13,6 +13,7 @@ import {
   setCallshiftCampaignActive,
 } from '../../services/api/callshift';
 import { CallshiftNewCampaignModal } from './CallshiftNewCampaignModal';
+import type { UseCreditsResult } from '../../hooks/useCredits';
 
 // Campañas de CallShift del cliente: listado con métricas, pausar/reanudar, borrar y
 // crear nuevas. Solo aparecen las campañas de los agentes asignados al cliente.
@@ -31,7 +32,18 @@ const STATUS: Record<CallshiftCampaignStatus, { label: string; cls: string }> = 
 const formatDate = (value: string | null) =>
   value ? new Date(value).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' }) : '—';
 
-export function CallshiftCampaignsTab({ clientId }: { clientId: string }) {
+const NO_CREDITS_HINT = 'Sin créditos: contactá a soporte para recargar.';
+
+export function CallshiftCampaignsTab({ clientId, credits }: { clientId: string; credits?: UseCreditsResult }) {
+  // Créditos prepago (solo algunos clientes): sin saldo no se puede crear, lanzar ni
+  // reanudar (el backend responde 402). Las pausadas por saldo se marcan aparte.
+  const noCredits = credits?.blocked === true;
+  const pausedForCredits = useMemo(
+    () => new Set(
+      (credits?.credits?.paused_campaigns ?? []).filter((p) => p.provider === 'callshift').map((p) => p.campaign_id),
+    ),
+    [credits?.credits],
+  );
   const [campaigns, setCampaigns] = useState<CallshiftCampaign[]>([]);
   const [agents, setAgents] = useState<CallshiftAgent[]>([]);
   const [phones, setPhones] = useState<CallshiftPhone[]>([]);
@@ -85,6 +97,7 @@ export function CallshiftCampaignsTab({ clientId }: { clientId: string }) {
       setError(err instanceof Error ? err.message : 'No se pudo actualizar la campaña');
     } finally {
       setBusy(null);
+      if (!c.active) void credits?.refresh();
     }
   };
 
@@ -123,15 +136,17 @@ export function CallshiftCampaignsTab({ clientId }: { clientId: string }) {
           <Button type="button" variant="outline" onClick={() => { setLoading(true); loadCampaigns(); }} disabled={loading}>
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
-          <Button
-            type="button"
-            onClick={() => setShowNew(true)}
-            disabled={!canCreate}
-            title={canCreate ? '' : 'Tu cuenta todavía no tiene un agente con número asignado'}
-          >
-            <Plus className="w-4 h-4 mr-1" />
-            Nueva campaña
-          </Button>
+          <span title={noCredits ? NO_CREDITS_HINT : undefined}>
+            <Button
+              type="button"
+              onClick={() => setShowNew(true)}
+              disabled={!canCreate || noCredits}
+              title={canCreate ? '' : 'Tu cuenta todavía no tiene un agente con número asignado'}
+            >
+              <Plus className="w-4 h-4 mr-1" />
+              Nueva campaña
+            </Button>
+          </span>
         </div>
       </div>
 
@@ -163,13 +178,16 @@ export function CallshiftCampaignsTab({ clientId }: { clientId: string }) {
               const m = c.metrics;
               const progress = m && m.totalCalls > 0 ? Math.round((m.callsCompleted / m.totalCalls) * 100) : null;
               const canToggle = c.status !== 'completed' || c.active;
+              // Pausar siempre se puede; lanzar o reanudar necesita saldo.
+              const toggleBlocked = noCredits && !c.active;
+              const label = c.status === 'paused' && pausedForCredits.has(c.campaign_id) ? 'Pausada · sin créditos' : st.label;
               return (
                 <div key={c.campaign_id} className="rounded-xl border border-slate-200 p-5 hover:shadow-md transition-shadow">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="font-semibold text-slate-900 truncate">{c.name || c.campaign_id}</p>
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${st.cls}`}>{st.label}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${st.cls}`}>{label}</span>
                       </div>
                       <p className="text-xs text-slate-500 mt-1">
                         {c.agent_name || c.agent_id} · {c.phone_number || '—'}
@@ -182,7 +200,8 @@ export function CallshiftCampaignsTab({ clientId }: { clientId: string }) {
                     </div>
                     <div className="flex gap-2">
                       {canToggle && (
-                        <Button type="button" size="sm" variant="outline" onClick={() => toggle(c)} disabled={busy === c.campaign_id}>
+                        <span title={toggleBlocked ? NO_CREDITS_HINT : undefined}>
+                        <Button type="button" size="sm" variant="outline" onClick={() => toggle(c)} disabled={toggleBlocked || busy === c.campaign_id}>
                           {busy === c.campaign_id ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
                           ) : c.active ? (
@@ -191,6 +210,7 @@ export function CallshiftCampaignsTab({ clientId }: { clientId: string }) {
                             <><Play className="w-4 h-4 mr-1" />{c.status === 'paused' ? 'Reanudar' : 'Lanzar ahora'}</>
                           )}
                         </Button>
+                        </span>
                       )}
                       <Button type="button" size="sm" variant="outline" onClick={() => setToDelete(c)} disabled={busy === c.campaign_id}>
                         <Trash2 className="w-4 h-4" />
